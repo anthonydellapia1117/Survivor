@@ -17,11 +17,19 @@ export default async function GridPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl">The Grid</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Every entry, every week, every result. Tap a cell for details.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl">The Grid</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every entry, every week, every result. Tap a cell for details.
+          </p>
+        </div>
+        <a
+          href="/api/export/picks.xlsx"
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          Export Excel
+        </a>
       </div>
       {entries.length === 0 ? (
         <EmptyState

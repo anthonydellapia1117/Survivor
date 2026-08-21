@@ -167,6 +167,13 @@ export default async function EntryPage(props: {
       <p className="text-xs text-muted-foreground">
         Shareable link — bookmark this page to follow{" "}
         <span className="font-medium">{entry.entryName}</span>.{" "}
+        <Link
+          href={`/entry/${entry.id}/export`}
+          className="text-primary hover:underline"
+        >
+          Share card
+        </Link>{" "}
+        ·{" "}
         <Link href="/grid" className="text-primary hover:underline">
           See the full grid
         </Link>

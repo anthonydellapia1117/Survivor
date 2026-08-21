@@ -34,11 +34,19 @@ export default async function EntriesPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl">Roster</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          All {entries.length} entries with status, lives, and current picks.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl">Roster</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            All {entries.length} entries with status, lives, and current picks.
+          </p>
+        </div>
+        <a
+          href="/api/export/roster.csv"
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          Download CSV
+        </a>
       </div>
       {rows.length === 0 ? (
         <EmptyState
