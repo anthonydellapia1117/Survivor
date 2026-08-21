@@ -1,0 +1,118 @@
+// Supabase REST backend: anon key + RLS. Every query goes through the
+// public-read views, so nothing here can see contact or payment data.
+
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type {
+  DataBackend,
+  EntryDetail,
+  EntrySummary,
+  GridCell,
+  PotSummary,
+  WeekRow,
+} from "./types";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+function client(): SupabaseClient {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+}
+
+function mapEntry(r: any): EntrySummary {
+  return {
+    id: r.id,
+    entryName: r.entry_name,
+    nameIsDefault: r.name_is_default,
+    isFreeEntry: r.is_free_entry,
+    ownerId: r.owner_id,
+    ownerName: r.owner_name,
+    wins: Number(r.wins ?? 0),
+    losses: Number(r.losses ?? 0),
+    livesRemaining: Number(r.lives_remaining ?? 2),
+    status: r.status,
+    byeUsed: Boolean(r.bye_used),
+    teamsUsed: r.teams_used ?? [],
+    lastScoredWeek: r.last_scored_week ?? null,
+  };
+}
+
+function mapCell(r: any): GridCell {
+  return {
+    entryId: r.entry_id,
+    week: r.week,
+    team: r.team,
+    result: r.result,
+    late: Boolean(r.late),
+    submittedAt: r.submitted_at,
+    source: r.source,
+    resultSource: r.result_source,
+  };
+}
+
+export const supabaseBackend: DataBackend = {
+  async getWeeks(): Promise<WeekRow[]> {
+    const { data, error } = await client()
+      .from("weeks")
+      .select("*")
+      .order("week");
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      week: r.week,
+      windowLabel: r.window_label,
+      deadlineAt: r.deadline_at,
+      resultsFinal: r.results_final,
+    }));
+  },
+
+  async getEntries(): Promise<EntrySummary[]> {
+    const { data, error } = await client()
+      .from("v_entry_public")
+      .select("*")
+      .order("entry_name");
+    if (error) throw error;
+    return (data ?? []).map(mapEntry);
+  },
+
+  async getEntry(id: string): Promise<EntryDetail | null> {
+    const c = client();
+    const { data, error } = await c
+      .from("v_entry_public")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    const { data: picks, error: perr } = await c
+      .from("v_grid_cells")
+      .select("*")
+      .eq("entry_id", id)
+      .order("week");
+    if (perr) throw perr;
+    return { entry: mapEntry(data), picks: (picks ?? []).map(mapCell) };
+  },
+
+  async getGridCells(): Promise<GridCell[]> {
+    const { data, error } = await client()
+      .from("v_grid_cells")
+      .select("*")
+      .order("week");
+    if (error) throw error;
+    return (data ?? []).map(mapCell);
+  },
+
+  async getPot(): Promise<PotSummary> {
+    const { data, error } = await client()
+      .from("v_pot")
+      .select("*")
+      .single();
+    if (error) throw error;
+    return {
+      dueCents: Number(data.due_cents),
+      paidCents: Number(data.paid_cents),
+      entryCount: Number(data.entry_count),
+    };
+  },
+};
