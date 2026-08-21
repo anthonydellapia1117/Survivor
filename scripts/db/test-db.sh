@@ -47,6 +47,10 @@ done
 
 echo "migrations OK ($(ls "$REPO_ROOT"/supabase/migrations/*.sql | wc -l) files)"
 
+# The section 9 roster is the test fixture.
+psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$REPO_ROOT/supabase/seed.sql" >/dev/null
+echo "seed OK"
+
 status=0
 for t in "$@"; do
   if psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$t" >/dev/null; then

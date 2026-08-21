@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:db": "scripts/db/test-db.sh tests/sql/*.sql"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
