@@ -126,7 +126,7 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
           value={status}
           onValueChange={(v) => setStatus(v as "all" | EntryStatus)}
         >
-          <SelectTrigger size="sm" className="w-[9.5rem]">
+          <SelectTrigger size="sm" className="w-[9.5rem]" aria-label="Filter by status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

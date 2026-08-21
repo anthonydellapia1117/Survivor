@@ -13,10 +13,10 @@ import {
 import { RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  SurvivalCurve,
-  SurvivalSparkline,
-} from "@/components/dashboard/survival-curve";
-import { PickDistribution } from "@/components/dashboard/pick-distribution";
+  PickDistributionLazy,
+  SurvivalCurveLazy,
+  SurvivalSparklineLazy,
+} from "@/components/dashboard/charts-lazy";
 import { Countdown } from "@/components/dashboard/countdown";
 import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
@@ -166,7 +166,7 @@ export default async function DashboardPage() {
             <div className="text-2xl tabular-nums text-loss">
               {breakdown.eliminated}
             </div>
-            <SurvivalSparkline data={curve} />
+            <SurvivalSparklineLazy data={curve} />
           </CardContent>
         </Card>
       </div>
@@ -178,7 +178,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             {curve.length > 1 ? (
-              <SurvivalCurve data={curve} total={entries.length} />
+              <SurvivalCurveLazy data={curve} total={entries.length} />
             ) : (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 The curve appears once Week 1 results are in.
@@ -195,7 +195,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             {dist?.revealed && dist.rows.length > 0 ? (
-              <PickDistribution rows={dist.rows} />
+              <PickDistributionLazy rows={dist.rows} />
             ) : dist && !dist.revealed ? (
               <div className="flex flex-col items-center gap-2 py-10 text-center">
                 <LockClosedIcon className="size-5 text-muted-foreground" />

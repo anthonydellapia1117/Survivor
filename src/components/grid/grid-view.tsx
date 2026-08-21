@@ -118,7 +118,7 @@ export function GridView({ entries, weeks, cells }: Props) {
           value={status}
           onValueChange={(v) => setStatus(v as "all" | EntryStatus)}
         >
-          <SelectTrigger size="sm" className="w-[9.5rem]">
+          <SelectTrigger size="sm" className="w-[9.5rem]" aria-label="Filter by status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -132,7 +132,7 @@ export function GridView({ entries, weeks, cells }: Props) {
         </Select>
 
         <Select value={owner} onValueChange={setOwner}>
-          <SelectTrigger size="sm" className="w-[10.5rem]">
+          <SelectTrigger size="sm" className="w-[10.5rem]" aria-label="Filter by owner">
             <SelectValue placeholder="Owner" />
           </SelectTrigger>
           <SelectContent>
@@ -154,7 +154,7 @@ export function GridView({ entries, weeks, cells }: Props) {
               if (n > weekTo) setWeekTo(n);
             }}
           >
-            <SelectTrigger size="sm" className="w-[4.75rem]">
+            <SelectTrigger size="sm" className="w-[4.75rem]" aria-label="Week range">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -174,7 +174,7 @@ export function GridView({ entries, weeks, cells }: Props) {
               if (n < weekFrom) setWeekFrom(n);
             }}
           >
-            <SelectTrigger size="sm" className="w-[4.75rem]">
+            <SelectTrigger size="sm" className="w-[4.75rem]" aria-label="Week range">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

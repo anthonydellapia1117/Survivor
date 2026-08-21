@@ -66,7 +66,7 @@ export function TeamsClient({ entries, cells, weekCount }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg">Availability</h2>
           <Select value={selected?.id ?? ""} onValueChange={setEntryId}>
-            <SelectTrigger size="sm" className="w-56">
+            <SelectTrigger size="sm" className="w-56" aria-label="Choose entry">
               <SelectValue placeholder="Pick an entry" />
             </SelectTrigger>
             <SelectContent>
