@@ -207,6 +207,43 @@ export const adminLocalPgBackend: AdminBackend = {
     }));
   },
 
+  async getConfig() {
+    const { rows } = await db().query("select * from config");
+    const r = rows[0];
+    return {
+      tier13Cents: r.tier_1_3_cents,
+      tier4PlusCents: r.tier_4plus_cents,
+      lynneRateCents: r.lynne_rate_cents,
+      freeEntryRatio: r.free_entry_ratio,
+      doubleElimThroughWeek: r.double_elim_through_week,
+      seasonStatus: r.season_status,
+      timezone: r.timezone,
+    };
+  },
+
+  async listAllPicks() {
+    const { rows } = await db().query(
+      "select entry_id, week, team, submitted_at, source, late, result, is_current from picks order by week, submitted_at",
+    );
+    return rows.map((r: any) => ({
+      entryId: r.entry_id,
+      week: r.week,
+      team: r.team,
+      submittedAt: iso(r.submitted_at),
+      source: r.source,
+      late: r.late,
+      result: r.result,
+      isCurrent: r.is_current,
+    }));
+  },
+
+  async logAudit(a) {
+    await db().query(
+      "insert into audit_log (actor, action, target_table, note) values ($1,$2,'export',$3)",
+      [a.actor, a.action, a.note],
+    );
+  },
+
   async importExists(sha256) {
     const { rows } = await db().query(
       "select 1 from lynne_imports where file_sha256 = $1",

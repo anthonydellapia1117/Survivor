@@ -270,6 +270,52 @@ export const adminSupabaseBackend: AdminBackend = {
     }));
   },
 
+  async getConfig() {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c.from("config").select("*").single();
+    if (error) throw error;
+    return {
+      tier13Cents: data.tier_1_3_cents,
+      tier4PlusCents: data.tier_4plus_cents,
+      lynneRateCents: data.lynne_rate_cents,
+      freeEntryRatio: data.free_entry_ratio,
+      doubleElimThroughWeek: data.double_elim_through_week,
+      seasonStatus: data.season_status,
+      timezone: data.timezone,
+    };
+  },
+
+  async listAllPicks() {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c
+      .from("picks")
+      .select("entry_id, week, team, submitted_at, source, late, result, is_current")
+      .order("week")
+      .order("submitted_at");
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      entryId: r.entry_id,
+      week: r.week,
+      team: r.team,
+      submittedAt: r.submitted_at,
+      source: r.source,
+      late: r.late,
+      result: r.result,
+      isCurrent: r.is_current,
+    }));
+  },
+
+  async logAudit(a) {
+    const c = await createSupabaseServerClient();
+    const { error } = await c.from("audit_log").insert({
+      actor: a.actor,
+      action: a.action,
+      target_table: "export",
+      note: a.note,
+    });
+    if (error) throw error;
+  },
+
   async importExists(sha256) {
     const { data, error } = await (await createSupabaseServerClient())
       .from("lynne_imports")

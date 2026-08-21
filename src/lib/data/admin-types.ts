@@ -121,6 +121,29 @@ export interface AdminBackend {
     commit: boolean;
     actor: string;
   }): Promise<SweepRow[]>;
+  getConfig(): Promise<{
+    tier13Cents: number;
+    tier4PlusCents: number;
+    lynneRateCents: number;
+    freeEntryRatio: number;
+    doubleElimThroughWeek: number;
+    seasonStatus: string;
+    timezone: string;
+  }>;
+  /** Every pick row, superseded included — the human-readable audit trail. */
+  listAllPicks(): Promise<
+    {
+      entryId: string;
+      week: number;
+      team: string;
+      submittedAt: string;
+      source: string;
+      late: boolean;
+      result: string | null;
+      isCurrent: boolean;
+    }[]
+  >;
+  logAudit(args: { action: string; note: string; actor: string }): Promise<void>;
   importExists(sha256: string): Promise<boolean>;
   applyLynneImport(args: {
     week: number;

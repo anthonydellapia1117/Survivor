@@ -5,6 +5,7 @@ import { formatCents } from "@/lib/pool";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SheetsExportButton } from "@/components/admin/sheets-export-button";
 
 export const metadata: Metadata = { title: "Admin" };
 
@@ -14,8 +15,10 @@ export default async function AdminOverviewPage() {
     data.listOwners(),
     data.listEntries(),
     data.listPayments(),
-    data.auditTail(15),
+    data.auditTail(50),
   ]);
+  const lastExport =
+    audit.find((a) => a.action === "sheets_export")?.at ?? null;
 
   const confirmed = owners.filter((o) => o.participationStatus === "confirmed");
   const liveEntries = entries.filter((e) => !e.voidedAt);
@@ -40,6 +43,8 @@ export default async function AdminOverviewPage() {
           </Button>
         </div>
       </div>
+
+      <SheetsExportButton lastExportAt={lastExport} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card className="bg-surface">
@@ -109,7 +114,7 @@ export default async function AdminOverviewPage() {
             </p>
           ) : (
             <ul className="divide-y divide-border/60 text-sm">
-              {audit.map((a) => (
+              {audit.slice(0, 15).map((a) => (
                 <li key={a.id} className="flex items-center gap-3 py-2">
                   <span
                     className="w-32 shrink-0 text-xs tabular-nums text-muted-foreground"
