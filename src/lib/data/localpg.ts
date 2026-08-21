@@ -106,4 +106,25 @@ export const localPgBackend: DataBackend = {
       entryCount: Number(rows[0].entry_count),
     };
   },
+
+  async getLynneImports() {
+    const { rows } = await db().query(
+      "select * from lynne_imports order by imported_at desc",
+    );
+    return rows.map((r: any) => ({
+      id: r.id,
+      week: r.week,
+      filename: r.filename,
+      fileSha256: r.file_sha256,
+      importedAt:
+        r.imported_at instanceof Date
+          ? r.imported_at.toISOString()
+          : r.imported_at,
+      rowCount: r.row_count,
+      matchedCount: r.matched_count,
+      unmatched: r.unmatched,
+      variances: r.variances,
+      rows: r.rows,
+    }));
+  },
 };

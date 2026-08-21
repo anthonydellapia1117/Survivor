@@ -190,6 +190,120 @@ export async function deadlineSweepAction(input: {
   });
 }
 
+export interface LynnePreview {
+  week: number;
+  filename: string;
+  sha256: string;
+  alreadyImported: boolean;
+  rows: import("@/lib/lynne/parse").LynneRow[];
+  matched: {
+    entry: string;
+    entryId: string;
+    entryName: string;
+    team: string | null;
+    result: string | null;
+    matchedBy: string;
+  }[];
+  unmatched: import("@/lib/lynne/parse").LynneRow[];
+  variances: import("@/lib/lynne/compare").Variance[];
+  applies: import("@/lib/lynne/compare").Apply[];
+  alreadyApplied: number;
+  noResultYet: number;
+}
+
+export async function lynneImportPreviewAction(
+  formData: FormData,
+): Promise<ActionResult & { preview?: LynnePreview }> {
+  return guarded(async () => {
+    const { parseLynneFile } = await import("@/lib/lynne/parse");
+    const { matchRows } = await import("@/lib/lynne/match");
+    const { computeImportPlan } = await import("@/lib/lynne/compare");
+    const { getData } = await import("@/lib/data");
+
+    const file = formData.get("file");
+    const week = Number(formData.get("week"));
+    if (!(file instanceof File)) return { ok: false, error: "No file" };
+    if (!Number.isInteger(week) || week < 1 || week > 18) {
+      return { ok: false, error: "Pick a week" };
+    }
+
+    const buf = Buffer.from(await file.arrayBuffer());
+    const parsed = parseLynneFile(buf, file.name);
+    const admin = getAdminData();
+    const alreadyImported = await admin.importExists(parsed.sha256);
+
+    const entries = (await admin.listEntries()).filter((e) => !e.voidedAt);
+    const { matched, unmatched } = matchRows(
+      parsed.rows,
+      entries.map((e) => ({
+        id: e.id,
+        entryName: e.entryName,
+        lynneLabel: e.lynneLabel,
+      })),
+    );
+
+    const cells = (await getData().getGridCells()).filter(
+      (c) => c.week === week,
+    );
+    const names = new Map(entries.map((e) => [e.id, e.entryName]));
+    const plan = computeImportPlan(
+      matched,
+      cells.map((c) => ({
+        entryId: c.entryId,
+        team: c.team,
+        result: c.result,
+      })),
+      names,
+    );
+
+    return {
+      ok: true,
+      preview: {
+        week,
+        filename: file.name,
+        sha256: parsed.sha256,
+        alreadyImported,
+        rows: parsed.rows,
+        matched: matched.map((m) => ({
+          entry: m.row.entry,
+          entryId: m.entryId,
+          entryName: names.get(m.entryId) ?? m.row.entry,
+          team: m.row.team,
+          result: m.row.result,
+          matchedBy: m.matchedBy,
+        })),
+        unmatched,
+        variances: plan.variances,
+        applies: plan.applies,
+        alreadyApplied: plan.alreadyApplied,
+        noResultYet: plan.noResultYet,
+      },
+    };
+  });
+}
+
+export async function lynneImportCommitAction(
+  preview: LynnePreview,
+): Promise<ActionResult> {
+  return guarded(async (actor) => {
+    const id = await getAdminData().applyLynneImport({
+      week: preview.week,
+      filename: preview.filename,
+      sha256: preview.sha256,
+      rows: preview.rows,
+      rowCount: preview.rows.length,
+      matchedCount: preview.matched.length,
+      unmatched: preview.unmatched,
+      variances: preview.variances,
+      applies: preview.applies,
+      actor,
+    });
+    revalidateAll();
+    revalidatePath("/lynne");
+    return { ok: true, id };
+  });
+}
+
 export async function setResultAction(input: {
   entryId: string;
   week: number;

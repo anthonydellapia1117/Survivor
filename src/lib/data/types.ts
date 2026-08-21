@@ -55,10 +55,24 @@ export interface EntryDetail {
   picks: GridCell[];
 }
 
+export interface LynneImportRow {
+  id: string;
+  week: number | null;
+  filename: string;
+  fileSha256: string;
+  importedAt: string;
+  rowCount: number | null;
+  matchedCount: number | null;
+  unmatched: unknown[] | null;
+  variances: unknown[] | null;
+  rows: unknown[] | null;
+}
+
 export interface DataBackend {
   getWeeks(): Promise<WeekRow[]>;
   getEntries(): Promise<EntrySummary[]>;
   getEntry(id: string): Promise<EntryDetail | null>;
   getGridCells(): Promise<GridCell[]>;
   getPot(): Promise<PotSummary>;
+  getLynneImports(): Promise<LynneImportRow[]>;
 }

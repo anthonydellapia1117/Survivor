@@ -206,4 +206,31 @@ export const adminLocalPgBackend: AdminBackend = {
       ownerName: r.owner_name,
     }));
   },
+
+  async importExists(sha256) {
+    const { rows } = await db().query(
+      "select 1 from lynne_imports where file_sha256 = $1",
+      [sha256],
+    );
+    return rows.length > 0;
+  },
+
+  async applyLynneImport(a) {
+    const { rows } = await db().query(
+      "select admin_apply_lynne_import($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) as id",
+      [
+        a.week,
+        a.filename,
+        a.sha256,
+        JSON.stringify(a.rows),
+        a.rowCount,
+        a.matchedCount,
+        JSON.stringify(a.unmatched),
+        JSON.stringify(a.variances),
+        JSON.stringify(a.applies),
+        a.actor,
+      ],
+    );
+    return rows[0].id;
+  },
 };

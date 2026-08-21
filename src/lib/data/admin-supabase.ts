@@ -267,4 +267,34 @@ export const adminSupabaseBackend: AdminBackend = {
       ownerName: r.owner_name,
     }));
   },
+
+  async importExists(sha256) {
+    const { data, error } = await createSupabaseAdminClient()
+      .from("lynne_imports")
+      .select("id")
+      .eq("file_sha256", sha256)
+      .maybeSingle();
+    if (error) throw error;
+    return data !== null;
+  },
+
+  async applyLynneImport(a) {
+    const { data, error } = await createSupabaseAdminClient().rpc(
+      "admin_apply_lynne_import",
+      {
+        p_week: a.week,
+        p_filename: a.filename,
+        p_sha256: a.sha256,
+        p_rows: a.rows,
+        p_row_count: a.rowCount,
+        p_matched_count: a.matchedCount,
+        p_unmatched: a.unmatched,
+        p_variances: a.variances,
+        p_applies: a.applies,
+        p_actor: a.actor,
+      },
+    );
+    if (error) throw error;
+    return data as string;
+  },
 };

@@ -121,6 +121,19 @@ export interface AdminBackend {
     commit: boolean;
     actor: string;
   }): Promise<SweepRow[]>;
+  importExists(sha256: string): Promise<boolean>;
+  applyLynneImport(args: {
+    week: number;
+    filename: string;
+    sha256: string;
+    rows: unknown[];
+    rowCount: number;
+    matchedCount: number;
+    unmatched: unknown[];
+    variances: unknown[];
+    applies: { entry_id: string; result: string }[];
+    actor: string;
+  }): Promise<string>;
 }
 
 export interface SweepRow {

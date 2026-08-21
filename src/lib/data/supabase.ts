@@ -115,4 +115,24 @@ export const supabaseBackend: DataBackend = {
       entryCount: Number(data.entry_count),
     };
   },
+
+  async getLynneImports() {
+    const { data, error } = await client()
+      .from("lynne_imports")
+      .select("*")
+      .order("imported_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      week: r.week,
+      filename: r.filename,
+      fileSha256: r.file_sha256,
+      importedAt: r.imported_at,
+      rowCount: r.row_count,
+      matchedCount: r.matched_count,
+      unmatched: r.unmatched,
+      variances: r.variances,
+      rows: r.rows,
+    }));
+  },
 };
