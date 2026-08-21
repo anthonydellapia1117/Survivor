@@ -1,5 +1,4 @@
 import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 export function supabaseConfigured(): boolean {
@@ -37,20 +36,6 @@ export async function createSupabaseServerClient() {
   );
 }
 
-/**
- * Service-role client. Bypasses RLS — route handlers must verify the admin
- * session before every write, and every write lands an audit_log row in the
- * same transaction (via rpc) or same request.
- */
-export function createSupabaseAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_URL are not set",
-    );
-  }
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
+// There is deliberately NO service-role client. Admin reads and writes run
+// as the signed-in admin (authenticated role) so RLS's is_admin() policies
+// enforce authorization at the database, with no god-key in any env.

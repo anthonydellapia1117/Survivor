@@ -1,7 +1,9 @@
-// Supabase admin backend: service-role client + transactional RPCs.
-// Callers (server actions) verify the admin session before every call.
+// Supabase admin backend: acts as the signed-in admin via the cookie-bound
+// authenticated client. No service-role key exists anywhere — RLS's
+// is_admin() policies are the enforcement, and callers (server actions)
+// additionally verify the admin session before every call.
 
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   AdminBackend,
   AdminEntry,
@@ -14,7 +16,7 @@ import type {
 
 export const adminSupabaseBackend: AdminBackend = {
   async listOwners(): Promise<AdminOwner[]> {
-    const c = createSupabaseAdminClient();
+    const c = await createSupabaseServerClient();
     const [{ data: owners, error: e1 }, { data: finance, error: e2 }, { data: entries, error: e3 }, { data: payments, error: e4 }] =
       await Promise.all([
         c.from("owners").select("*").order("last_name").order("first_name"),
@@ -50,7 +52,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async listEntries(): Promise<AdminEntry[]> {
-    const c = createSupabaseAdminClient();
+    const c = await createSupabaseServerClient();
     const [{ data: entries, error: e1 }, { data: owners, error: e2 }, { data: picks, error: e3 }] =
       await Promise.all([
         c.from("entries").select("*").order("entry_index"),
@@ -85,7 +87,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async listPayments(): Promise<AdminPayment[]> {
-    const c = createSupabaseAdminClient();
+    const c = await createSupabaseServerClient();
     const [{ data: payments, error: e1 }, { data: owners, error: e2 }] =
       await Promise.all([
         c.from("payments").select("*").order("created_at", { ascending: false }),
@@ -110,7 +112,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async auditTail(limit: number): Promise<AuditRow[]> {
-    const c = createSupabaseAdminClient();
+    const c = await createSupabaseServerClient();
     const { data, error } = await c
       .from("audit_log")
       .select("id, at, actor, action, target_table, target_id, note")
@@ -129,7 +131,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async createOwner(a) {
-    const { data, error } = await createSupabaseAdminClient().rpc(
+    const { data, error } = await (await createSupabaseServerClient()).rpc(
       "admin_create_owner",
       {
         p_first_name: a.firstName,
@@ -148,7 +150,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async updateOwner(a) {
-    const { error } = await createSupabaseAdminClient().rpc(
+    const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_update_owner",
       {
         p_owner_id: a.ownerId,
@@ -165,7 +167,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async addEntries(a) {
-    const { error } = await createSupabaseAdminClient().rpc(
+    const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_add_entries",
       {
         p_owner_id: a.ownerId,
@@ -179,7 +181,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async updateEntry(a) {
-    const { error } = await createSupabaseAdminClient().rpc(
+    const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_update_entry",
       {
         p_entry_id: a.entryId,
@@ -193,7 +195,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async removeEntry(a) {
-    const { error } = await createSupabaseAdminClient().rpc(
+    const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_remove_entry",
       { p_entry_id: a.entryId, p_actor: a.actor },
     );
@@ -201,7 +203,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async voidEntry(a) {
-    const { error } = await createSupabaseAdminClient().rpc(
+    const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_void_entry",
       { p_entry_id: a.entryId, p_actor: a.actor },
     );
@@ -209,7 +211,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async recordPayment(a) {
-    const { data, error } = await createSupabaseAdminClient().rpc(
+    const { data, error } = await (await createSupabaseServerClient()).rpc(
       "admin_record_payment",
       {
         p_owner_id: a.ownerId,
@@ -227,7 +229,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async submitPick(a) {
-    const { data, error } = await createSupabaseAdminClient().rpc(
+    const { data, error } = await (await createSupabaseServerClient()).rpc(
       "admin_submit_pick",
       {
         p_entry_id: a.entryId,
@@ -242,7 +244,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async setResult(a) {
-    const { error } = await createSupabaseAdminClient().rpc(
+    const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_set_result",
       {
         p_entry_id: a.entryId,
@@ -256,7 +258,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async deadlineSweep(a) {
-    const { data, error } = await createSupabaseAdminClient().rpc(
+    const { data, error } = await (await createSupabaseServerClient()).rpc(
       "admin_deadline_sweep",
       { p_week: a.week, p_commit: a.commit, p_actor: a.actor },
     );
@@ -269,7 +271,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async importExists(sha256) {
-    const { data, error } = await createSupabaseAdminClient()
+    const { data, error } = await (await createSupabaseServerClient())
       .from("lynne_imports")
       .select("id")
       .eq("file_sha256", sha256)
@@ -279,7 +281,7 @@ export const adminSupabaseBackend: AdminBackend = {
   },
 
   async applyLynneImport(a) {
-    const { data, error } = await createSupabaseAdminClient().rpc(
+    const { data, error } = await (await createSupabaseServerClient()).rpc(
       "admin_apply_lynne_import",
       {
         p_week: a.week,
