@@ -116,4 +116,15 @@ export interface AdminBackend {
     resultSource: string;
     actor: string;
   }): Promise<void>;
+  deadlineSweep(args: {
+    week: number;
+    commit: boolean;
+    actor: string;
+  }): Promise<SweepRow[]>;
+}
+
+export interface SweepRow {
+  entryId: string;
+  entryName: string;
+  ownerName: string;
 }

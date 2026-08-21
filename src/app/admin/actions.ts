@@ -177,6 +177,19 @@ export async function submitPicksBatchAction(input: {
   });
 }
 
+export async function deadlineSweepAction(input: {
+  week: number;
+  commit: boolean;
+}): Promise<
+  ActionResult & { rows?: { entryId: string; entryName: string; ownerName: string }[] }
+> {
+  return guarded(async (actor) => {
+    const rows = await getAdminData().deadlineSweep({ ...input, actor });
+    if (input.commit) revalidateAll();
+    return { ok: true, rows };
+  });
+}
+
 export async function setResultAction(input: {
   entryId: string;
   week: number;

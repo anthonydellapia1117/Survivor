@@ -194,4 +194,16 @@ export const adminLocalPgBackend: AdminBackend = {
       a.actor,
     ]);
   },
+
+  async deadlineSweep(a) {
+    const { rows } = await db().query(
+      "select * from admin_deadline_sweep($1,$2,$3)",
+      [a.week, a.commit, a.actor],
+    );
+    return rows.map((r: any) => ({
+      entryId: r.entry_id,
+      entryName: r.entry_name,
+      ownerName: r.owner_name,
+    }));
+  },
 };

@@ -254,4 +254,17 @@ export const adminSupabaseBackend: AdminBackend = {
     );
     if (error) throw error;
   },
+
+  async deadlineSweep(a) {
+    const { data, error } = await createSupabaseAdminClient().rpc(
+      "admin_deadline_sweep",
+      { p_week: a.week, p_commit: a.commit, p_actor: a.actor },
+    );
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      entryId: r.entry_id,
+      entryName: r.entry_name,
+      ownerName: r.owner_name,
+    }));
+  },
 };
