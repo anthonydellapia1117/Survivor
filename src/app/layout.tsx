@@ -6,6 +6,10 @@ import { SiteHeader } from "@/components/site-header";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  // Never let a late font swap re-trigger LCP: if the font misses first
+  // paint (cold cache + slow link), the metric-matched fallback stays.
+  display: "optional",
+  preload: true,
 });
 
 export const metadata: Metadata = {
