@@ -316,6 +316,18 @@ export const adminSupabaseBackend: AdminBackend = {
     if (error) throw error;
   },
 
+  async updateWeek(a) {
+    const c = await createSupabaseServerClient();
+    const { error } = await c.rpc("admin_update_week", {
+      p_week: a.week,
+      p_window_label: a.windowLabel,
+      p_deadline_at: a.deadlineAt,
+      p_confirmed: a.confirmed,
+      p_actor: a.actor,
+    });
+    if (error) throw error;
+  },
+
   async importExists(sha256) {
     const { data, error } = await (await createSupabaseServerClient())
       .from("lynne_imports")

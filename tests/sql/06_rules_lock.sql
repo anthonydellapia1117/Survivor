@@ -26,6 +26,15 @@ begin
      or r.window_label <> 'sat_mon' then
     raise exception 'week 18 must be sat_mon window, Friday noon ET';
   end if;
+
+  -- Only the spec-locked week 1 starts confirmed; every guessed deadline
+  -- must be explicitly confirmed by the admin.
+  if not (select confirmed from weeks where week = 1) then
+    raise exception 'week 1 is spec-locked and should start confirmed';
+  end if;
+  if exists (select 1 from weeks where week > 1 and confirmed) then
+    raise exception 'weeks 2-18 are guesses and must start unconfirmed';
+  end if;
 end $$;
 
 -- Deadline sweep: preview commits nothing; commit applies exactly one loss
@@ -54,6 +63,15 @@ begin
     insert into picks (entry_id, week, team, result) values (e_byeel, wk, 'B' || wk, 'win');
   end loop;
   -- e_byeel is loss-free but has no week 6 pick: it takes the loss (no rescue).
+
+  -- Unconfirmed week: commit refused even before any deadline check.
+  begin
+    perform admin_deadline_sweep(6, true, 'test');
+    raise exception 'sweep committed for an unconfirmed week';
+  exception when others then
+    if sqlerrm not like '%not confirmed%' then raise; end if;
+  end;
+  update weeks set confirmed = true where week = 6;
 
   -- Sweep commit before the deadline must refuse.
   begin

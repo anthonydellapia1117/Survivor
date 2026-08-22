@@ -51,6 +51,7 @@ function week(n: number, deadlineIso: string): WeekRow {
     windowLabel: "thu_fri",
     deadlineAt: deadlineIso,
     resultsFinal: false,
+    confirmed: true,
   };
 }
 

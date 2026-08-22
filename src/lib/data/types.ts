@@ -15,6 +15,8 @@ export interface WeekRow {
   windowLabel: "thu_fri" | "sat_mon";
   deadlineAt: string; // ISO timestamp
   resultsFinal: boolean;
+  /** Admin has verified this deadline against the real NFL schedule. */
+  confirmed: boolean;
 }
 
 export interface EntrySummary {

@@ -94,6 +94,13 @@ export function DeadlineSweep({ weeks }: { weeks: WeekRow[] }) {
         </Button>
       </div>
 
+      {selected && !selected.confirmed ? (
+        <p className="rounded-md border border-tie/40 bg-tie/10 px-3 py-2 text-sm text-tie">
+          Week {week}&apos;s deadline is <strong>not confirmed</strong> — the
+          sweep will refuse to commit until you confirm it on the Weeks
+          screen. A guessed deadline must never produce an automatic loss.
+        </p>
+      ) : null}
       {selected && !deadlinePassed ? (
         <p className="text-sm text-tie">
           Week {week}&apos;s deadline has not passed yet — preview works, but
@@ -133,7 +140,7 @@ export function DeadlineSweep({ weeks }: { weeks: WeekRow[] }) {
               </ul>
               <Button
                 onClick={commit}
-                disabled={busy || !deadlinePassed}
+                disabled={busy || !deadlinePassed || !selected?.confirmed}
                 variant="destructive"
                 size="sm"
               >

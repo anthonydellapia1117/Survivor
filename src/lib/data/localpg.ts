@@ -68,6 +68,7 @@ export const localPgBackend: DataBackend = {
           ? r.deadline_at.toISOString()
           : r.deadline_at,
       resultsFinal: r.results_final,
+      confirmed: r.confirmed,
     }));
   },
 

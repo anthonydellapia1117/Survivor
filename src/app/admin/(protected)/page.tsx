@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAdminData } from "@/lib/data/admin";
+import { getData } from "@/lib/data";
 import { formatCents } from "@/lib/pool";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,14 +12,37 @@ export const metadata: Metadata = { title: "Admin" };
 
 export default async function AdminOverviewPage() {
   const data = getAdminData();
-  const [owners, entries, payments, audit] = await Promise.all([
-    data.listOwners(),
-    data.listEntries(),
-    data.listPayments(),
-    data.auditTail(50),
-  ]);
+  const pub = getData();
+  const [owners, entries, payments, audit, weeks, pubEntries, cells] =
+    await Promise.all([
+      data.listOwners(),
+      data.listEntries(),
+      data.listPayments(),
+      data.auditTail(50),
+      pub.getWeeks(),
+      pub.getEntries(),
+      pub.getGridCells(),
+    ]);
   const lastExport =
     audit.find((a) => a.action === "sheets_export")?.at ?? null;
+
+  // Safety alerts: a passed deadline with pickless alive entries means the
+  // sweep is pending and standings are silently wrong until it runs.
+  const now = Date.now();
+  const alive = pubEntries.filter((e) => e.status !== "eliminated");
+  const pickedByWeek = new Map<number, Set<string>>();
+  for (const c of cells) {
+    if (!pickedByWeek.has(c.week)) pickedByWeek.set(c.week, new Set());
+    pickedByWeek.get(c.week)!.add(c.entryId);
+  }
+  const sweepPending = weeks
+    .filter((w) => new Date(w.deadlineAt).getTime() <= now)
+    .map((w) => ({
+      week: w.week,
+      missing: alive.filter((e) => !pickedByWeek.get(w.week)?.has(e.id)).length,
+    }))
+    .filter((w) => w.missing > 0);
+  const unconfirmedWeeks = weeks.filter((w) => !w.confirmed).length;
 
   const confirmed = owners.filter((o) => o.participationStatus === "confirmed");
   const liveEntries = entries.filter((e) => !e.voidedAt);
@@ -33,6 +57,9 @@ export default async function AdminOverviewPage() {
         <h1 className="text-2xl">Admin</h1>
         <div className="flex flex-wrap gap-2">
           <Button asChild size="sm">
+            <Link href="/admin/quick">Quick add</Link>
+          </Button>
+          <Button asChild size="sm" variant="outline">
             <Link href="/admin/picks">Enter picks</Link>
           </Button>
           <Button asChild size="sm" variant="outline">
@@ -43,6 +70,30 @@ export default async function AdminOverviewPage() {
           </Button>
         </div>
       </div>
+
+      {sweepPending.length > 0 ? (
+        <Link
+          href="/admin/deadline"
+          className="block rounded-md border border-loss/50 bg-loss/10 px-3 py-2.5 text-sm text-loss"
+        >
+          <span className="font-semibold">Sweep pending:</span>{" "}
+          {sweepPending
+            .map((w) => `week ${w.week} has ${w.missing} alive ${w.missing === 1 ? "entry" : "entries"} without a pick`)
+            .join("; ")}{" "}
+          past the deadline. Standings are wrong until the missed-pick sweep
+          runs — go to the Deadline screen.
+        </Link>
+      ) : null}
+      {unconfirmedWeeks > 0 ? (
+        <Link
+          href="/admin/weeks"
+          className="block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
+        >
+          {unconfirmedWeeks} week {unconfirmedWeeks === 1 ? "deadline" : "deadlines"} still
+          unconfirmed — verify them against the released NFL schedule on the
+          Weeks screen.
+        </Link>
+      ) : null}
 
       <SheetsExportButton lastExportAt={lastExport} />
 

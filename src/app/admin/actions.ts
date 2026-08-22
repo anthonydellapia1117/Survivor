@@ -177,6 +177,19 @@ export async function submitPicksBatchAction(input: {
   });
 }
 
+export async function updateWeekAction(input: {
+  week: number;
+  windowLabel: string;
+  deadlineAt: string;
+  confirmed: boolean;
+}): Promise<ActionResult> {
+  return guarded(async (actor) => {
+    await getAdminData().updateWeek({ ...input, actor });
+    revalidateAll();
+    return { ok: true };
+  });
+}
+
 export async function deadlineSweepAction(input: {
   week: number;
   commit: boolean;

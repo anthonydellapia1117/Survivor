@@ -144,6 +144,13 @@ export interface AdminBackend {
     }[]
   >;
   logAudit(args: { action: string; note: string; actor: string }): Promise<void>;
+  updateWeek(args: {
+    week: number;
+    windowLabel: string;
+    deadlineAt: string;
+    confirmed: boolean;
+    actor: string;
+  }): Promise<void>;
   importExists(sha256: string): Promise<boolean>;
   applyLynneImport(args: {
     week: number;

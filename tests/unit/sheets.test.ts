@@ -102,6 +102,7 @@ function baseInput(): SheetsInput {
       windowLabel: "thu_fri" as const,
       deadlineAt: `2026-09-${String(8 + i).padStart(2, "0")}T16:00:00Z`,
       resultsFinal: false,
+      confirmed: true,
     })),
     cells: [cell("e1", 1, "KC", "win"), cell("e2", 1, "BUF", "loss"), cell("e3", 2, "SKIP_WEEK", "bye")],
     owners: [owner("Alpha", 4, 10000, 10000), owner("Beta", 2, 6000, 0)],

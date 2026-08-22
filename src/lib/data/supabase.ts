@@ -64,6 +64,7 @@ export const supabaseBackend: DataBackend = {
       windowLabel: r.window_label,
       deadlineAt: r.deadline_at,
       resultsFinal: r.results_final,
+      confirmed: r.confirmed,
     }));
   },
 
