@@ -236,3 +236,13 @@ describe("idempotency", () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
+
+describe("empty tabs never freeze every row", () => {
+  it("a tab with no data keeps at least one row below the frozen header", () => {
+    const input = { ...baseInput(), pickLog: [], imports: [] };
+    const wb = buildAllTabs(input);
+    for (const t of [...wb.public, ...wb.private]) {
+      expect(t.rows.length, t.title).toBeGreaterThan(t.frozenRows);
+    }
+  });
+});

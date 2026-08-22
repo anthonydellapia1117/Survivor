@@ -215,8 +215,14 @@ export async function syncSpreadsheet(
           gridProperties: {
             rowCount,
             columnCount: t.columnCount,
-            frozenRowCount: t.frozenRows,
-            frozenColumnCount: t.frozenCols,
+            // Freezing every visible row/column is an API error, so an
+            // empty tab keeps at least one unfrozen row no matter what
+            // the builder produced.
+            frozenRowCount: Math.min(t.frozenRows, Math.max(rowCount - 1, 0)),
+            frozenColumnCount: Math.min(
+              t.frozenCols,
+              Math.max(t.columnCount - 1, 0),
+            ),
             hideGridlines: true,
           },
         },

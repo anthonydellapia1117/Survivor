@@ -514,6 +514,13 @@ export function buildPicks(input: SheetsInput): TabSpec {
       { v: p.superseded ? "superseded" : "", bg, color: COLORS.muted, italic: true },
     ]);
   });
+  if (pickLog.length === 0) {
+    // A tab whose only rows are the frozen banner+header is rejected by the
+    // Sheets API ("can't freeze all visible rows").
+    rows.push(
+      pad([{ v: "No picks recorded yet", color: COLORS.muted }], cols, COLORS.bandA),
+    );
+  }
   return {
     title: "Picks",
     tabColor: COLORS.neutralTab,
