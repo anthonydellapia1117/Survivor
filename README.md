@@ -68,7 +68,8 @@ One-time setup (≈5 minutes, Google Cloud console):
 
 1. Create (or reuse) a GCP project → enable the **Google Sheets API**.
 2. IAM & Admin → Service Accounts → create one (no roles needed) → Keys →
-   add key → JSON. Download it.
+   add key → JSON. Download it. (Current SA:
+   survivor-sheets-writer@survivor-2026-sheets.iam.gserviceaccount.com)
 3. Paste the JSON (the whole file content) into the Vercel env var
    `GOOGLE_SERVICE_ACCOUNT_KEY` (a file path also works locally).
 4. Share BOTH sheets with the service account's `client_email` as **Editor**.
