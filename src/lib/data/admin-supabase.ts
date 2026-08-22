@@ -320,8 +320,8 @@ export const adminSupabaseBackend: AdminBackend = {
     const c = await createSupabaseServerClient();
     const { error } = await c.rpc("admin_update_week", {
       p_week: a.week,
-      p_window_label: a.windowLabel,
-      p_deadline_at: a.deadlineAt,
+      p_early: a.earlyDeadlineAt,
+      p_late: a.lateDeadlineAt,
       p_confirmed: a.confirmed,
       p_actor: a.actor,
     });

@@ -12,11 +12,11 @@ export default async function WeeksPage() {
       <div>
         <h1 className="text-2xl">Week deadlines</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Weeks 2–18 were seeded from the standard NFL pattern, not the real
-          schedule — check each one against the released slate and confirm it.
-          The missed-pick sweep refuses to run for an unconfirmed week, so an
-          unchecked guess can never produce an automatic loss. Times are
-          Eastern.
+          Each week carries two windows derived from the verified 2026
+          schedule: picks for Wed/Thu/Fri games lock at the early deadline,
+          Sat–Mon games at the late one. Week 1 is Tuesday noon for every
+          pick. The missed-pick sweep waits for the late deadline and refuses
+          unconfirmed weeks. Times are Eastern.
         </p>
       </div>
       {unconfirmed > 0 ? (

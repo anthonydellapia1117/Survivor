@@ -146,8 +146,8 @@ export interface AdminBackend {
   logAudit(args: { action: string; note: string; actor: string }): Promise<void>;
   updateWeek(args: {
     week: number;
-    windowLabel: string;
-    deadlineAt: string;
+    earlyDeadlineAt: string;
+    lateDeadlineAt: string;
     confirmed: boolean;
     actor: string;
   }): Promise<void>;

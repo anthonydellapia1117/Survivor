@@ -3,6 +3,7 @@ import {
   currentPlayWeek,
   eliminationWeek,
   nextDeadline,
+  nextLockBoundary,
   pickDistribution,
   standingsBreakdown,
   survivalCurve,
@@ -45,11 +46,13 @@ function entry(id: string, status: EntrySummary["status"]): EntrySummary {
   };
 }
 
-function week(n: number, deadlineIso: string): WeekRow {
+function week(n: number, deadlineIso: string, earlyIso?: string): WeekRow {
   return {
     week: n,
     windowLabel: "thu_fri",
     deadlineAt: deadlineIso,
+    earlyDeadlineAt: earlyIso ?? deadlineIso,
+    lateDeadlineAt: deadlineIso,
     resultsFinal: false,
     confirmed: true,
   };
@@ -123,6 +126,40 @@ describe("week selection", () => {
     const now = new Date("2026-09-09T00:00:00Z");
     expect(currentPlayWeek(weeks, now)?.week).toBe(1);
     expect(nextDeadline(weeks, now)?.week).toBe(2);
+  });
+});
+
+describe("nextLockBoundary", () => {
+  const weeks = [
+    week(1, "2026-09-08T16:00:00Z"), // early = late -> "all"
+    week(2, "2026-09-18T16:00:00Z", "2026-09-16T16:00:00Z"),
+  ];
+
+  it("week 1 locks everything at once", () => {
+    const b = nextLockBoundary(weeks, new Date("2026-09-01T00:00:00Z"));
+    expect(b).toMatchObject({ week: 1, kind: "all" });
+  });
+
+  it("after week 1, the Wednesday early window is next", () => {
+    const b = nextLockBoundary(weeks, new Date("2026-09-09T00:00:00Z"));
+    expect(b).toMatchObject({
+      week: 2,
+      kind: "early",
+      deadlineAt: "2026-09-16T16:00:00Z",
+    });
+  });
+
+  it("between the windows, the Friday late boundary is next", () => {
+    const b = nextLockBoundary(weeks, new Date("2026-09-17T00:00:00Z"));
+    expect(b).toMatchObject({
+      week: 2,
+      kind: "late",
+      deadlineAt: "2026-09-18T16:00:00Z",
+    });
+  });
+
+  it("null once everything is locked", () => {
+    expect(nextLockBoundary(weeks, new Date("2026-09-19T00:00:00Z"))).toBeNull();
   });
 });
 

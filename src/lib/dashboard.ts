@@ -74,6 +74,47 @@ export function nextDeadline(weeks: WeekRow[], now: Date): WeekRow | null {
   return weeks.find((w) => new Date(w.deadlineAt) > now) ?? null;
 }
 
+export interface LockBoundary {
+  week: number;
+  /** all = every pick locks at once (week 1); early = Wed/Thu/Fri games; late = Sat-Mon. */
+  kind: "all" | "early" | "late";
+  deadlineAt: string;
+}
+
+/**
+ * The next pick-lock boundary of any kind: each week locks Wed/Thu/Fri-game
+ * picks at its early deadline and everything else at the late one.
+ */
+export function nextLockBoundary(
+  weeks: WeekRow[],
+  now: Date,
+): LockBoundary | null {
+  const upcoming: LockBoundary[] = [];
+  for (const w of weeks) {
+    const single = w.earlyDeadlineAt === w.lateDeadlineAt;
+    if (new Date(w.earlyDeadlineAt) > now) {
+      upcoming.push({
+        week: w.week,
+        kind: single ? "all" : "early",
+        deadlineAt: w.earlyDeadlineAt,
+      });
+    }
+    if (!single && new Date(w.lateDeadlineAt) > now) {
+      upcoming.push({ week: w.week, kind: "late", deadlineAt: w.lateDeadlineAt });
+    }
+  }
+  upcoming.sort(
+    (a, b) => new Date(a.deadlineAt).getTime() - new Date(b.deadlineAt).getTime(),
+  );
+  return upcoming[0] ?? null;
+}
+
+export const LOCK_KIND_LABEL: Record<LockBoundary["kind"], string> = {
+  all: "all picks",
+  early: "Thu/Fri picks",
+  late: "Sat–Mon picks",
+};
+
 export interface Distribution {
   week: number;
   revealed: boolean;

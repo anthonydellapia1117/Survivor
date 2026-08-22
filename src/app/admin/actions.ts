@@ -179,8 +179,8 @@ export async function submitPicksBatchAction(input: {
 
 export async function updateWeekAction(input: {
   week: number;
-  windowLabel: string;
-  deadlineAt: string;
+  earlyDeadlineAt: string;
+  lateDeadlineAt: string;
   confirmed: boolean;
 }): Promise<ActionResult> {
   return guarded(async (actor) => {

@@ -58,8 +58,12 @@ begin
     raise exception 'SKIP_WEEK should record result bye';
   end if;
 
-  -- Late pick: past deadline week.
-  update weeks set deadline_at = now() - interval '1 hour' where week = 2;
+  -- Late pick: past deadline week (late derives from pick_deadline, which
+  -- reads the window columns).
+  update weeks set early_deadline_at = now() - interval '1 hour',
+                   late_deadline_at = now() - interval '1 hour',
+                   deadline_at = now() - interval '1 hour'
+   where week = 2;
   perform admin_submit_pick(v_entry, 2, 'SF', 'admin', 'test');
   if not (select late from picks where entry_id = v_entry and week = 2 and is_current) then
     raise exception 'pick past deadline should be late';

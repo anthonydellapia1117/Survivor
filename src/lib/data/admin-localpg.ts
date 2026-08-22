@@ -247,8 +247,8 @@ export const adminLocalPgBackend: AdminBackend = {
   async updateWeek(a) {
     await db().query("select admin_update_week($1,$2,$3,$4,$5)", [
       a.week,
-      a.windowLabel,
-      a.deadlineAt,
+      a.earlyDeadlineAt,
+      a.lateDeadlineAt,
       a.confirmed,
       a.actor,
     ]);

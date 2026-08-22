@@ -4,7 +4,8 @@ import { formatCents } from "@/lib/pool";
 import { formatDeadline } from "@/lib/format";
 import {
   currentPlayWeek,
-  nextDeadline,
+  LOCK_KIND_LABEL,
+  nextLockBoundary,
   pickDistribution,
   recentActivity,
   standingsBreakdown,
@@ -59,7 +60,7 @@ export default async function DashboardPage() {
   const curve = survivalCurve(entries, cells);
   const dist = pickDistribution(weeks, cells, now);
   const playWeek = currentPlayWeek(weeks, now);
-  const deadline = nextDeadline(weeks, now);
+  const deadline = nextLockBoundary(weeks, now);
   const activity = recentActivity(entries, cells, 10);
   const potPct =
     pot.dueCents > 0
@@ -142,7 +143,7 @@ export default async function DashboardPage() {
             </div>
             {deadline ? (
               <p className="mt-1.5 text-xs text-muted-foreground">
-                W{deadline.week} locks in{" "}
+                W{deadline.week} {LOCK_KIND_LABEL[deadline.kind]} lock in{" "}
                 <Countdown deadlineIso={deadline.deadlineAt} />
                 <span className="mt-0.5 block" suppressHydrationWarning>
                   {formatDeadline(deadline.deadlineAt)}

@@ -101,6 +101,8 @@ function baseInput(): SheetsInput {
       week: i + 1,
       windowLabel: "thu_fri" as const,
       deadlineAt: `2026-09-${String(8 + i).padStart(2, "0")}T16:00:00Z`,
+      earlyDeadlineAt: `2026-09-${String(6 + i).padStart(2, "0")}T16:00:00Z`,
+      lateDeadlineAt: `2026-09-${String(8 + i).padStart(2, "0")}T16:00:00Z`,
       resultsFinal: false,
       confirmed: true,
     })),

@@ -4,6 +4,7 @@
 
 import { Pool } from "pg";
 import type {
+  GameRow,
   DataBackend,
   EntryDetail,
   EntrySummary,
@@ -57,18 +58,35 @@ function mapCell(r: any): GridCell {
   };
 }
 
+function iso(v: any): string {
+  return v instanceof Date ? v.toISOString() : v;
+}
+
 export const localPgBackend: DataBackend = {
   async getWeeks(): Promise<WeekRow[]> {
     const { rows } = await db().query("select * from weeks order by week");
     return rows.map((r: any) => ({
       week: r.week,
       windowLabel: r.window_label,
-      deadlineAt:
-        r.deadline_at instanceof Date
-          ? r.deadline_at.toISOString()
-          : r.deadline_at,
+      deadlineAt: iso(r.deadline_at),
+      earlyDeadlineAt: iso(r.early_deadline_at),
+      lateDeadlineAt: iso(r.late_deadline_at),
       resultsFinal: r.results_final,
       confirmed: r.confirmed,
+    }));
+  },
+
+  async getSchedule(): Promise<GameRow[]> {
+    const { rows } = await db().query(
+      "select * from nfl_games order by week, kickoff_at, id",
+    );
+    return rows.map((r: any) => ({
+      id: r.id,
+      week: r.week,
+      kickoffAt: iso(r.kickoff_at),
+      dayOfWeek: r.day_of_week,
+      awayTeam: r.away_team,
+      homeTeam: r.home_team,
     }));
   },
 

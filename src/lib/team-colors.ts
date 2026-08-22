@@ -1,0 +1,38 @@
+// One accent color per team for row labels and swatches. Drawn from each
+// team's brand palette, choosing the variant that stays legible on the
+// app's dark surfaces (never the near-black navies).
+
+export const TEAM_COLOR: Record<string, string> = {
+  ARI: "#97233F",
+  ATL: "#A71930",
+  BAL: "#9E7CC1",
+  BUF: "#4A90D9",
+  CAR: "#0085CA",
+  CHI: "#C83803",
+  CIN: "#FB4F14",
+  CLE: "#FF3C00",
+  DAL: "#7F9695",
+  DEN: "#FB4F14",
+  DET: "#0076B6",
+  GB: "#FFB612",
+  HOU: "#A71930",
+  IND: "#4C8BC9",
+  JAX: "#D7A22A",
+  KC: "#E31837",
+  LAC: "#0080C6",
+  LAR: "#FFA300",
+  LV: "#A5ACAF",
+  MIA: "#008E97",
+  MIN: "#4F2683",
+  NE: "#C60C30",
+  NO: "#D3BC8D",
+  NYG: "#5A7FC2",
+  NYJ: "#3C9A5F",
+  PHI: "#4CBB17",
+  PIT: "#FFB612",
+  SEA: "#69BE28",
+  SF: "#AA0000",
+  TB: "#D50A0A",
+  TEN: "#4B92DB",
+  WAS: "#873E23",
+};

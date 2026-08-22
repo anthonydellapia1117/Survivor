@@ -3,6 +3,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
+  GameRow,
   DataBackend,
   EntryDetail,
   EntrySummary,
@@ -63,8 +64,28 @@ export const supabaseBackend: DataBackend = {
       week: r.week,
       windowLabel: r.window_label,
       deadlineAt: r.deadline_at,
+      earlyDeadlineAt: r.early_deadline_at,
+      lateDeadlineAt: r.late_deadline_at,
       resultsFinal: r.results_final,
       confirmed: r.confirmed,
+    }));
+  },
+
+  async getSchedule(): Promise<GameRow[]> {
+    const { data, error } = await client()
+      .from("nfl_games")
+      .select("*")
+      .order("week")
+      .order("kickoff_at")
+      .order("id");
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      week: r.week,
+      kickoffAt: r.kickoff_at,
+      dayOfWeek: r.day_of_week,
+      awayTeam: r.away_team,
+      homeTeam: r.home_team,
     }));
   },
 

@@ -13,10 +13,30 @@ export type PickResult =
 export interface WeekRow {
   week: number;
   windowLabel: "thu_fri" | "sat_mon";
+  /** The LATE boundary — when the whole week locks (reveal + sweep). */
   deadlineAt: string; // ISO timestamp
+  /** Wed/Thu/Fri-game picks lock here (Wednesday noon ET). */
+  earlyDeadlineAt: string;
+  /** Sat-Mon-game picks lock here (Friday noon ET). Equals deadlineAt. */
+  lateDeadlineAt: string;
   resultsFinal: boolean;
-  /** Admin has verified this deadline against the real NFL schedule. */
+  /** Deadlines verified — schedule-derived or admin-confirmed. */
   confirmed: boolean;
+}
+
+export interface GameRow {
+  id: string;
+  week: number;
+  kickoffAt: string; // ISO timestamp
+  dayOfWeek:
+    | "Wednesday"
+    | "Thursday"
+    | "Friday"
+    | "Saturday"
+    | "Sunday"
+    | "Monday";
+  awayTeam: string;
+  homeTeam: string;
 }
 
 export interface EntrySummary {
@@ -72,6 +92,8 @@ export interface LynneImportRow {
 
 export interface DataBackend {
   getWeeks(): Promise<WeekRow[]>;
+  /** The full 2026 regular-season schedule, ordered by week then kickoff. */
+  getSchedule(): Promise<GameRow[]>;
   getEntries(): Promise<EntrySummary[]>;
   getEntry(id: string): Promise<EntryDetail | null>;
   getGridCells(): Promise<GridCell[]>;

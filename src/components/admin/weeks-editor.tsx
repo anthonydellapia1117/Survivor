@@ -10,9 +10,10 @@ import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 
 interface RowState {
-  date: string;
-  time: string;
-  window: string;
+  earlyDate: string;
+  earlyTime: string;
+  lateDate: string;
+  lateTime: string;
   confirmed: boolean;
   dirty: boolean;
   busy: boolean;
@@ -20,16 +21,26 @@ interface RowState {
 }
 
 function initialState(w: WeekRow): RowState {
-  const wall = utcToEtWall(w.deadlineAt);
+  const early = utcToEtWall(w.earlyDeadlineAt);
+  const late = utcToEtWall(w.lateDeadlineAt);
   return {
-    date: wall.date,
-    time: wall.time,
-    window: w.windowLabel,
+    earlyDate: early.date,
+    earlyTime: early.time,
+    lateDate: late.date,
+    lateTime: late.time,
     confirmed: w.confirmed,
     dirty: false,
     busy: false,
     error: null,
   };
+}
+
+function weekdayOf(date: string): string {
+  if (!date) return "";
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "short",
+    timeZone: "UTC",
+  });
 }
 
 export function WeeksEditor({ weeks }: { weeks: WeekRow[] }) {
@@ -49,9 +60,11 @@ export function WeeksEditor({ weeks }: { weeks: WeekRow[] }) {
     const s = rows[week];
     const confirmed = confirmOverride ?? s.confirmed;
     setRows((r) => ({ ...r, [week]: { ...r[week], busy: true, error: null } }));
-    let deadlineAt: string;
+    let earlyDeadlineAt: string;
+    let lateDeadlineAt: string;
     try {
-      deadlineAt = etWallToUtc(s.date, s.time);
+      earlyDeadlineAt = etWallToUtc(s.earlyDate, s.earlyTime);
+      lateDeadlineAt = etWallToUtc(s.lateDate, s.lateTime);
     } catch {
       setRows((r) => ({
         ...r,
@@ -61,8 +74,8 @@ export function WeeksEditor({ weeks }: { weeks: WeekRow[] }) {
     }
     const res = await updateWeekAction({
       week,
-      windowLabel: s.window,
-      deadlineAt,
+      earlyDeadlineAt,
+      lateDeadlineAt,
       confirmed,
     });
     setRows((r) => ({
@@ -80,14 +93,13 @@ export function WeeksEditor({ weeks }: { weeks: WeekRow[] }) {
 
   return (
     <div className="space-y-2">
+      <div className="hidden items-center gap-x-3 px-3 text-xs font-medium text-muted-foreground lg:flex">
+        <span className="w-10" />
+        <span className="w-64">Thu/Fri picks lock (ET)</span>
+        <span className="w-64">Sat–Mon picks lock (ET)</span>
+      </div>
       {weeks.map((w) => {
         const s = rows[w.week];
-        const weekday = s.date
-          ? new Date(`${s.date}T12:00:00Z`).toLocaleDateString("en-US", {
-              weekday: "short",
-              timeZone: "UTC",
-            })
-          : "";
         return (
           <div
             key={w.week}
@@ -100,33 +112,43 @@ export function WeeksEditor({ weeks }: { weeks: WeekRow[] }) {
           >
             <span className="w-10 font-semibold tabular-nums">W{w.week}</span>
 
-            <select
-              value={s.window}
-              onChange={(e) => patch(w.week, { window: e.target.value })}
-              className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
-              aria-label={`Week ${w.week} window`}
-            >
-              <option value="thu_fri">Thu/Fri</option>
-              <option value="sat_mon">Sat–Mon</option>
-            </select>
-
-            <div className="flex items-center gap-1.5">
+            <div className="flex w-64 items-center gap-1.5">
               <input
                 type="date"
-                value={s.date}
-                onChange={(e) => patch(w.week, { date: e.target.value })}
+                value={s.earlyDate}
+                onChange={(e) => patch(w.week, { earlyDate: e.target.value })}
                 className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
-                aria-label={`Week ${w.week} deadline date`}
+                aria-label={`Week ${w.week} early (Thu/Fri) deadline date`}
               />
               <input
                 type="time"
-                value={s.time}
-                onChange={(e) => patch(w.week, { time: e.target.value })}
+                value={s.earlyTime}
+                onChange={(e) => patch(w.week, { earlyTime: e.target.value })}
                 className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
-                aria-label={`Week ${w.week} deadline time (ET)`}
+                aria-label={`Week ${w.week} early deadline time (ET)`}
               />
-              <span className="text-xs text-muted-foreground">
-                {weekday} ET
+              <span className="w-9 text-xs text-muted-foreground">
+                {weekdayOf(s.earlyDate)}
+              </span>
+            </div>
+
+            <div className="flex w-64 items-center gap-1.5">
+              <input
+                type="date"
+                value={s.lateDate}
+                onChange={(e) => patch(w.week, { lateDate: e.target.value })}
+                className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
+                aria-label={`Week ${w.week} late (Sat-Mon) deadline date`}
+              />
+              <input
+                type="time"
+                value={s.lateTime}
+                onChange={(e) => patch(w.week, { lateTime: e.target.value })}
+                className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
+                aria-label={`Week ${w.week} late deadline time (ET)`}
+              />
+              <span className="w-9 text-xs text-muted-foreground">
+                {weekdayOf(s.lateDate)}
               </span>
             </div>
 

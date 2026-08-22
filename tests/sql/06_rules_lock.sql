@@ -1,39 +1,40 @@
 -- Section 3 locked rules that live in the database, each asserted.
 -- (Pricing, remittance, free entries, naming are covered in 01 + vitest.)
 
--- Deadline schedule: Week 1 is Tuesday 2026-09-08 noon ET; weeks 2-17 are
--- Wednesdays noon ET; week 18 is Friday noon ET (sat_mon window).
+-- Deadline windows: Week 1 is Tuesday 2026-09-08 noon ET for every pick
+-- (early = late); weeks 2-18 carry a Wednesday-noon early window and a
+-- Friday-noon late window derived from the verified schedule, with
+-- deadline_at kept as the late (full-lock) boundary. Schedule-derived
+-- weeks are auto-confirmed.
 do $$
 declare
   r record;
 begin
   select * into r from weeks where week = 1;
-  if r.deadline_at <> '2026-09-08 16:00:00+00'::timestamptz then
-    raise exception 'week 1 deadline must be Tue 2026-09-08 12:00 ET, got %', r.deadline_at;
+  if r.early_deadline_at <> '2026-09-08 16:00:00+00'::timestamptz
+     or r.late_deadline_at <> r.early_deadline_at
+     or r.deadline_at <> r.late_deadline_at then
+    raise exception 'week 1 must be Tue 2026-09-08 12:00 ET for every pick, got %/%', r.early_deadline_at, r.late_deadline_at;
   end if;
 
-  for r in select * from weeks where week between 2 and 17 loop
-    if to_char(r.deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Wed 12:00' then
-      raise exception 'week % deadline must be Wednesday noon ET, got %', r.week, r.deadline_at;
+  for r in select * from weeks where week between 2 and 18 loop
+    if to_char(r.early_deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Wed 12:00' then
+      raise exception 'week % early deadline must be Wednesday noon ET, got %', r.week, r.early_deadline_at;
     end if;
-    if r.window_label <> 'thu_fri' then
-      raise exception 'week % should be thu_fri window', r.week;
+    if to_char(r.late_deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Fri 12:00' then
+      raise exception 'week % late deadline must be Friday noon ET, got %', r.week, r.late_deadline_at;
+    end if;
+    if r.late_deadline_at <> r.early_deadline_at + interval '2 days' then
+      raise exception 'week % windows are not the same game week', r.week;
+    end if;
+    if r.deadline_at <> r.late_deadline_at then
+      raise exception 'week % deadline_at must equal the late boundary', r.week;
     end if;
   end loop;
 
-  select * into r from weeks where week = 18;
-  if to_char(r.deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Fri 12:00'
-     or r.window_label <> 'sat_mon' then
-    raise exception 'week 18 must be sat_mon window, Friday noon ET';
-  end if;
-
-  -- Only the spec-locked week 1 starts confirmed; every guessed deadline
-  -- must be explicitly confirmed by the admin.
-  if not (select confirmed from weeks where week = 1) then
-    raise exception 'week 1 is spec-locked and should start confirmed';
-  end if;
-  if exists (select 1 from weeks where week > 1 and confirmed) then
-    raise exception 'weeks 2-18 are guesses and must start unconfirmed';
+  -- Every week's windows came from the verified schedule -> auto-confirmed.
+  if exists (select 1 from weeks where not confirmed) then
+    raise exception 'schedule-derived weeks must start confirmed';
   end if;
 end $$;
 
@@ -65,6 +66,8 @@ begin
   -- e_byeel is loss-free but has no week 6 pick: it takes the loss (no rescue).
 
   -- Unconfirmed week: commit refused even before any deadline check.
+  -- (Weeks now start confirmed from the schedule; unconfirm to test the guard.)
+  update weeks set confirmed = false where week = 6;
   begin
     perform admin_deadline_sweep(6, true, 'test');
     raise exception 'sweep committed for an unconfirmed week';
@@ -92,8 +95,10 @@ begin
     raise exception 'preview wrote picks';
   end if;
 
-  -- Pass the deadline, commit.
-  update weeks set deadline_at = now() - interval '1 minute' where week = 6;
+  -- Pass the LATE deadline (the sweep boundary), commit.
+  update weeks set late_deadline_at = now() - interval '1 minute',
+                   deadline_at = now() - interval '1 minute'
+   where week = 6;
   perform admin_deadline_sweep(6, true, 'test');
 
   if (select count(*) from picks where entry_id = e_nopick and week = 6 and result = 'missed') <> 1 then

@@ -84,7 +84,7 @@ export function DeadlineSweep({ weeks }: { weeks: WeekRow[] }) {
           <SelectContent>
             {weeks.map((w) => (
               <SelectItem key={w.week} value={String(w.week)}>
-                Week {w.week} — locks {formatDeadline(w.deadlineAt)}
+                Week {w.week} — fully locks {formatDeadline(w.lateDeadlineAt)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -103,8 +103,9 @@ export function DeadlineSweep({ weeks }: { weeks: WeekRow[] }) {
       ) : null}
       {selected && !deadlinePassed ? (
         <p className="text-sm text-tie">
-          Week {week}&apos;s deadline has not passed yet — preview works, but
-          the sweep will refuse to commit.
+          Week {week}&apos;s late deadline has not passed yet — a pickless
+          entry could still submit a Sat–Mon team, so preview works but the
+          sweep will refuse to commit.
         </p>
       ) : null}
 

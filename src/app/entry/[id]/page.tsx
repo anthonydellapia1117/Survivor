@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getData } from "@/lib/data";
+import { currentPlayWeek } from "@/lib/dashboard";
 import {
   NFL_TEAMS,
   RESULT_LABEL,
@@ -37,13 +38,41 @@ export default async function EntryPage(props: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await props.params;
-  const detail = await getData().getEntry(id);
+  const data = getData();
+  const [detail, games, weeks] = await Promise.all([
+    data.getEntry(id),
+    data.getSchedule(),
+    data.getWeeks(),
+  ]);
   if (!detail) notFound();
   const { entry, picks } = detail;
 
   const usedSet = new Set(
     picks.filter((p) => p.team !== SKIP_WEEK).map((p) => p.team),
   );
+
+  // Next three matchups per remaining team, from the current play week on.
+  const fromWeek = currentPlayWeek(weeks, new Date())?.week ?? 1;
+  const nextThree = new Map<string, string[]>();
+  for (const t of NFL_TEAMS) {
+    if (usedSet.has(t.abbr)) continue;
+    nextThree.set(
+      t.abbr,
+      games
+        .filter(
+          (g) =>
+            g.week >= fromWeek &&
+            (g.homeTeam === t.abbr || g.awayTeam === t.abbr),
+        )
+        .slice(0, 3)
+        .map(
+          (g) =>
+            `W${g.week} ${g.homeTeam === t.abbr ? "" : "@"}${
+              g.homeTeam === t.abbr ? g.awayTeam : g.homeTeam
+            }`,
+        ),
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -139,25 +168,43 @@ export default async function EntryPage(props: {
       </section>
 
       <section>
-        <h2 className="text-lg">Teams used</h2>
+        <h2 className="text-lg">Teams remaining</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          {usedSet.size} of {NFL_TEAMS.length} · a team can only be picked once
+          {NFL_TEAMS.length - usedSet.size} of {NFL_TEAMS.length} left, with
+          each team&apos;s next three matchups — plan ahead on the{" "}
+          <Link
+            href="/schedule"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            full schedule
+          </Link>
+          .
         </p>
-        <div className="mt-3 grid grid-cols-4 gap-1.5 sm:grid-cols-8">
+        <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:grid-cols-6">
           {NFL_TEAMS.map((t) => {
             const used = usedSet.has(t.abbr);
+            const upcoming = nextThree.get(t.abbr) ?? [];
             return (
               <span
                 key={t.abbr}
                 title={t.name}
                 className={cn(
-                  "rounded-sm border px-2 py-1.5 text-center text-xs font-medium",
+                  "rounded-sm border px-2 py-1.5 text-xs",
                   used
-                    ? "border-border bg-surface-2 text-muted-foreground line-through opacity-60"
+                    ? "border-border bg-surface-2 text-center font-medium text-muted-foreground line-through opacity-60"
                     : "border-border bg-surface",
                 )}
               >
-                {t.abbr}
+                {used ? (
+                  t.abbr
+                ) : (
+                  <>
+                    <span className="font-medium">{t.abbr}</span>
+                    <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                      {upcoming.length > 0 ? upcoming.join(" · ") : "season done"}
+                    </span>
+                  </>
+                )}
               </span>
             );
           })}
