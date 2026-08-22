@@ -71,6 +71,7 @@ function banner(now: Date, cols: number): CellSpec[] {
       color: COLORS.muted,
       italic: true,
       fontSize: 9,
+      overflow: true,
     },
   ];
   for (let i = 1; i < cols; i++) row.push({});

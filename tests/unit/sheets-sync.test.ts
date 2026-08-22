@@ -90,7 +90,7 @@ describe("syncSpreadsheet", () => {
     expect(deletes).toHaveLength(1); // default Sheet1 removed
   });
 
-  it("writes the full grid with fields:* semantics and merges only the banner", async () => {
+  it("writes the full grid with fields:* semantics and NO merges anywhere", async () => {
     mockSheetsApi(["Summary"]);
     const calls = mockSheetsApi(["Summary"]);
     await syncSpreadsheet("tok", "SS", [tab("Summary", 4, 3)]);
@@ -104,9 +104,9 @@ describe("syncSpreadsheet", () => {
     expect(update.updateCells.rows).toHaveLength(4);
     expect(update.updateCells.rows[0].values).toHaveLength(3);
 
-    const merges = reqs.filter((r: any) => r.mergeCells);
-    expect(merges).toHaveLength(1);
-    expect(merges[0].mergeCells.range.endRowIndex).toBe(1); // banner only
+    // Merges across a frozen boundary 400 the whole batch — there are none.
+    expect(reqs.filter((r: any) => r.mergeCells)).toHaveLength(0);
+    expect(reqs.filter((r: any) => r.unmergeCells)).toHaveLength(1);
 
     const props = reqs.find((r: any) => r.updateSheetProperties);
     const gp = props.updateSheetProperties.properties.gridProperties;

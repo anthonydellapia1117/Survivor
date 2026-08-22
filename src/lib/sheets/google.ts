@@ -106,6 +106,7 @@ function cellData(c: CellSpec): any {
     };
   }
   if (c.wrap) fmt.wrapStrategy = "WRAP";
+  else if (c.overflow) fmt.wrapStrategy = "OVERFLOW_CELL";
   else fmt.wrapStrategy = "CLIP";
   if (c.borderTop) {
     fmt.borders = {
@@ -224,7 +225,10 @@ export async function syncSpreadsheet(
       },
     });
 
-    // Unmerge everything, then merge only the banner.
+    // No merges anywhere: a merge crossing a frozen row/column boundary is
+    // rejected by the Sheets API (the Grid/Entries tabs freeze column 1).
+    // The banner lives unmerged in A1 and overflows. This unmerge also
+    // cleans up any merge left by an older export.
     reqs.push({
       unmergeCells: {
         range: { sheetId: id, startRowIndex: 0, endRowIndex: rowCount },
@@ -247,20 +251,6 @@ export async function syncSpreadsheet(
           while (padded.length < t.columnCount) padded.push({});
           return { values: padded.map(cellData) };
         }),
-      },
-    });
-
-    // The A1 banner is the only merge anywhere.
-    reqs.push({
-      mergeCells: {
-        range: {
-          sheetId: id,
-          startRowIndex: 0,
-          endRowIndex: 1,
-          startColumnIndex: 0,
-          endColumnIndex: t.columnCount,
-        },
-        mergeType: "MERGE_ALL",
       },
     });
 

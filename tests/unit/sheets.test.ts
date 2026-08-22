@@ -153,10 +153,11 @@ describe("tab structure", () => {
   it("every tab starts with the DO-NOT-EDIT banner carrying the ISO timestamp", () => {
     const wb = buildAllTabs(baseInput());
     for (const t of [...wb.public, ...wb.private]) {
-      const a1 = String(t.rows[0][0].v);
-      expect(a1).toContain("GENERATED FROM THE APP");
-      expect(a1).toContain(NOW.toISOString());
-      expect(a1).toContain("DO NOT EDIT");
+      const a1 = t.rows[0][0];
+      expect(String(a1.v)).toContain("GENERATED FROM THE APP");
+      expect(String(a1.v)).toContain(NOW.toISOString());
+      expect(String(a1.v)).toContain("DO NOT EDIT");
+      expect(a1.overflow).toBe(true); // unmerged, spills over empty neighbors
     }
   });
 

@@ -28,6 +28,8 @@ export interface CellSpec {
   /** Sheets number format pattern, e.g. "$#,##0" or "ddd, mmm d". */
   numberFormat?: string;
   fontSize?: number;
+  /** Let text spill over empty neighbors (banner row). */
+  overflow?: boolean;
   runs?: TextRun[]; // rich-text coloring (status dots)
   borderTop?: boolean;
   wrap?: boolean;
