@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminEntry } from "@/lib/data/admin-types";
 import { updateEntryAction } from "@/app/admin/actions";
+import {
+  NameCollisionWarning,
+  type ExistingName,
+} from "@/components/admin/name-warning";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,10 +23,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 export function EntryEditDialog({
   entry,
+  otherNames,
   open,
   onOpenChange,
 }: {
   entry: AdminEntry;
+  otherNames: ExistingName[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -86,6 +92,12 @@ export function EntryEditDialog({
             <p className="text-xs text-muted-foreground">
               Saved exactly as typed — casing and spacing are never normalized.
             </p>
+            {entryName !== entry.entryName ? (
+              <NameCollisionWarning
+                proposed={[entryName]}
+                existing={otherNames}
+              />
+            ) : null}
           </div>
 
           <div className="space-y-1.5">

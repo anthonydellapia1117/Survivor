@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import type { AdminOwner } from "@/lib/data/admin-types";
 import { addEntriesAction } from "@/app/admin/actions";
 import { defaultEntryNames } from "@/lib/pool";
+import {
+  NameCollisionWarning,
+  type ExistingName,
+} from "@/components/admin/name-warning";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,7 +42,13 @@ function parseEntryNames(text: string): string[] {
     .filter((line) => line !== "");
 }
 
-export function BulkAddDialog({ owners }: { owners: AdminOwner[] }) {
+export function BulkAddDialog({
+  owners,
+  existingNames,
+}: {
+  owners: AdminOwner[];
+  existingNames: ExistingName[];
+}) {
   const [open, setOpen] = useState(false);
   const [ownerId, setOwnerId] = useState("");
   const [useDefault, setUseDefault] = useState(false);
@@ -185,6 +195,11 @@ export function BulkAddDialog({ owners }: { owners: AdminOwner[] }) {
             />
             Free entries
           </Label>
+
+          <NameCollisionWarning
+            proposed={entryNames}
+            existing={existingNames}
+          />
 
           {error ? <p className="text-sm text-loss">{error}</p> : null}
         </div>

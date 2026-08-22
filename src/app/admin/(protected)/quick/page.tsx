@@ -5,7 +5,14 @@ import { QuickAdd } from "@/components/admin/quick-add";
 export const metadata: Metadata = { title: "Quick add" };
 
 export default async function QuickPage() {
-  const owners = await getAdminData().listOwners();
+  const data = getAdminData();
+  const [owners, entries] = await Promise.all([
+    data.listOwners(),
+    data.listEntries(),
+  ]);
+  const existingNames = entries
+    .filter((e) => !e.voidedAt)
+    .map((e) => ({ name: e.entryName, owner: e.ownerName }));
   return (
     <div className="mx-auto max-w-md space-y-4">
       <div>
@@ -14,7 +21,7 @@ export default async function QuickPage() {
           Built for the phone: find an owner, add entries, record the payment.
         </p>
       </div>
-      <QuickAdd owners={owners} />
+      <QuickAdd owners={owners} existingNames={existingNames} />
     </div>
   );
 }

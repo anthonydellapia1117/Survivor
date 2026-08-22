@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   amountDueCents,
+  coveredPaidEntries,
   defaultEntryNames,
   formatCents,
   freeEntriesEarned,
+  freeEntryStatus,
   lynneRemittanceCents,
 } from "@/lib/pool";
 
@@ -64,6 +66,52 @@ describe("default entry naming (locked)", () => {
       "John Vassallo 3",
       "John Vassallo 4",
     ]);
+  });
+});
+
+describe("covered paid entries + free-entry status", () => {
+  // Spec section 9's live position: Maria $100/4, Brian $60/2, Tim $30/1,
+  // Marc $60/2, everyone else unpaid → 9 covered → FLOOR(9/10) = 0 earned.
+  const seed = [
+    { participationStatus: "confirmed", paidEntryCount: 4, dueCents: 10000, paidCents: 10000 }, // Maria
+    { participationStatus: "confirmed", paidEntryCount: 2, dueCents: 6000, paidCents: 6000 }, // Brian
+    { participationStatus: "confirmed", paidEntryCount: 1, dueCents: 3000, paidCents: 3000 }, // Tim
+    { participationStatus: "confirmed", paidEntryCount: 2, dueCents: 6000, paidCents: 6000 }, // Marc
+    { participationStatus: "confirmed", paidEntryCount: 4, dueCents: 10000, paidCents: 0 },
+    { participationStatus: "pending", paidEntryCount: 4, dueCents: 10000, paidCents: 10000 },
+  ];
+
+  it("matches the spec's worked example: 9 covered, 0 earned", () => {
+    const s = freeEntryStatus(seed, 0);
+    expect(s.covered).toBe(9);
+    expect(s.earned).toBe(0);
+    expect(s.unnamed).toBe(0);
+  });
+
+  it("partial payments cover whole entries only, at the owner's tier rate", () => {
+    // 4-entry owner at $25/entry pays $60 → 2 entries covered, not 2.4.
+    expect(
+      coveredPaidEntries({ paidEntryCount: 4, dueCents: 10000, paidCents: 6000 }),
+    ).toBe(2);
+    // Overpayment never covers more entries than the owner has.
+    expect(
+      coveredPaidEntries({ paidEntryCount: 2, dueCents: 6000, paidCents: 9000 }),
+    ).toBe(2);
+    expect(
+      coveredPaidEntries({ paidEntryCount: 0, dueCents: 0, paidCents: 5000 }),
+    ).toBe(0);
+  });
+
+  it("crossing 10 covered earns a free entry and flags it unnamed", () => {
+    const paidUp = seed.map((o) =>
+      o.participationStatus === "confirmed" ? { ...o, paidCents: o.dueCents } : o,
+    );
+    const s = freeEntryStatus(paidUp, 0); // 13 covered
+    expect(s.covered).toBe(13);
+    expect(s.earned).toBe(1);
+    expect(s.unnamed).toBe(1);
+    expect(freeEntryStatus(paidUp, 1).unnamed).toBe(0);
+    expect(freeEntryStatus(paidUp, 2).overNamed).toBe(1);
   });
 });
 

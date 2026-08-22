@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getAdminData } from "@/lib/data/admin";
 import { getData } from "@/lib/data";
-import { formatCents } from "@/lib/pool";
+import { DEFAULT_PRICING, formatCents, freeEntryStatus } from "@/lib/pool";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Admin" };
 export default async function AdminOverviewPage() {
   const data = getAdminData();
   const pub = getData();
-  const [owners, entries, payments, audit, weeks, pubEntries, cells] =
+  const [owners, entries, payments, audit, weeks, pubEntries, cells, config] =
     await Promise.all([
       data.listOwners(),
       data.listEntries(),
@@ -22,6 +22,7 @@ export default async function AdminOverviewPage() {
       pub.getWeeks(),
       pub.getEntries(),
       pub.getGridCells(),
+      data.getConfig(),
     ]);
   const lastExport =
     audit.find((a) => a.action === "sheets_export")?.at ?? null;
@@ -43,6 +44,15 @@ export default async function AdminOverviewPage() {
     }))
     .filter((w) => w.missing > 0);
   const unconfirmedWeeks = weeks.filter((w) => !w.confirmed).length;
+
+  // Free entries: FLOOR(covered paid entries / ratio), earned as payments
+  // land. Earned-but-unnamed ones must be named and registered with Lynne
+  // before Week 1 picks lock — nobody notices this on their own.
+  const namedFree = entries.filter((e) => e.isFreeEntry && !e.voidedAt).length;
+  const free = freeEntryStatus(owners, namedFree, {
+    ...DEFAULT_PRICING,
+    freeEntryRatio: config.freeEntryRatio,
+  });
 
   const confirmed = owners.filter((o) => o.participationStatus === "confirmed");
   const liveEntries = entries.filter((e) => !e.voidedAt);
@@ -92,6 +102,32 @@ export default async function AdminOverviewPage() {
           {unconfirmedWeeks} week {unconfirmedWeeks === 1 ? "deadline" : "deadlines"} still
           unconfirmed — verify them against the released NFL schedule on the
           Weeks screen.
+        </Link>
+      ) : null}
+      {free.unnamed > 0 ? (
+        <Link
+          href="/admin/entries"
+          className="block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
+        >
+          <span className="font-semibold">
+            {free.unnamed} free {free.unnamed === 1 ? "entry" : "entries"} earned
+            but not yet named
+          </span>{" "}
+          — {free.covered} paid entries are covered by payments (1 free per{" "}
+          {config.freeEntryRatio}). Name {free.unnamed === 1 ? "it" : "them"} on
+          the Entries screen and register with Lynne before Week 1 picks lock.
+        </Link>
+      ) : null}
+      {free.overNamed > 0 ? (
+        <Link
+          href="/admin/entries"
+          className="block rounded-md border border-loss/50 bg-loss/10 px-3 py-2.5 text-sm text-loss"
+        >
+          <span className="font-semibold">
+            More free entries named ({free.named}) than earned ({free.earned})
+          </span>{" "}
+          — only {free.covered} paid entries are covered by payments so far.
+          Check the Free flags on the Entries screen.
         </Link>
       ) : null}
 

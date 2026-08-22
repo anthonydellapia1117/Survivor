@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminEntry, AdminOwner } from "@/lib/data/admin-types";
 import { removeEntryAction, voidEntryAction } from "@/app/admin/actions";
+import { collisionGroups, KIND_LABEL } from "@/lib/names";
+import type { ExistingName } from "@/components/admin/name-warning";
 import { EntryEditDialog } from "@/components/admin/entries/entry-edit-dialog";
 import { BulkAddDialog } from "@/components/admin/entries/bulk-add-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +39,21 @@ export function EntriesAdmin({
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+
+  // Live (non-voided) names, for creation warnings and the collision audit.
+  const live = useMemo(() => entries.filter((e) => !e.voidedAt), [entries]);
+  const existingNames = useMemo<ExistingName[]>(
+    () => live.map((e) => ({ name: e.entryName, owner: e.ownerName })),
+    [live],
+  );
+  const ownerByName = useMemo(
+    () => new Map(live.map((e) => [e.entryName, e.ownerName])),
+    [live],
+  );
+  const nearCollisions = useMemo(
+    () => collisionGroups(live.map((e) => e.entryName)),
+    [live],
+  );
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -79,9 +96,38 @@ export function EntriesAdmin({
           {filtered.length} of {entries.length}
         </span>
         <div className="ml-auto">
-          <BulkAddDialog owners={owners} />
+          <BulkAddDialog owners={owners} existingNames={existingNames} />
         </div>
       </div>
+
+      {nearCollisions.length > 0 ? (
+        <div className="rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie">
+          <p className="font-semibold">
+            {nearCollisions.length} name{" "}
+            {nearCollisions.length === 1 ? "group sits" : "groups sit"} within
+            one edit of each other — Lynne matches picks by name, so know
+            these are close:
+          </p>
+          <ul className="mt-1.5 space-y-1 text-xs">
+            {nearCollisions.map((g, i) => (
+              <li key={i} className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                <span className="font-medium">({KIND_LABEL[g.kind]})</span>
+                {g.names.map((n, j) => (
+                  <span key={j}>
+                    “{n}”
+                    <span className="opacity-70"> · {ownerByName.get(n)}</span>
+                    {j < g.names.length - 1 ? "," : ""}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs opacity-80">
+            Deliberate sets (Nick&Kels 1–4) are fine — this is a reference,
+            not a to-do list.
+          </p>
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
@@ -104,7 +150,13 @@ export function EntriesAdmin({
           </thead>
           <tbody>
             {filtered.map((entry) => (
-              <EntryRow key={entry.id} entry={entry} />
+              <EntryRow
+                key={entry.id}
+                entry={entry}
+                otherNames={live
+                  .filter((e) => e.id !== entry.id)
+                  .map((e) => ({ name: e.entryName, owner: e.ownerName }))}
+              />
             ))}
             {filtered.length === 0 ? (
               <tr>
@@ -123,7 +175,13 @@ export function EntriesAdmin({
   );
 }
 
-function EntryRow({ entry }: { entry: AdminEntry }) {
+function EntryRow({
+  entry,
+  otherNames,
+}: {
+  entry: AdminEntry;
+  otherNames: ExistingName[];
+}) {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const voided = entry.voidedAt !== null;
@@ -178,6 +236,7 @@ function EntryRow({ entry }: { entry: AdminEntry }) {
           ) : null}
           <EntryEditDialog
             entry={entry}
+            otherNames={otherNames}
             open={editOpen}
             onOpenChange={setEditOpen}
           />

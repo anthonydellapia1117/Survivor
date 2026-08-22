@@ -13,6 +13,10 @@ import {
   recordPaymentAction,
 } from "@/app/admin/actions";
 import { amountDueCents, defaultEntryNames, formatCents } from "@/lib/pool";
+import {
+  NameCollisionWarning,
+  type ExistingName,
+} from "@/components/admin/name-warning";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -31,7 +35,13 @@ function parseDollars(s: string): number | null {
   return Math.round(n * 100);
 }
 
-export function QuickAdd({ owners }: { owners: AdminOwner[] }) {
+export function QuickAdd({
+  owners,
+  existingNames,
+}: {
+  owners: AdminOwner[];
+  existingNames: ExistingName[];
+}) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [openOwner, setOpenOwner] = useState<string | null>(null);
@@ -93,7 +103,9 @@ export function QuickAdd({ owners }: { owners: AdminOwner[] }) {
         </Button>
       </div>
 
-      {showNewOwner ? <NewOwnerForm onDone={done} /> : null}
+      {showNewOwner ? (
+        <NewOwnerForm existingNames={existingNames} onDone={done} />
+      ) : null}
 
       <ul className="space-y-1.5">
         {filtered.map((o) => {
@@ -156,7 +168,11 @@ export function QuickAdd({ owners }: { owners: AdminOwner[] }) {
                     </Button>
                   </div>
                   {panel === "entries" ? (
-                    <AddEntriesForm owner={o} onDone={done} />
+                    <AddEntriesForm
+                      owner={o}
+                      existingNames={existingNames}
+                      onDone={done}
+                    />
                   ) : null}
                   {panel === "payment" ? (
                     <PaymentForm owner={o} onDone={done} />
@@ -221,7 +237,13 @@ function EntryCountPicker({
   );
 }
 
-function NewOwnerForm({ onDone }: { onDone: (msg: string) => void }) {
+function NewOwnerForm({
+  existingNames,
+  onDone,
+}: {
+  existingNames: ExistingName[];
+  onDone: (msg: string) => void;
+}) {
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [phone, setPhone] = useState("");
@@ -233,6 +255,14 @@ function NewOwnerForm({ onDone }: { onDone: (msg: string) => void }) {
 
   const fullName = `${first.trim()} ${last.trim()}`.trim();
   const preview = useDefault ? defaultEntryNames(fullName || "…", count) : [];
+  const proposed =
+    count === 0
+      ? []
+      : useDefault
+        ? fullName
+          ? defaultEntryNames(fullName, count)
+          : []
+        : customNames.split("\n").filter((l) => l.trim().length > 0);
 
   async function submit() {
     const names = useDefault
@@ -309,6 +339,7 @@ function NewOwnerForm({ onDone }: { onDone: (msg: string) => void }) {
           )}
         </>
       ) : null}
+      <NameCollisionWarning proposed={proposed} existing={existingNames} />
       {count > 0 ? (
         <p className="text-sm text-muted-foreground">
           Due at signup:{" "}
@@ -327,9 +358,11 @@ function NewOwnerForm({ onDone }: { onDone: (msg: string) => void }) {
 
 function AddEntriesForm({
   owner,
+  existingNames,
   onDone,
 }: {
   owner: AdminOwner;
+  existingNames: ExistingName[];
   onDone: (msg: string) => void;
 }) {
   const [count, setCount] = useState(1);
@@ -340,6 +373,15 @@ function AddEntriesForm({
 
   const fullName = `${owner.firstName} ${owner.lastName}`;
   const newTotal = owner.entryCount + count;
+  const proposed =
+    count === 0
+      ? []
+      : useDefault
+        ? Array.from(
+            { length: count },
+            (_, i) => `${fullName} ${owner.entryCount + i + 1}`,
+          )
+        : customNames.split("\n").filter((l) => l.trim().length > 0);
 
   async function submit() {
     const names = useDefault
@@ -396,6 +438,7 @@ function AddEntriesForm({
           ).join(" · ")}
         </p>
       )}
+      <NameCollisionWarning proposed={proposed} existing={existingNames} />
       <p className="text-xs text-muted-foreground">
         New total: {newTotal} entries · owner due{" "}
         <span className="tabular-nums">{formatCents(amountDueCents(newTotal))}</span>
