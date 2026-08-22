@@ -3,14 +3,16 @@
 -- Payments, owner contact info, config, and the audit log are admin-only.
 -- The server's service-role key bypasses RLS for trusted route handlers.
 
--- The admin identity the policies check against. Matches the ADMIN_EMAIL env var.
-alter database postgres set "app.admin_email" to 'anthonydellapia@gmail.com';
-
+-- The admin identity. The app.admin_email GUC wins when set; the literal
+-- fallback matches the ADMIN_EMAIL env var (hosted roles cannot ALTER DATABASE).
 create or replace function is_admin() returns boolean
 language sql stable
 as $$
   select coalesce(auth.jwt() ->> 'email', '') <> ''
-     and auth.jwt() ->> 'email' = current_setting('app.admin_email', true)
+     and auth.jwt() ->> 'email' = coalesce(
+           nullif(current_setting('app.admin_email', true), ''),
+           'anthonydellapia@gmail.com'
+         )
 $$;
 
 alter table owners enable row level security;
