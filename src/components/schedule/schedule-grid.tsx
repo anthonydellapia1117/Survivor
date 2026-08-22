@@ -33,14 +33,18 @@ interface CellGame {
 }
 
 const WEEKS = Array.from({ length: 18 }, (_, i) => i + 1);
-// Sunday is the default; anything else earns a day tag for deadline planning.
+// Every game carries a day tag. Leaving Sunday implicit made a filled cell
+// look like missing data; an explicit "Su" reads as data.
 const DAY_TAG: Record<string, string> = {
   Wednesday: "We",
   Thursday: "Th",
   Friday: "Fr",
   Saturday: "Sa",
+  Sunday: "Su",
   Monday: "Mo",
 };
+// Wed/Thu/Fri games lock at the early (Wednesday noon) deadline.
+const EARLY_DAYS = new Set(["Wednesday", "Thursday", "Friday"]);
 
 function kickoffLabel(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
@@ -206,7 +210,8 @@ export function ScheduleGrid({
                         />
                       );
                     }
-                    const tag = DAY_TAG[g.day];
+                    const tag = DAY_TAG[g.day] ?? g.day.slice(0, 2);
+                    const early = EARLY_DAYS.has(g.day);
                     return (
                       <td
                         key={w}
@@ -215,17 +220,26 @@ export function ScheduleGrid({
                           w === currentWeek && "bg-primary/[0.07]",
                           burned && "line-through",
                         )}
-                        title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} — ${kickoffLabel(g.kickoffAt)} ET`}
+                        title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} — ${kickoffLabel(g.kickoffAt)} ET · ${
+                          early ? "Wednesday" : "Friday"
+                        } noon deadline`}
                       >
                         <span className={cn(!g.home && "text-muted-foreground")}>
                           {g.home ? "" : "@"}
                           {g.opp}
                         </span>
-                        {tag ? (
-                          <span className="ml-0.5 align-super text-[9px] text-muted-foreground">
-                            {tag}
-                          </span>
-                        ) : null}
+                        <span
+                          className={cn(
+                            "ml-0.5 align-super text-[9px]",
+                            // Early-window days carry the tighter deadline, so
+                            // they stay visually louder than the Sat-Mon days.
+                            early
+                              ? "font-semibold text-tie"
+                              : "text-muted-foreground/70",
+                          )}
+                        >
+                          {tag}
+                        </span>
                       </td>
                     );
                   })}
@@ -237,9 +251,12 @@ export function ScheduleGrid({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Superscripts mark non-Sunday games (We/Th/Fr/Sa/Mo) — Wed–Fri games
-        lock Wednesday noon ET, Sat–Mon games Friday noon ET, and all of Week
-        1 locks Tuesday Sep 8, noon ET. Hover a cell for kickoff time.
+        Every game carries its day (We/Th/Fr/Sa/Su/Mo).{" "}
+        <span className="font-semibold text-tie">Amber</span> days —
+        We/Th/Fr — lock at the early deadline, Wednesday noon ET; grey days —
+        Sa/Su/Mo — lock Friday noon ET. All of Week 1 locks Tuesday Sep 8,
+        noon ET regardless of day. Hover a cell for kickoff time and which
+        deadline applies.
       </p>
     </div>
   );

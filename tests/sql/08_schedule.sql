@@ -1,5 +1,65 @@
 -- The 2026 schedule table and the per-pick deadline engine.
 
+-- Per-week game counts, cross-verified against BOTH nflverse and ESPN
+-- (independent sources agreed on all 272 games). A re-seed that drops or
+-- duplicates games fails here rather than silently removing a team from a
+-- week and making it unpickable.
+do $$
+declare
+  expected int[][] := array[
+    [1,16],[2,16],[3,16],[4,16],[5,15],[6,14],[7,14],[8,14],[9,15],
+    [10,14],[11,13],[12,16],[13,14],[14,15],[15,16],[16,16],[17,16],[18,16]
+  ];
+  i int;
+  n int;
+begin
+  for i in 1 .. array_length(expected, 1) loop
+    select count(*) into n from nfl_games where week = expected[i][1];
+    if n <> expected[i][2] then
+      raise exception 'week % has % games, expected %', expected[i][1], n, expected[i][2];
+    end if;
+  end loop;
+end $$;
+
+-- Week 17 shape: the 2026 season has NO January 1 game. Its late deadline
+-- (Fri Jan 1 noon) governs the Sun Jan 3 / Mon Jan 4 slate — a deadline day
+-- with no game on it is normal, not evidence of dropped rows.
+do $$
+declare
+  n int;
+begin
+  if exists (
+    select 1 from nfl_games
+    where (kickoff_at at time zone 'America/New_York')::date = date '2027-01-01'
+  ) then
+    raise exception 'a game on 2027-01-01 appeared; week 17 windows need review';
+  end if;
+
+  select count(*) into n from nfl_games where week = 17 and day_of_week = 'Thursday';
+  if n <> 1 then raise exception 'week 17 should have exactly 1 Thursday game, got %', n; end if;
+  select count(*) into n from nfl_games where week = 17 and day_of_week = 'Friday';
+  if n <> 0 then raise exception 'week 17 should have no Friday game, got %', n; end if;
+  select count(*) into n from nfl_games where week = 17 and day_of_week in ('Saturday','Sunday','Monday');
+  if n <> 15 then raise exception 'week 17 should have 15 Sat-Mon games, got %', n; end if;
+end $$;
+
+-- Every stored day_of_week must equal the ET calendar day of its kickoff.
+-- The tag drives the deadline bucket, so a drifted tag moves a deadline.
+do $$
+declare
+  r record;
+begin
+  for r in
+    select id, day_of_week,
+           to_char(kickoff_at at time zone 'America/New_York', 'FMDay') as et_day
+    from nfl_games
+  loop
+    if r.day_of_week <> r.et_day then
+      raise exception 'game % tagged % but kicks off on a % in ET', r.id, r.day_of_week, r.et_day;
+    end if;
+  end loop;
+end $$;
+
 -- Integrity: 272 regular-season games across 18 weeks; all 32 app team
 -- codes present (nflverse's LA mapped to LAR); every team plays 17 with
 -- exactly one bye; no team plays twice in a week.
