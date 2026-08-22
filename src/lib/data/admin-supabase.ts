@@ -20,7 +20,7 @@ export const adminSupabaseBackend: AdminBackend = {
     const [{ data: owners, error: e1 }, { data: finance, error: e2 }, { data: entries, error: e3 }, { data: payments, error: e4 }] =
       await Promise.all([
         c.from("owners").select("*").order("last_name").order("first_name"),
-        c.from("v_owner_finance").select("*"),
+        c.from("v_owner_finance_admin").select("*"),
         c.from("entries").select("owner_id, voided_at"),
         c.from("payments").select("owner_id, amount_cents"),
       ]);
