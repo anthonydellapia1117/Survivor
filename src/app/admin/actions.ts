@@ -84,6 +84,7 @@ export async function updateEntryAction(input: {
   entryName: string;
   lynneLabel: string;
   isFree: boolean | null;
+  lynneNumber: number | null;
 }): Promise<ActionResult> {
   return guarded(async (actor) => {
     await getAdminData().updateEntry({ ...input, actor });
@@ -185,6 +186,27 @@ export async function updateWeekAction(input: {
 }): Promise<ActionResult> {
   return guarded(async (actor) => {
     await getAdminData().updateWeek({ ...input, actor });
+    revalidateAll();
+    return { ok: true };
+  });
+}
+
+export async function mergeOwnerAction(input: {
+  sourceId: string;
+  targetId: string;
+}): Promise<ActionResult & { summary?: { deleted: boolean; entries_moved: number; payments_moved: number } }> {
+  return guarded(async (actor) => {
+    const summary = await getAdminData().mergeOwner({ ...input, actor });
+    revalidateAll();
+    return { ok: true, summary };
+  });
+}
+
+export async function deleteOwnerAction(input: {
+  ownerId: string;
+}): Promise<ActionResult> {
+  return guarded(async (actor) => {
+    await getAdminData().deleteOwner({ ...input, actor });
     revalidateAll();
     return { ok: true };
   });

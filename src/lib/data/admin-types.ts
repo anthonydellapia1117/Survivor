@@ -21,6 +21,7 @@ export interface AdminEntry {
   entryName: string;
   nameIsDefault: boolean;
   lynneLabel: string | null;
+  lynneNumber: number | null;
   isFreeEntry: boolean;
   voidedAt: string | null;
   pickCount: number;
@@ -88,8 +89,15 @@ export interface AdminBackend {
     entryName: string;
     lynneLabel: string;
     isFree: boolean | null;
+    lynneNumber: number | null;
     actor: string;
   }): Promise<void>;
+  mergeOwner(args: {
+    sourceId: string;
+    targetId: string;
+    actor: string;
+  }): Promise<{ deleted: boolean; entries_moved: number; payments_moved: number }>;
+  deleteOwner(args: { ownerId: string; actor: string }): Promise<void>;
   removeEntry(args: { entryId: string; actor: string }): Promise<void>;
   voidEntry(args: { entryId: string; actor: string }): Promise<void>;
   recordPayment(args: {

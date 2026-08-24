@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { EntrySummary, GridCell } from "@/lib/data/types";
+import type { EntrySummary, GameRow, GridCell } from "@/lib/data/types";
 import { NFL_TEAMS, SKIP_WEEK, STATUS_ORDER } from "@/lib/standing";
+import { matchesShowMode, showCounts } from "@/lib/alive";
+import { ShowToggle, useShowMode } from "@/components/show-toggle";
 import { StatusDot } from "@/components/status-dot";
 import { cn } from "@/lib/utils";
 import {
@@ -17,27 +19,35 @@ interface Props {
   entries: EntrySummary[];
   cells: GridCell[];
   weekCount: number;
+  games: GameRow[];
 }
 
-export function TeamsClient({ entries, cells, weekCount }: Props) {
+export function TeamsClient({ entries, cells, weekCount, games }: Props) {
+  const [mode, setMode] = useShowMode();
+  const counts = useMemo(() => showCounts(entries), [entries]);
   const sorted = useMemo(
     () =>
-      [...entries].sort(
-        (a, b) =>
-          STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
-          a.entryName.localeCompare(b.entryName),
-      ),
-    [entries],
+      [...entries]
+        .filter((e) => matchesShowMode(e.status, mode))
+        .sort(
+          (a, b) =>
+            STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
+            a.entryName.localeCompare(b.entryName),
+        ),
+    [entries, mode],
   );
   const [entryId, setEntryId] = useState<string>(sorted[0]?.id ?? "");
+  const [openTeam, setOpenTeam] = useState<string | null>(null);
   const selected = sorted.find((e) => e.id === entryId) ?? sorted[0];
 
+  // team -> week it was used by each entry (first current pick of that team)
   const usedByEntry = useMemo(() => {
-    const m = new Map<string, Set<string>>();
+    const m = new Map<string, Map<string, number>>();
     for (const c of cells) {
       if (c.team === SKIP_WEEK || c.team === "MISSED") continue;
-      if (!m.has(c.entryId)) m.set(c.entryId, new Set());
-      m.get(c.entryId)!.add(c.team);
+      if (!m.has(c.entryId)) m.set(c.entryId, new Map());
+      const tm = m.get(c.entryId)!;
+      if (!tm.has(c.team) || c.week < tm.get(c.team)!) tm.set(c.team, c.week);
     }
     return m;
   }, [cells]);
@@ -58,13 +68,25 @@ export function TeamsClient({ entries, cells, weekCount }: Props) {
   }, [cells]);
 
   const weeks = Array.from({ length: weekCount }, (_, i) => i + 1);
-  const used = usedByEntry.get(selected?.id ?? "") ?? new Set<string>();
+  const used = usedByEntry.get(selected?.id ?? "") ?? new Map<string, number>();
+  const selectedOut = selected?.status === "eliminated";
+
+  const upcomingFor = (abbr: string) =>
+    games
+      .filter((g) => g.homeTeam === abbr || g.awayTeam === abbr)
+      .map((g) => ({
+        week: g.week,
+        opp: g.homeTeam === abbr ? g.awayTeam : g.homeTeam,
+        home: g.homeTeam === abbr,
+        day: g.dayOfWeek,
+      }));
 
   return (
     <div className="space-y-8">
       <section className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg">Availability</h2>
+          <ShowToggle mode={mode} counts={counts} onChange={setMode} />
           <Select value={selected?.id ?? ""} onValueChange={setEntryId}>
             <SelectTrigger size="sm" className="w-56" aria-label="Choose entry">
               <SelectValue placeholder="Pick an entry" />
@@ -74,7 +96,12 @@ export function TeamsClient({ entries, cells, weekCount }: Props) {
                 <SelectItem key={e.id} value={e.id}>
                   <span className="flex items-center gap-2">
                     <StatusDot status={e.status} />
-                    {e.entryName}
+                    <span className={e.status === "eliminated" ? "line-through opacity-70" : undefined}>
+                      {e.entryName}
+                    </span>
+                    {e.status === "eliminated" ? (
+                      <span className="text-[10px] font-semibold text-loss">OUT</span>
+                    ) : null}
                   </span>
                 </SelectItem>
               ))}
@@ -88,23 +115,46 @@ export function TeamsClient({ entries, cells, weekCount }: Props) {
         </div>
         <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
           {NFL_TEAMS.map((t) => {
-            const isUsed = used.has(t.abbr);
+            const usedWeek = used.get(t.abbr);
+            const isUsed = usedWeek !== undefined;
             return (
-              <span
+              <button
                 key={t.abbr}
-                title={t.name}
+                type="button"
+                title={isUsed ? `${t.name} — used week ${usedWeek}` : `${t.name} — upcoming matchups`}
+                onClick={() =>
+                  isUsed ? undefined : setOpenTeam((v) => (v === t.abbr ? null : t.abbr))
+                }
                 className={cn(
                   "rounded-sm border px-2 py-2 text-center text-xs font-medium",
-                  isUsed
+                  isUsed || selectedOut
                     ? "border-border bg-surface-2 text-muted-foreground line-through opacity-60"
-                    : "border-border bg-surface",
+                    : "border-border bg-surface hover:border-primary/60",
+                  openTeam === t.abbr && !isUsed && "border-primary",
                 )}
               >
                 {t.abbr}
-              </span>
+                {isUsed ? (
+                  <span className="block text-[9px] font-normal no-underline">WK {usedWeek}</span>
+                ) : null}
+              </button>
             );
           })}
         </div>
+        {selectedOut ? (
+          <p className="text-xs text-loss">
+            This entry is out — its remaining teams no longer matter and render struck.
+          </p>
+        ) : null}
+        {openTeam && !used.has(openTeam) ? (
+          <div className="rounded-md border border-border bg-surface px-3 py-2 text-xs">
+            <span className="font-semibold">{openTeam}</span>{" "}
+            <span className="text-muted-foreground">upcoming:</span>{" "}
+            {upcomingFor(openTeam)
+              .map((m) => `W${m.week} ${m.home ? "" : "@"}${m.opp}`)
+              .join(" · ") || "season complete"}
+          </div>
+        ) : null}
       </section>
 
       <section className="space-y-3">

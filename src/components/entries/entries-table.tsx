@@ -13,6 +13,8 @@ import {
 } from "@tanstack/react-table";
 import type { EntrySummary, EntryStatus } from "@/lib/data/types";
 import { STATUS_LABEL, STATUS_ORDER } from "@/lib/standing";
+import { matchesShowMode, showCounts } from "@/lib/alive";
+import { ShowToggle, useShowMode } from "@/components/show-toggle";
 import { StatusDot } from "@/components/status-dot";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,6 +30,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 interface Row extends EntrySummary {
   currentPick: string | null;
   weeksSurvived: number;
+  elimWeek: number | null;
 }
 
 const col = createColumnHelper<Row>();
@@ -36,6 +39,8 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | EntryStatus>("all");
+  const [mode, setMode] = useShowMode();
+  const counts = useMemo(() => showCounts(rows), [rows]);
 
   const columns = useMemo(
     () => [
@@ -59,7 +64,14 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
       }),
       col.accessor("status", {
         header: "Status",
-        cell: (info) => STATUS_LABEL[info.getValue()],
+        cell: (info) =>
+          info.getValue() === "eliminated" ? (
+            <span className="rounded-full bg-loss/15 px-2 py-0.5 text-xs font-semibold text-loss">
+              OUT{info.row.original.elimWeek ? ` · WK ${info.row.original.elimWeek}` : ""}
+            </span>
+          ) : (
+            STATUS_LABEL[info.getValue()]
+          ),
         sortingFn: (a, b) =>
           STATUS_ORDER[a.original.status] - STATUS_ORDER[b.original.status],
       }),
@@ -91,8 +103,11 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
   );
 
   const filtered = useMemo(
-    () => (status === "all" ? rows : rows.filter((r) => r.status === status)),
-    [rows, status],
+    () =>
+      rows
+        .filter((r) => matchesShowMode(r.status, mode))
+        .filter((r) => status === "all" || r.status === status),
+    [rows, status, mode],
   );
 
   const table = useReactTable({
@@ -116,6 +131,7 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
+        <ShowToggle mode={mode} counts={counts} onChange={setMode} />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}

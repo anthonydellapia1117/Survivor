@@ -9,10 +9,11 @@ export const dynamic = "force-dynamic";
 
 export default async function TeamsPage() {
   const data = getData();
-  const [entries, cells, weeks] = await Promise.all([
+  const [entries, cells, weeks, games] = await Promise.all([
     data.getEntries(),
     data.getGridCells(),
     data.getWeeks(),
+    data.getSchedule(),
   ]);
 
   return (
@@ -38,6 +39,7 @@ export default async function TeamsPage() {
           entries={entries}
           cells={cells}
           weekCount={weeks.length}
+          games={games}
         />
       )}
     </div>

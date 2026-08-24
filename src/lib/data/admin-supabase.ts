@@ -19,7 +19,7 @@ export const adminSupabaseBackend: AdminBackend = {
     const c = await createSupabaseServerClient();
     const [{ data: owners, error: e1 }, { data: finance, error: e2 }, { data: entries, error: e3 }, { data: payments, error: e4 }] =
       await Promise.all([
-        c.from("owners").select("*").order("last_name").order("first_name"),
+        c.from("owners").select("*").is("deleted_at", null).order("last_name").order("first_name"),
         c.from("v_owner_finance_admin").select("*"),
         c.from("entries").select("owner_id, voided_at"),
         c.from("payments").select("owner_id, amount_cents"),
@@ -56,7 +56,7 @@ export const adminSupabaseBackend: AdminBackend = {
     const [{ data: entries, error: e1 }, { data: owners, error: e2 }, { data: picks, error: e3 }] =
       await Promise.all([
         c.from("entries").select("*").order("entry_index"),
-        c.from("owners").select("id, first_name, last_name"),
+        c.from("owners").select("id, first_name, last_name").is("deleted_at", null),
         c.from("picks").select("entry_id"),
       ]);
     if (e1 || e2 || e3) throw e1 ?? e2 ?? e3;
@@ -76,6 +76,7 @@ export const adminSupabaseBackend: AdminBackend = {
         entryName: r.entry_name,
         nameIsDefault: r.name_is_default,
         lynneLabel: r.lynne_label,
+        lynneNumber: r.lynne_number,
         isFreeEntry: r.is_free_entry,
         voidedAt: r.voided_at,
         pickCount: counts.get(r.id) ?? 0,
@@ -91,7 +92,7 @@ export const adminSupabaseBackend: AdminBackend = {
     const [{ data: payments, error: e1 }, { data: owners, error: e2 }] =
       await Promise.all([
         c.from("payments").select("*").order("created_at", { ascending: false }),
-        c.from("owners").select("id, first_name, last_name"),
+        c.from("owners").select("id, first_name, last_name").is("deleted_at", null),
       ]);
     if (e1 || e2) throw e1 ?? e2;
     const names = new Map(
@@ -180,6 +181,26 @@ export const adminSupabaseBackend: AdminBackend = {
     if (error) throw error;
   },
 
+  async mergeOwner(a) {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c.rpc("admin_merge_owner", {
+      p_source: a.sourceId,
+      p_target: a.targetId,
+      p_actor: a.actor,
+    });
+    if (error) throw error;
+    return data as { deleted: boolean; entries_moved: number; payments_moved: number };
+  },
+
+  async deleteOwner(a) {
+    const c = await createSupabaseServerClient();
+    const { error } = await c.rpc("admin_delete_owner", {
+      p_owner_id: a.ownerId,
+      p_actor: a.actor,
+    });
+    if (error) throw error;
+  },
+
   async updateEntry(a) {
     const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_update_entry",
@@ -188,6 +209,7 @@ export const adminSupabaseBackend: AdminBackend = {
         p_entry_name: a.entryName,
         p_lynne_label: a.lynneLabel,
         p_is_free: a.isFree,
+        p_lynne_number: a.lynneNumber,
         p_actor: a.actor,
       },
     );

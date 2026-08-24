@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getData } from "@/lib/data";
+import { eliminationWeekOf } from "@/lib/alive";
 import { EntriesTable } from "@/components/entries/entries-table";
 import { EmptyState } from "@/components/empty-state";
 
@@ -30,6 +31,7 @@ export default async function EntriesPage() {
     ...e,
     currentPick: currentPickByEntry.get(e.id) ?? null,
     weeksSurvived: e.lastScoredWeek ?? 0,
+    elimWeek: eliminationWeekOf(cells.filter((c) => c.entryId === e.id)),
   }));
 
   return (

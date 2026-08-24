@@ -29,6 +29,7 @@ export const adminLocalPgBackend: AdminBackend = {
              coalesce(f.amount_paid_cents, (select coalesce(sum(p.amount_cents),0) from payments p where p.owner_id = o.id)) as paid_cents
       from owners o
       left join v_owner_finance f on f.owner_id = o.id
+      where o.deleted_at is null
       order by o.last_name, o.first_name`);
     return rows.map((r: any) => ({
       id: r.id,
@@ -50,7 +51,7 @@ export const adminLocalPgBackend: AdminBackend = {
     const { rows } = await db().query(`
       select e.*, o.first_name || ' ' || o.last_name as owner_name,
              (select count(*) from picks p where p.entry_id = e.id) as pick_count
-      from entries e join owners o on o.id = e.owner_id
+      from entries e join owners o on o.id = e.owner_id and o.deleted_at is null
       order by o.last_name, o.first_name, e.entry_index`);
     return rows.map((r: any) => ({
       id: r.id,
@@ -60,6 +61,7 @@ export const adminLocalPgBackend: AdminBackend = {
       entryName: r.entry_name,
       nameIsDefault: r.name_is_default,
       lynneLabel: r.lynne_label,
+      lynneNumber: r.lynne_number,
       isFreeEntry: r.is_free_entry,
       voidedAt: iso(r.voided_at),
       pickCount: Number(r.pick_count),
@@ -143,13 +145,26 @@ export const adminLocalPgBackend: AdminBackend = {
   },
 
   async updateEntry(a) {
-    await db().query("select admin_update_entry($1,$2,$3,$4,$5)", [
+    await db().query("select admin_update_entry($1,$2,$3,$4,$5,$6)", [
       a.entryId,
       a.entryName,
       a.lynneLabel,
       a.isFree,
+      a.lynneNumber,
       a.actor,
     ]);
+  },
+
+  async mergeOwner(a) {
+    const { rows } = await db().query(
+      "select admin_merge_owner($1,$2,$3) as r",
+      [a.sourceId, a.targetId, a.actor],
+    );
+    return rows[0].r;
+  },
+
+  async deleteOwner(a) {
+    await db().query("select admin_delete_owner($1,$2)", [a.ownerId, a.actor]);
   },
 
   async removeEntry(a) {

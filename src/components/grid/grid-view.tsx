@@ -16,6 +16,8 @@ import {
   TEAM_NAME,
 } from "@/lib/standing";
 import { StatusDot } from "@/components/status-dot";
+import { eliminationWeekOf, matchesShowMode, showCounts } from "@/lib/alive";
+import { ShowToggle, useShowMode } from "@/components/show-toggle";
 import { formatEtDateTime } from "@/lib/format";
 import {
   Select,
@@ -53,7 +55,7 @@ const RESULT_CELL: Record<string, string> = {
 export function GridView({ entries, weeks, cells }: Props) {
   const [status, setStatus] = useState<"all" | EntryStatus>("all");
   const [owner, setOwner] = useState<string>("all");
-  const [onlyAlive, setOnlyAlive] = useState(false);
+  const [mode, setMode] = useShowMode();
   const [comfortable, setComfortable] = useState(false);
   const [weekFrom, setWeekFrom] = useState(1);
   const [weekTo, setWeekTo] = useState(18);
@@ -72,6 +74,22 @@ export function GridView({ entries, weeks, cells }: Props) {
     return m;
   }, [cells]);
 
+  // The week each eliminated entry died — marks the killing pick.
+  const elimWeekById = useMemo(() => {
+    const byEntry = new Map<string, GridCell[]>();
+    for (const c of cells) {
+      if (!byEntry.has(c.entryId)) byEntry.set(c.entryId, []);
+      byEntry.get(c.entryId)!.push(c);
+    }
+    const m = new Map<string, number | null>();
+    for (const e of entries) {
+      m.set(e.id, e.status === "eliminated" ? eliminationWeekOf(byEntry.get(e.id) ?? []) : null);
+    }
+    return m;
+  }, [cells, entries]);
+
+  const counts = useMemo(() => showCounts(entries), [entries]);
+
   const sorted = useMemo(
     () =>
       [...entries].sort(
@@ -84,7 +102,7 @@ export function GridView({ entries, weeks, cells }: Props) {
   );
 
   const visible = sorted.filter((e) => {
-    if (onlyAlive && e.status === "eliminated") return false;
+    if (!matchesShowMode(e.status, mode)) return false;
     if (status !== "all" && e.status !== status) return false;
     if (owner !== "all" && e.ownerId !== owner) return false;
     return true;
@@ -114,6 +132,7 @@ export function GridView({ entries, weeks, cells }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <ShowToggle mode={mode} counts={counts} onChange={setMode} />
         <Select
           value={status}
           onValueChange={(v) => setStatus(v as "all" | EntryStatus)}
@@ -185,20 +204,6 @@ export function GridView({ entries, weeks, cells }: Props) {
               ))}
             </SelectContent>
           </Select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Switch
-            id="only-alive"
-            checked={onlyAlive}
-            onCheckedChange={setOnlyAlive}
-          />
-          <Label
-            htmlFor="only-alive"
-            className="text-sm text-muted-foreground"
-          >
-            Only alive
-          </Label>
         </div>
 
         <div className="flex items-center gap-2">
@@ -279,6 +284,11 @@ export function GridView({ entries, weeks, cells }: Props) {
                   >
                     <StatusDot status={e.status} className="shrink-0" />
                     <span className="truncate font-medium">{e.entryName}</span>
+                    {e.status === "eliminated" ? (
+                      <span className="ml-auto shrink-0 rounded bg-loss/15 px-1 text-[10px] font-semibold text-loss">
+                        OUT{elimWeekById.get(e.id) ? ` · WK ${elimWeekById.get(e.id)}` : ""}
+                      </span>
+                    ) : null}
                   </Link>
                 </td>
                 {visibleWeeks.map((w) => {
@@ -295,6 +305,10 @@ export function GridView({ entries, weeks, cells }: Props) {
                   }
                   const resultKey = cell.result ?? "pending";
                   const isBye = cell.team === SKIP_WEEK;
+                  const killing =
+                    e.status === "eliminated" &&
+                    elimWeekById.get(e.id) === w.week &&
+                    (resultKey === "loss" || resultKey === "tie_loss" || resultKey === "missed");
                   return (
                     <td
                       key={w.week}
@@ -307,9 +321,11 @@ export function GridView({ entries, weeks, cells }: Props) {
                         className={cn(
                           "flex h-full min-h-10 w-full flex-col items-center justify-center rounded-sm border text-xs font-semibold transition-colors duration-150 ease-out",
                           RESULT_CELL[isBye ? "bye" : resultKey],
+                          killing && "bg-loss/40 text-white ring-1 ring-loss",
                         )}
+                        title={killing ? "The killing pick — this loss ended the entry" : undefined}
                       >
-                        {isBye ? "BYE" : cell.team}
+                        {isBye ? "BYE" : killing ? `✕ ${cell.team}` : cell.team}
                         {comfortable && !isBye ? (
                           <span className="mt-0.5 block h-1 w-6 rounded-full bg-current opacity-40" />
                         ) : null}

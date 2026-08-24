@@ -35,6 +35,9 @@ export function EntryEditDialog({
   // Entry name is VERBATIM: whatever is typed here is exactly what is saved.
   const [entryName, setEntryName] = useState(entry.entryName);
   const [lynneLabel, setLynneLabel] = useState(entry.lynneLabel ?? "");
+  const [lynneNumber, setLynneNumber] = useState(
+    entry.lynneNumber === null ? "" : String(entry.lynneNumber),
+  );
   const [isFree, setIsFree] = useState(entry.isFreeEntry);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +47,7 @@ export function EntryEditDialog({
     if (next) {
       setEntryName(entry.entryName);
       setLynneLabel(entry.lynneLabel ?? "");
+      setLynneNumber(entry.lynneNumber === null ? "" : String(entry.lynneNumber));
       setIsFree(entry.isFreeEntry);
       setError(null);
     }
@@ -53,10 +57,17 @@ export function EntryEditDialog({
   async function save() {
     setBusy(true);
     setError(null);
+    const parsedNum = lynneNumber.trim() === "" ? null : Number(lynneNumber);
+    if (parsedNum !== null && (!Number.isInteger(parsedNum) || parsedNum < 1)) {
+      setBusy(false);
+      setError("Lynne number must be a positive whole number");
+      return;
+    }
     const result = await updateEntryAction({
       entryId: entry.id,
       entryName,
       lynneLabel,
+      lynneNumber: parsedNum,
       // Pass null when the flag is untouched so the action leaves it alone.
       isFree: isFree === entry.isFreeEntry ? null : isFree,
     });
@@ -98,6 +109,18 @@ export function EntryEditDialog({
                 existing={otherNames}
               />
             ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor={`lynne-number-${entry.id}`}>Lynne number</Label>
+            <Input
+              id={`lynne-number-${entry.id}`}
+              value={lynneNumber}
+              onChange={(e) => setLynneNumber(e.target.value)}
+              inputMode="numeric"
+              placeholder="Her entry number — required for submissions"
+              autoComplete="off"
+            />
           </div>
 
           <div className="space-y-1.5">

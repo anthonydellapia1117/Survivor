@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getData } from "@/lib/data";
 import { currentPlayWeek } from "@/lib/dashboard";
+import { eliminationWeekOf } from "@/lib/alive";
 import {
   NFL_TEAMS,
   RESULT_LABEL,
@@ -50,6 +51,8 @@ export default async function EntryPage(props: {
   const usedSet = new Set(
     picks.filter((p) => p.team !== SKIP_WEEK).map((p) => p.team),
   );
+  const isOut = entry.status === "eliminated";
+  const elimWeek = isOut ? eliminationWeekOf(picks) : null;
 
   // Next three matchups per remaining team, from the current play week on.
   const fromWeek = currentPlayWeek(weeks, new Date())?.week ?? 1;
@@ -79,9 +82,15 @@ export default async function EntryPage(props: {
       <div>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl">{entry.entryName}</h1>
-          <span className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-medium">
+          <span
+            className={
+              isOut
+                ? "flex items-center gap-1.5 rounded-full border border-loss/40 bg-loss/15 px-2.5 py-0.5 text-xs font-semibold text-loss"
+                : "flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-medium"
+            }
+          >
             <StatusDot status={entry.status} />
-            {STATUS_LABEL[entry.status]}
+            {isOut ? `OUT${elimWeek ? ` · WK ${elimWeek}` : ""}` : STATUS_LABEL[entry.status]}
           </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -131,18 +140,29 @@ export default async function EntryPage(props: {
           </p>
         ) : (
           <ol className="mt-3 space-y-2">
-            {picks.map((p) => (
+            {picks.map((p) => {
+              const killing = isOut && elimWeek === p.week &&
+                (p.result === "loss" || p.result === "tie_loss" || p.result === "missed");
+              return (
               <li
                 key={p.week}
-                className="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5"
+                className={
+                  killing
+                    ? "flex items-center gap-3 rounded-md border border-loss/60 bg-loss/15 px-3 py-2.5"
+                    : "flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5"
+                }
               >
                 <span className="w-9 shrink-0 text-xs tabular-nums text-muted-foreground">
                   W{p.week}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-medium">
+                  {killing ? <span className="mr-1 font-bold text-loss">✕</span> : null}
                   {p.team === SKIP_WEEK
                     ? "Bye (skip week)"
                     : (TEAM_NAME[p.team] ?? p.team)}
+                  {killing ? (
+                    <span className="ml-2 text-xs font-semibold text-loss">the killing pick</span>
+                  ) : null}
                 </span>
                 {p.late ? (
                   <span className="text-xs font-medium text-tie">late</span>
@@ -162,7 +182,8 @@ export default async function EntryPage(props: {
                   {p.result ? RESULT_LABEL[p.result] : "Pending"}
                 </span>
               </li>
-            ))}
+              );
+            })}
           </ol>
         )}
       </section>
@@ -192,7 +213,9 @@ export default async function EntryPage(props: {
                   "rounded-sm border px-2 py-1.5 text-xs",
                   used
                     ? "border-border bg-surface-2 text-center font-medium text-muted-foreground line-through opacity-60"
-                    : "border-border bg-surface",
+                    : isOut
+                      ? "border-border bg-surface text-muted-foreground line-through opacity-60"
+                      : "border-border bg-surface",
                 )}
               >
                 {used ? (
