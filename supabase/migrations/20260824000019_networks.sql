@@ -1,257 +1,262 @@
 -- Broadcast networks for every announced 2026 game, from ESPN's public
--- scoreboard (fetched 2026-08-24). 248 of 272 games have a network;
--- the 24 nulls are unannounced flex slots (all of week 18, four late
--- Saturday slots in weeks 16-17) and stay null until the league flexes
--- them. Update by (week, away, home) so a wrong id can never mislabel.
+-- scoreboard (fetched 2026-08-24). 248 of 272 games have a network; the
+-- 24 nulls are unannounced flex slots (all of week 18, four late Saturday
+-- slots in weeks 16-17) and stay null until the league flexes them.
+-- Keyed by (week, away, home) so a wrong id can never mislabel a game.
 
-update nfl_games set network = 'NBC' where week = 1 and away_team = 'NE' and home_team = 'SEA';
-update nfl_games set network = 'Netflix' where week = 1 and away_team = 'SF' and home_team = 'LAR';
-update nfl_games set network = 'FOX' where week = 1 and away_team = 'TB' and home_team = 'CIN';
-update nfl_games set network = 'FOX' where week = 1 and away_team = 'NO' and home_team = 'DET';
-update nfl_games set network = 'CBS' where week = 1 and away_team = 'NYJ' and home_team = 'TEN';
-update nfl_games set network = 'CBS' where week = 1 and away_team = 'BAL' and home_team = 'IND';
-update nfl_games set network = 'FOX' where week = 1 and away_team = 'ATL' and home_team = 'PIT';
-update nfl_games set network = 'FOX' where week = 1 and away_team = 'CHI' and home_team = 'CAR';
-update nfl_games set network = 'CBS' where week = 1 and away_team = 'CLE' and home_team = 'JAX';
-update nfl_games set network = 'CBS' where week = 1 and away_team = 'BUF' and home_team = 'HOU';
-update nfl_games set network = 'FOX' where week = 1 and away_team = 'MIA' and home_team = 'LV';
-update nfl_games set network = 'CBS' where week = 1 and away_team = 'GB' and home_team = 'MIN';
-update nfl_games set network = 'FOX' where week = 1 and away_team = 'WAS' and home_team = 'PHI';
-update nfl_games set network = 'CBS' where week = 1 and away_team = 'ARI' and home_team = 'LAC';
-update nfl_games set network = 'NBC' where week = 1 and away_team = 'DAL' and home_team = 'NYG';
-update nfl_games set network = 'ESPN/ABC' where week = 1 and away_team = 'DEN' and home_team = 'KC';
-update nfl_games set network = 'Prime Video' where week = 2 and away_team = 'DET' and home_team = 'BUF';
-update nfl_games set network = 'FOX' where week = 2 and away_team = 'CAR' and home_team = 'ATL';
-update nfl_games set network = 'FOX' where week = 2 and away_team = 'MIN' and home_team = 'CHI';
-update nfl_games set network = 'FOX' where week = 2 and away_team = 'PHI' and home_team = 'TEN';
-update nfl_games set network = 'CBS' where week = 2 and away_team = 'PIT' and home_team = 'NE';
-update nfl_games set network = 'FOX' where week = 2 and away_team = 'GB' and home_team = 'NYJ';
-update nfl_games set network = 'CBS' where week = 2 and away_team = 'CLE' and home_team = 'TB';
-update nfl_games set network = 'CBS' where week = 2 and away_team = 'NO' and home_team = 'BAL';
-update nfl_games set network = 'CBS' where week = 2 and away_team = 'CIN' and home_team = 'HOU';
-update nfl_games set network = 'CBS' where week = 2 and away_team = 'JAX' and home_team = 'DEN';
-update nfl_games set network = 'CBS' where week = 2 and away_team = 'LV' and home_team = 'LAC';
-update nfl_games set network = 'FOX' where week = 2 and away_team = 'WAS' and home_team = 'DAL';
-update nfl_games set network = 'FOX' where week = 2 and away_team = 'SEA' and home_team = 'ARI';
-update nfl_games set network = 'FOX' where week = 2 and away_team = 'MIA' and home_team = 'SF';
-update nfl_games set network = 'NBC' where week = 2 and away_team = 'IND' and home_team = 'KC';
-update nfl_games set network = 'ESPN/ABC' where week = 2 and away_team = 'NYG' and home_team = 'LAR';
-update nfl_games set network = 'Prime Video' where week = 3 and away_team = 'ATL' and home_team = 'GB';
-update nfl_games set network = 'FOX' where week = 3 and away_team = 'LAC' and home_team = 'BUF';
-update nfl_games set network = 'FOX' where week = 3 and away_team = 'CAR' and home_team = 'CLE';
-update nfl_games set network = 'FOX' where week = 3 and away_team = 'NYJ' and home_team = 'DET';
-update nfl_games set network = 'CBS' where week = 3 and away_team = 'HOU' and home_team = 'IND';
-update nfl_games set network = 'CBS' where week = 3 and away_team = 'KC' and home_team = 'MIA';
-update nfl_games set network = 'CBS' where week = 3 and away_team = 'TEN' and home_team = 'NYG';
-update nfl_games set network = 'CBS' where week = 3 and away_team = 'CIN' and home_team = 'PIT';
-update nfl_games set network = 'FOX' where week = 3 and away_team = 'SEA' and home_team = 'WAS';
-update nfl_games set network = 'CBS' where week = 3 and away_team = 'NE' and home_team = 'JAX';
-update nfl_games set network = 'FOX' where week = 3 and away_team = 'ARI' and home_team = 'SF';
-update nfl_games set network = 'FOX' where week = 3 and away_team = 'MIN' and home_team = 'TB';
-update nfl_games set network = 'CBS' where week = 3 and away_team = 'BAL' and home_team = 'DAL';
-update nfl_games set network = 'CBS' where week = 3 and away_team = 'LV' and home_team = 'NO';
-update nfl_games set network = 'NBC' where week = 3 and away_team = 'LAR' and home_team = 'DEN';
-update nfl_games set network = 'ESPN/ABC' where week = 3 and away_team = 'PHI' and home_team = 'CHI';
-update nfl_games set network = 'Prime Video' where week = 4 and away_team = 'PIT' and home_team = 'CLE';
-update nfl_games set network = 'NFL Net' where week = 4 and away_team = 'IND' and home_team = 'WAS';
-update nfl_games set network = 'CBS' where week = 4 and away_team = 'NE' and home_team = 'BUF';
-update nfl_games set network = 'FOX' where week = 4 and away_team = 'NYJ' and home_team = 'CHI';
-update nfl_games set network = 'CBS' where week = 4 and away_team = 'JAX' and home_team = 'CIN';
-update nfl_games set network = 'CBS' where week = 4 and away_team = 'ARI' and home_team = 'NYG';
-update nfl_games set network = 'FOX' where week = 4 and away_team = 'LAR' and home_team = 'PHI';
-update nfl_games set network = 'FOX' where week = 4 and away_team = 'GB' and home_team = 'TB';
-update nfl_games set network = 'CBS' where week = 4 and away_team = 'TEN' and home_team = 'BAL';
-update nfl_games set network = 'FOX' where week = 4 and away_team = 'DAL' and home_team = 'HOU';
-update nfl_games set network = 'FOX' where week = 4 and away_team = 'MIA' and home_team = 'MIN';
-update nfl_games set network = 'CBS' where week = 4 and away_team = 'KC' and home_team = 'LV';
-update nfl_games set network = 'CBS' where week = 4 and away_team = 'DEN' and home_team = 'SF';
-update nfl_games set network = 'CBS' where week = 4 and away_team = 'LAC' and home_team = 'SEA';
-update nfl_games set network = 'NBC' where week = 4 and away_team = 'DET' and home_team = 'CAR';
-update nfl_games set network = 'ESPN' where week = 4 and away_team = 'ATL' and home_team = 'NO';
-update nfl_games set network = 'Prime Video' where week = 5 and away_team = 'TB' and home_team = 'DAL';
-update nfl_games set network = 'NFL Net' where week = 5 and away_team = 'PHI' and home_team = 'JAX';
-update nfl_games set network = 'CBS' where week = 5 and away_team = 'HOU' and home_team = 'TEN';
-update nfl_games set network = 'FOX' where week = 5 and away_team = 'CIN' and home_team = 'MIA';
-update nfl_games set network = 'CBS' where week = 5 and away_team = 'LV' and home_team = 'NE';
-update nfl_games set network = 'FOX' where week = 5 and away_team = 'MIN' and home_team = 'NO';
-update nfl_games set network = 'CBS' where week = 5 and away_team = 'CLE' and home_team = 'NYJ';
-update nfl_games set network = 'CBS' where week = 5 and away_team = 'IND' and home_team = 'PIT';
-update nfl_games set network = 'FOX' where week = 5 and away_team = 'NYG' and home_team = 'WAS';
-update nfl_games set network = 'CBS' where week = 5 and away_team = 'DEN' and home_team = 'LAC';
-update nfl_games set network = 'FOX' where week = 5 and away_team = 'CHI' and home_team = 'GB';
-update nfl_games set network = 'FOX' where week = 5 and away_team = 'DET' and home_team = 'ARI';
-update nfl_games set network = 'FOX' where week = 5 and away_team = 'SF' and home_team = 'SEA';
-update nfl_games set network = 'NBC' where week = 5 and away_team = 'BAL' and home_team = 'ATL';
-update nfl_games set network = 'ESPN/ABC' where week = 5 and away_team = 'BUF' and home_team = 'LAR';
-update nfl_games set network = 'Prime Video' where week = 6 and away_team = 'SEA' and home_team = 'DEN';
-update nfl_games set network = 'NFL Net' where week = 6 and away_team = 'HOU' and home_team = 'JAX';
-update nfl_games set network = 'FOX' where week = 6 and away_team = 'CHI' and home_team = 'ATL';
-update nfl_games set network = 'FOX' where week = 6 and away_team = 'BAL' and home_team = 'CLE';
-update nfl_games set network = 'FOX' where week = 6 and away_team = 'TEN' and home_team = 'IND';
-update nfl_games set network = 'CBS' where week = 6 and away_team = 'NYJ' and home_team = 'NE';
-update nfl_games set network = 'FOX' where week = 6 and away_team = 'NO' and home_team = 'NYG';
-update nfl_games set network = 'CBS' where week = 6 and away_team = 'CAR' and home_team = 'PHI';
-update nfl_games set network = 'CBS' where week = 6 and away_team = 'PIT' and home_team = 'TB';
-update nfl_games set network = 'FOX' where week = 6 and away_team = 'ARI' and home_team = 'LAR';
-update nfl_games set network = 'CBS' where week = 6 and away_team = 'LAC' and home_team = 'KC';
-update nfl_games set network = 'CBS' where week = 6 and away_team = 'BUF' and home_team = 'LV';
-update nfl_games set network = 'NBC' where week = 6 and away_team = 'DAL' and home_team = 'GB';
-update nfl_games set network = 'ESPN/ABC' where week = 6 and away_team = 'WAS' and home_team = 'SF';
-update nfl_games set network = 'Prime Video' where week = 7 and away_team = 'NE' and home_team = 'CHI';
-update nfl_games set network = 'NFL Net' where week = 7 and away_team = 'PIT' and home_team = 'NO';
-update nfl_games set network = 'FOX' where week = 7 and away_team = 'SF' and home_team = 'ATL';
-update nfl_games set network = 'CBS' where week = 7 and away_team = 'CLE' and home_team = 'TEN';
-update nfl_games set network = 'CBS' where week = 7 and away_team = 'IND' and home_team = 'MIN';
-update nfl_games set network = 'CBS' where week = 7 and away_team = 'MIA' and home_team = 'NYJ';
-update nfl_games set network = 'FOX' where week = 7 and away_team = 'TB' and home_team = 'CAR';
-update nfl_games set network = 'CBS' where week = 7 and away_team = 'CIN' and home_team = 'BAL';
-update nfl_games set network = 'FOX' where week = 7 and away_team = 'NYG' and home_team = 'HOU';
-update nfl_games set network = 'CBS' where week = 7 and away_team = 'DEN' and home_team = 'ARI';
-update nfl_games set network = 'FOX' where week = 7 and away_team = 'GB' and home_team = 'DET';
-update nfl_games set network = 'FOX' where week = 7 and away_team = 'LAR' and home_team = 'LV';
-update nfl_games set network = 'NBC' where week = 7 and away_team = 'KC' and home_team = 'SEA';
-update nfl_games set network = 'ESPN/ABC' where week = 7 and away_team = 'DAL' and home_team = 'PHI';
-update nfl_games set network = 'Prime Video' where week = 8 and away_team = 'CAR' and home_team = 'GB';
-update nfl_games set network = 'CBS' where week = 8 and away_team = 'BAL' and home_team = 'BUF';
-update nfl_games set network = 'CBS' where week = 8 and away_team = 'TEN' and home_team = 'CIN';
-update nfl_games set network = 'FOX' where week = 8 and away_team = 'ARI' and home_team = 'DAL';
-update nfl_games set network = 'FOX' where week = 8 and away_team = 'MIN' and home_team = 'DET';
-update nfl_games set network = 'FOX' where week = 8 and away_team = 'LV' and home_team = 'NYJ';
-update nfl_games set network = 'CBS' where week = 8 and away_team = 'CLE' and home_team = 'PIT';
-update nfl_games set network = 'FOX' where week = 8 and away_team = 'ATL' and home_team = 'TB';
-update nfl_games set network = 'CBS' where week = 8 and away_team = 'IND' and home_team = 'JAX';
-update nfl_games set network = 'FOX' where week = 8 and away_team = 'LAC' and home_team = 'LAR';
-update nfl_games set network = 'CBS' where week = 8 and away_team = 'KC' and home_team = 'DEN';
-update nfl_games set network = 'CBS' where week = 8 and away_team = 'NE' and home_team = 'MIA';
-update nfl_games set network = 'NBC' where week = 8 and away_team = 'PHI' and home_team = 'WAS';
-update nfl_games set network = 'ESPN' where week = 8 and away_team = 'CHI' and home_team = 'SEA';
-update nfl_games set network = 'Prime Video' where week = 9 and away_team = 'JAX' and home_team = 'BAL';
-update nfl_games set network = 'NFL Net' where week = 9 and away_team = 'CIN' and home_team = 'ATL';
-update nfl_games set network = 'FOX' where week = 9 and away_team = 'DAL' and home_team = 'IND';
-update nfl_games set network = 'CBS' where week = 9 and away_team = 'NYJ' and home_team = 'KC';
-update nfl_games set network = 'FOX' where week = 9 and away_team = 'DET' and home_team = 'MIA';
-update nfl_games set network = 'CBS' where week = 9 and away_team = 'CLE' and home_team = 'NO';
-update nfl_games set network = 'FOX' where week = 9 and away_team = 'NYG' and home_team = 'PHI';
-update nfl_games set network = 'FOX' where week = 9 and away_team = 'LAR' and home_team = 'WAS';
-update nfl_games set network = 'CBS' where week = 9 and away_team = 'DEN' and home_team = 'CAR';
-update nfl_games set network = 'CBS' where week = 9 and away_team = 'HOU' and home_team = 'LAC';
-update nfl_games set network = 'CBS' where week = 9 and away_team = 'LV' and home_team = 'SF';
-update nfl_games set network = 'FOX' where week = 9 and away_team = 'GB' and home_team = 'NE';
-update nfl_games set network = 'FOX' where week = 9 and away_team = 'ARI' and home_team = 'SEA';
-update nfl_games set network = 'NBC' where week = 9 and away_team = 'TB' and home_team = 'CHI';
-update nfl_games set network = 'ESPN/ABC' where week = 9 and away_team = 'BUF' and home_team = 'MIN';
-update nfl_games set network = 'Prime Video' where week = 10 and away_team = 'WAS' and home_team = 'NYG';
-update nfl_games set network = 'FOX' where week = 10 and away_team = 'NE' and home_team = 'DET';
-update nfl_games set network = 'CBS' where week = 10 and away_team = 'KC' and home_team = 'ATL';
-update nfl_games set network = 'FOX' where week = 10 and away_team = 'HOU' and home_team = 'CLE';
-update nfl_games set network = 'FOX' where week = 10 and away_team = 'MIN' and home_team = 'GB';
-update nfl_games set network = 'FOX' where week = 10 and away_team = 'JAX' and home_team = 'TEN';
-update nfl_games set network = 'CBS' where week = 10 and away_team = 'MIA' and home_team = 'IND';
-update nfl_games set network = 'FOX' where week = 10 and away_team = 'CAR' and home_team = 'NO';
-update nfl_games set network = 'CBS' where week = 10 and away_team = 'BUF' and home_team = 'NYJ';
-update nfl_games set network = 'CBS' where week = 10 and away_team = 'SEA' and home_team = 'LV';
-update nfl_games set network = 'CBS' where week = 10 and away_team = 'LAR' and home_team = 'ARI';
-update nfl_games set network = 'FOX' where week = 10 and away_team = 'SF' and home_team = 'DAL';
-update nfl_games set network = 'NBC' where week = 10 and away_team = 'PIT' and home_team = 'CIN';
-update nfl_games set network = 'ESPN' where week = 10 and away_team = 'LAC' and home_team = 'BAL';
-update nfl_games set network = 'Prime Video' where week = 11 and away_team = 'IND' and home_team = 'HOU';
-update nfl_games set network = 'FOX' where week = 11 and away_team = 'MIA' and home_team = 'BUF';
-update nfl_games set network = 'FOX' where week = 11 and away_team = 'NO' and home_team = 'CHI';
-update nfl_games set network = 'FOX' where week = 11 and away_team = 'TEN' and home_team = 'DAL';
-update nfl_games set network = 'CBS' where week = 11 and away_team = 'TB' and home_team = 'DET';
-update nfl_games set network = 'CBS' where week = 11 and away_team = 'ARI' and home_team = 'KC';
-update nfl_games set network = 'CBS' where week = 11 and away_team = 'JAX' and home_team = 'NYG';
-update nfl_games set network = 'FOX' where week = 11 and away_team = 'BAL' and home_team = 'CAR';
-update nfl_games set network = 'FOX' where week = 11 and away_team = 'NYJ' and home_team = 'LAC';
-update nfl_games set network = 'CBS' where week = 11 and away_team = 'LV' and home_team = 'DEN';
-update nfl_games set network = 'CBS' where week = 11 and away_team = 'PIT' and home_team = 'PHI';
-update nfl_games set network = 'NBC' where week = 11 and away_team = 'MIN' and home_team = 'SF';
-update nfl_games set network = 'ESPN' where week = 11 and away_team = 'CIN' and home_team = 'WAS';
-update nfl_games set network = 'Netflix' where week = 12 and away_team = 'GB' and home_team = 'LAR';
-update nfl_games set network = 'CBS' where week = 12 and away_team = 'CHI' and home_team = 'DET';
-update nfl_games set network = 'FOX' where week = 12 and away_team = 'PHI' and home_team = 'DAL';
-update nfl_games set network = 'NBC' where week = 12 and away_team = 'KC' and home_team = 'BUF';
-update nfl_games set network = 'Prime Video' where week = 12 and away_team = 'DEN' and home_team = 'PIT';
-update nfl_games set network = 'CBS' where week = 12 and away_team = 'NO' and home_team = 'CIN';
-update nfl_games set network = 'FOX' where week = 12 and away_team = 'LV' and home_team = 'CLE';
-update nfl_games set network = 'FOX' where week = 12 and away_team = 'NYG' and home_team = 'IND';
-update nfl_games set network = 'CBS' where week = 12 and away_team = 'NYJ' and home_team = 'MIA';
-update nfl_games set network = 'FOX' where week = 12 and away_team = 'ATL' and home_team = 'MIN';
-update nfl_games set network = 'CBS' where week = 12 and away_team = 'BAL' and home_team = 'HOU';
-update nfl_games set network = 'CBS' where week = 12 and away_team = 'TEN' and home_team = 'JAX';
-update nfl_games set network = 'FOX' where week = 12 and away_team = 'WAS' and home_team = 'ARI';
-update nfl_games set network = 'FOX' where week = 12 and away_team = 'SEA' and home_team = 'SF';
-update nfl_games set network = 'NBC' where week = 12 and away_team = 'NE' and home_team = 'LAC';
-update nfl_games set network = 'ESPN' where week = 12 and away_team = 'CAR' and home_team = 'TB';
-update nfl_games set network = 'Prime Video' where week = 13 and away_team = 'KC' and home_team = 'LAR';
-update nfl_games set network = 'CBS' where week = 13 and away_team = 'DET' and home_team = 'ATL';
-update nfl_games set network = 'FOX' where week = 13 and away_team = 'JAX' and home_team = 'CHI';
-update nfl_games set network = 'CBS' where week = 13 and away_team = 'CIN' and home_team = 'CLE';
-update nfl_games set network = 'CBS' where week = 13 and away_team = 'WAS' and home_team = 'TEN';
-update nfl_games set network = 'FOX' where week = 13 and away_team = 'GB' and home_team = 'NO';
-update nfl_games set network = 'FOX' where week = 13 and away_team = 'SF' and home_team = 'NYG';
-update nfl_games set network = 'CBS' where week = 13 and away_team = 'LAC' and home_team = 'TB';
-update nfl_games set network = 'FOX' where week = 13 and away_team = 'MIA' and home_team = 'DEN';
-update nfl_games set network = 'FOX' where week = 13 and away_team = 'PHI' and home_team = 'ARI';
-update nfl_games set network = 'CBS' where week = 13 and away_team = 'CAR' and home_team = 'MIN';
-update nfl_games set network = 'CBS' where week = 13 and away_team = 'BUF' and home_team = 'NE';
-update nfl_games set network = 'NBC' where week = 13 and away_team = 'HOU' and home_team = 'PIT';
-update nfl_games set network = 'ESPN/ABC' where week = 13 and away_team = 'DAL' and home_team = 'SEA';
-update nfl_games set network = 'Prime Video' where week = 14 and away_team = 'MIN' and home_team = 'NE';
-update nfl_games set network = 'CBS' where week = 14 and away_team = 'ATL' and home_team = 'CLE';
-update nfl_games set network = 'FOX' where week = 14 and away_team = 'TEN' and home_team = 'DET';
-update nfl_games set network = 'CBS' where week = 14 and away_team = 'CHI' and home_team = 'MIA';
-update nfl_games set network = 'CBS' where week = 14 and away_team = 'DEN' and home_team = 'NYJ';
-update nfl_games set network = 'FOX' where week = 14 and away_team = 'IND' and home_team = 'PHI';
-update nfl_games set network = 'CBS' where week = 14 and away_team = 'HOU' and home_team = 'WAS';
-update nfl_games set network = 'CBS' where week = 14 and away_team = 'NO' and home_team = 'CAR';
-update nfl_games set network = 'FOX' where week = 14 and away_team = 'TB' and home_team = 'BAL';
-update nfl_games set network = 'CBS' where week = 14 and away_team = 'LAC' and home_team = 'LV';
-update nfl_games set network = 'FOX' where week = 14 and away_team = 'KC' and home_team = 'CIN';
-update nfl_games set network = 'FOX' where week = 14 and away_team = 'LAR' and home_team = 'SF';
-update nfl_games set network = 'FOX' where week = 14 and away_team = 'NYG' and home_team = 'SEA';
-update nfl_games set network = 'NBC' where week = 14 and away_team = 'BUF' and home_team = 'GB';
-update nfl_games set network = 'ESPN' where week = 14 and away_team = 'PIT' and home_team = 'JAX';
-update nfl_games set network = 'Prime Video' where week = 15 and away_team = 'SF' and home_team = 'LAC';
-update nfl_games set network = 'FOX' where week = 15 and away_team = 'SEA' and home_team = 'PHI';
-update nfl_games set network = 'CBS' where week = 15 and away_team = 'CHI' and home_team = 'BUF';
-update nfl_games set network = 'FOX' where week = 15 and away_team = 'MIA' and home_team = 'GB';
-update nfl_games set network = 'CBS' where week = 15 and away_team = 'IND' and home_team = 'TEN';
-update nfl_games set network = 'CBS' where week = 15 and away_team = 'CLE' and home_team = 'NYG';
-update nfl_games set network = 'CBS' where week = 15 and away_team = 'BAL' and home_team = 'PIT';
-update nfl_games set network = 'FOX' where week = 15 and away_team = 'NO' and home_team = 'TB';
-update nfl_games set network = 'FOX' where week = 15 and away_team = 'ATL' and home_team = 'WAS';
-update nfl_games set network = 'FOX' where week = 15 and away_team = 'CIN' and home_team = 'CAR';
-update nfl_games set network = 'CBS' where week = 15 and away_team = 'JAX' and home_team = 'HOU';
-update nfl_games set network = 'FOX' where week = 15 and away_team = 'NYJ' and home_team = 'ARI';
-update nfl_games set network = 'CBS' where week = 15 and away_team = 'DEN' and home_team = 'LV';
-update nfl_games set network = 'CBS' where week = 15 and away_team = 'DAL' and home_team = 'LAR';
-update nfl_games set network = 'NBC' where week = 15 and away_team = 'DET' and home_team = 'MIN';
-update nfl_games set network = 'ESPN/ABC' where week = 15 and away_team = 'NE' and home_team = 'KC';
-update nfl_games set network = 'Prime Video' where week = 16 and away_team = 'HOU' and home_team = 'PHI';
-update nfl_games set network = 'Netflix' where week = 16 and away_team = 'GB' and home_team = 'CHI';
-update nfl_games set network = 'Netflix' where week = 16 and away_team = 'BUF' and home_team = 'DEN';
-update nfl_games set network = 'FOX' where week = 16 and away_team = 'LAR' and home_team = 'SEA';
-update nfl_games set network = 'FOX' where week = 16 and away_team = 'LAC' and home_team = 'MIA';
-update nfl_games set network = 'FOX' where week = 16 and away_team = 'ARI' and home_team = 'NO';
-update nfl_games set network = 'CBS' where week = 16 and away_team = 'NE' and home_team = 'NYJ';
-update nfl_games set network = 'CBS' where week = 16 and away_team = 'CLE' and home_team = 'BAL';
-update nfl_games set network = 'FOX' where week = 16 and away_team = 'TEN' and home_team = 'LV';
-update nfl_games set network = 'CBS' where week = 16 and away_team = 'SF' and home_team = 'KC';
-update nfl_games set network = 'NBC' where week = 16 and away_team = 'JAX' and home_team = 'DAL';
-update nfl_games set network = 'ESPN' where week = 16 and away_team = 'NYG' and home_team = 'DET';
-update nfl_games set network = 'Prime Video' where week = 17 and away_team = 'BAL' and home_team = 'CIN';
-update nfl_games set network = 'FOX' where week = 17 and away_team = 'NO' and home_team = 'ATL';
-update nfl_games set network = 'FOX' where week = 17 and away_team = 'IND' and home_team = 'CLE';
-update nfl_games set network = 'FOX' where week = 17 and away_team = 'NYG' and home_team = 'DAL';
-update nfl_games set network = 'CBS' where week = 17 and away_team = 'PIT' and home_team = 'TEN';
-update nfl_games set network = 'CBS' where week = 17 and away_team = 'BUF' and home_team = 'MIA';
-update nfl_games set network = 'CBS' where week = 17 and away_team = 'MIN' and home_team = 'NYJ';
-update nfl_games set network = 'FOX' where week = 17 and away_team = 'SEA' and home_team = 'CAR';
-update nfl_games set network = 'CBS' where week = 17 and away_team = 'LV' and home_team = 'ARI';
-update nfl_games set network = 'FOX' where week = 17 and away_team = 'DET' and home_team = 'CHI';
-update nfl_games set network = 'NBC' where week = 17 and away_team = 'PHI' and home_team = 'SF';
-update nfl_games set network = 'ESPN' where week = 17 and away_team = 'HOU' and home_team = 'GB';
+update nfl_games g
+   set network = v.network
+  from (values
+  (1,'NE','SEA','NBC'),
+  (1,'SF','LAR','Netflix'),
+  (1,'TB','CIN','FOX'),
+  (1,'NO','DET','FOX'),
+  (1,'NYJ','TEN','CBS'),
+  (1,'BAL','IND','CBS'),
+  (1,'ATL','PIT','FOX'),
+  (1,'CHI','CAR','FOX'),
+  (1,'CLE','JAX','CBS'),
+  (1,'BUF','HOU','CBS'),
+  (1,'MIA','LV','FOX'),
+  (1,'GB','MIN','CBS'),
+  (1,'WAS','PHI','FOX'),
+  (1,'ARI','LAC','CBS'),
+  (1,'DAL','NYG','NBC'),
+  (1,'DEN','KC','ESPN/ABC'),
+  (2,'DET','BUF','Prime Video'),
+  (2,'CAR','ATL','FOX'),
+  (2,'MIN','CHI','FOX'),
+  (2,'PHI','TEN','FOX'),
+  (2,'PIT','NE','CBS'),
+  (2,'GB','NYJ','FOX'),
+  (2,'CLE','TB','CBS'),
+  (2,'NO','BAL','CBS'),
+  (2,'CIN','HOU','CBS'),
+  (2,'JAX','DEN','CBS'),
+  (2,'LV','LAC','CBS'),
+  (2,'WAS','DAL','FOX'),
+  (2,'SEA','ARI','FOX'),
+  (2,'MIA','SF','FOX'),
+  (2,'IND','KC','NBC'),
+  (2,'NYG','LAR','ESPN/ABC'),
+  (3,'ATL','GB','Prime Video'),
+  (3,'LAC','BUF','FOX'),
+  (3,'CAR','CLE','FOX'),
+  (3,'NYJ','DET','FOX'),
+  (3,'HOU','IND','CBS'),
+  (3,'KC','MIA','CBS'),
+  (3,'TEN','NYG','CBS'),
+  (3,'CIN','PIT','CBS'),
+  (3,'SEA','WAS','FOX'),
+  (3,'NE','JAX','CBS'),
+  (3,'ARI','SF','FOX'),
+  (3,'MIN','TB','FOX'),
+  (3,'BAL','DAL','CBS'),
+  (3,'LV','NO','CBS'),
+  (3,'LAR','DEN','NBC'),
+  (3,'PHI','CHI','ESPN/ABC'),
+  (4,'PIT','CLE','Prime Video'),
+  (4,'IND','WAS','NFL Net'),
+  (4,'NE','BUF','CBS'),
+  (4,'NYJ','CHI','FOX'),
+  (4,'JAX','CIN','CBS'),
+  (4,'ARI','NYG','CBS'),
+  (4,'LAR','PHI','FOX'),
+  (4,'GB','TB','FOX'),
+  (4,'TEN','BAL','CBS'),
+  (4,'DAL','HOU','FOX'),
+  (4,'MIA','MIN','FOX'),
+  (4,'KC','LV','CBS'),
+  (4,'DEN','SF','CBS'),
+  (4,'LAC','SEA','CBS'),
+  (4,'DET','CAR','NBC'),
+  (4,'ATL','NO','ESPN'),
+  (5,'TB','DAL','Prime Video'),
+  (5,'PHI','JAX','NFL Net'),
+  (5,'HOU','TEN','CBS'),
+  (5,'CIN','MIA','FOX'),
+  (5,'LV','NE','CBS'),
+  (5,'MIN','NO','FOX'),
+  (5,'CLE','NYJ','CBS'),
+  (5,'IND','PIT','CBS'),
+  (5,'NYG','WAS','FOX'),
+  (5,'DEN','LAC','CBS'),
+  (5,'CHI','GB','FOX'),
+  (5,'DET','ARI','FOX'),
+  (5,'SF','SEA','FOX'),
+  (5,'BAL','ATL','NBC'),
+  (5,'BUF','LAR','ESPN/ABC'),
+  (6,'SEA','DEN','Prime Video'),
+  (6,'HOU','JAX','NFL Net'),
+  (6,'CHI','ATL','FOX'),
+  (6,'BAL','CLE','FOX'),
+  (6,'TEN','IND','FOX'),
+  (6,'NYJ','NE','CBS'),
+  (6,'NO','NYG','FOX'),
+  (6,'CAR','PHI','CBS'),
+  (6,'PIT','TB','CBS'),
+  (6,'ARI','LAR','FOX'),
+  (6,'LAC','KC','CBS'),
+  (6,'BUF','LV','CBS'),
+  (6,'DAL','GB','NBC'),
+  (6,'WAS','SF','ESPN/ABC'),
+  (7,'NE','CHI','Prime Video'),
+  (7,'PIT','NO','NFL Net'),
+  (7,'SF','ATL','FOX'),
+  (7,'CLE','TEN','CBS'),
+  (7,'IND','MIN','CBS'),
+  (7,'MIA','NYJ','CBS'),
+  (7,'TB','CAR','FOX'),
+  (7,'CIN','BAL','CBS'),
+  (7,'NYG','HOU','FOX'),
+  (7,'DEN','ARI','CBS'),
+  (7,'GB','DET','FOX'),
+  (7,'LAR','LV','FOX'),
+  (7,'KC','SEA','NBC'),
+  (7,'DAL','PHI','ESPN/ABC'),
+  (8,'CAR','GB','Prime Video'),
+  (8,'BAL','BUF','CBS'),
+  (8,'TEN','CIN','CBS'),
+  (8,'ARI','DAL','FOX'),
+  (8,'MIN','DET','FOX'),
+  (8,'LV','NYJ','FOX'),
+  (8,'CLE','PIT','CBS'),
+  (8,'ATL','TB','FOX'),
+  (8,'IND','JAX','CBS'),
+  (8,'LAC','LAR','FOX'),
+  (8,'KC','DEN','CBS'),
+  (8,'NE','MIA','CBS'),
+  (8,'PHI','WAS','NBC'),
+  (8,'CHI','SEA','ESPN'),
+  (9,'JAX','BAL','Prime Video'),
+  (9,'CIN','ATL','NFL Net'),
+  (9,'DAL','IND','FOX'),
+  (9,'NYJ','KC','CBS'),
+  (9,'DET','MIA','FOX'),
+  (9,'CLE','NO','CBS'),
+  (9,'NYG','PHI','FOX'),
+  (9,'LAR','WAS','FOX'),
+  (9,'DEN','CAR','CBS'),
+  (9,'HOU','LAC','CBS'),
+  (9,'LV','SF','CBS'),
+  (9,'GB','NE','FOX'),
+  (9,'ARI','SEA','FOX'),
+  (9,'TB','CHI','NBC'),
+  (9,'BUF','MIN','ESPN/ABC'),
+  (10,'WAS','NYG','Prime Video'),
+  (10,'NE','DET','FOX'),
+  (10,'KC','ATL','CBS'),
+  (10,'HOU','CLE','FOX'),
+  (10,'MIN','GB','FOX'),
+  (10,'JAX','TEN','FOX'),
+  (10,'MIA','IND','CBS'),
+  (10,'CAR','NO','FOX'),
+  (10,'BUF','NYJ','CBS'),
+  (10,'SEA','LV','CBS'),
+  (10,'LAR','ARI','CBS'),
+  (10,'SF','DAL','FOX'),
+  (10,'PIT','CIN','NBC'),
+  (10,'LAC','BAL','ESPN'),
+  (11,'IND','HOU','Prime Video'),
+  (11,'MIA','BUF','FOX'),
+  (11,'NO','CHI','FOX'),
+  (11,'TEN','DAL','FOX'),
+  (11,'TB','DET','CBS'),
+  (11,'ARI','KC','CBS'),
+  (11,'JAX','NYG','CBS'),
+  (11,'BAL','CAR','FOX'),
+  (11,'NYJ','LAC','FOX'),
+  (11,'LV','DEN','CBS'),
+  (11,'PIT','PHI','CBS'),
+  (11,'MIN','SF','NBC'),
+  (11,'CIN','WAS','ESPN'),
+  (12,'GB','LAR','Netflix'),
+  (12,'CHI','DET','CBS'),
+  (12,'PHI','DAL','FOX'),
+  (12,'KC','BUF','NBC'),
+  (12,'DEN','PIT','Prime Video'),
+  (12,'NO','CIN','CBS'),
+  (12,'LV','CLE','FOX'),
+  (12,'NYG','IND','FOX'),
+  (12,'NYJ','MIA','CBS'),
+  (12,'ATL','MIN','FOX'),
+  (12,'BAL','HOU','CBS'),
+  (12,'TEN','JAX','CBS'),
+  (12,'WAS','ARI','FOX'),
+  (12,'SEA','SF','FOX'),
+  (12,'NE','LAC','NBC'),
+  (12,'CAR','TB','ESPN'),
+  (13,'KC','LAR','Prime Video'),
+  (13,'DET','ATL','CBS'),
+  (13,'JAX','CHI','FOX'),
+  (13,'CIN','CLE','CBS'),
+  (13,'WAS','TEN','CBS'),
+  (13,'GB','NO','FOX'),
+  (13,'SF','NYG','FOX'),
+  (13,'LAC','TB','CBS'),
+  (13,'MIA','DEN','FOX'),
+  (13,'PHI','ARI','FOX'),
+  (13,'CAR','MIN','CBS'),
+  (13,'BUF','NE','CBS'),
+  (13,'HOU','PIT','NBC'),
+  (13,'DAL','SEA','ESPN/ABC'),
+  (14,'MIN','NE','Prime Video'),
+  (14,'ATL','CLE','CBS'),
+  (14,'TEN','DET','FOX'),
+  (14,'CHI','MIA','CBS'),
+  (14,'DEN','NYJ','CBS'),
+  (14,'IND','PHI','FOX'),
+  (14,'HOU','WAS','CBS'),
+  (14,'NO','CAR','CBS'),
+  (14,'TB','BAL','FOX'),
+  (14,'LAC','LV','CBS'),
+  (14,'KC','CIN','FOX'),
+  (14,'LAR','SF','FOX'),
+  (14,'NYG','SEA','FOX'),
+  (14,'BUF','GB','NBC'),
+  (14,'PIT','JAX','ESPN'),
+  (15,'SF','LAC','Prime Video'),
+  (15,'SEA','PHI','FOX'),
+  (15,'CHI','BUF','CBS'),
+  (15,'MIA','GB','FOX'),
+  (15,'IND','TEN','CBS'),
+  (15,'CLE','NYG','CBS'),
+  (15,'BAL','PIT','CBS'),
+  (15,'NO','TB','FOX'),
+  (15,'ATL','WAS','FOX'),
+  (15,'CIN','CAR','FOX'),
+  (15,'JAX','HOU','CBS'),
+  (15,'NYJ','ARI','FOX'),
+  (15,'DEN','LV','CBS'),
+  (15,'DAL','LAR','CBS'),
+  (15,'DET','MIN','NBC'),
+  (15,'NE','KC','ESPN/ABC'),
+  (16,'HOU','PHI','Prime Video'),
+  (16,'GB','CHI','Netflix'),
+  (16,'BUF','DEN','Netflix'),
+  (16,'LAR','SEA','FOX'),
+  (16,'LAC','MIA','FOX'),
+  (16,'ARI','NO','FOX'),
+  (16,'NE','NYJ','CBS'),
+  (16,'CLE','BAL','CBS'),
+  (16,'TEN','LV','FOX'),
+  (16,'SF','KC','CBS'),
+  (16,'JAX','DAL','NBC'),
+  (16,'NYG','DET','ESPN'),
+  (17,'BAL','CIN','Prime Video'),
+  (17,'NO','ATL','FOX'),
+  (17,'IND','CLE','FOX'),
+  (17,'NYG','DAL','FOX'),
+  (17,'PIT','TEN','CBS'),
+  (17,'BUF','MIA','CBS'),
+  (17,'MIN','NYJ','CBS'),
+  (17,'SEA','CAR','FOX'),
+  (17,'LV','ARI','CBS'),
+  (17,'DET','CHI','FOX'),
+  (17,'PHI','SF','NBC'),
+  (17,'HOU','GB','ESPN')
+) as v(week, away, home, network)
+ where g.week = v.week and g.away_team = v.away and g.home_team = v.home;
 
 do $$
 declare n int;
