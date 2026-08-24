@@ -44,7 +44,7 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
   const usedByEntry = useMemo(() => {
     const m = new Map<string, Map<string, number>>();
     for (const c of cells) {
-      if (c.team === SKIP_WEEK || c.team === "MISSED") continue;
+      if (c.team === SKIP_WEEK || c.team === "MISSED" || c.team === "LOCKED") continue;
       if (!m.has(c.entryId)) m.set(c.entryId, new Map());
       const tm = m.get(c.entryId)!;
       if (!tm.has(c.team) || c.week < tm.get(c.team)!) tm.set(c.team, c.week);
@@ -57,7 +57,7 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
     const m = new Map<string, Map<number, number>>();
     let max = 1;
     for (const c of cells) {
-      if (c.team === SKIP_WEEK || c.team === "MISSED") continue;
+      if (c.team === SKIP_WEEK || c.team === "MISSED" || c.team === "LOCKED") continue;
       if (!m.has(c.team)) m.set(c.team, new Map());
       const wm = m.get(c.team)!;
       const n = (wm.get(c.week) ?? 0) + 1;

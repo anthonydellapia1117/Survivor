@@ -1,18 +1,18 @@
 "use client";
 
 // D1-D4: the week-by-week game board. Every game as a card — winners and
-// losers visually distinct, pick counts revealed once that game's own
-// deadline passes, and elimination impact per final game.
+// losers visually distinct, pick counts revealed once that game KICKS OFF
+// (per-game visibility, override-aware), and elimination impact per final
+// game.
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { gameIsRevealed } from "@/lib/data/types";
 import type { EntrySummary, GameRow, GridCell, WeekRow } from "@/lib/data/types";
 import { TEAM_NAME } from "@/lib/standing";
 import { TEAM_PALETTE } from "@/lib/team-colors";
 import { eliminationWeekOf } from "@/lib/alive";
 import { cn } from "@/lib/utils";
-
-const EARLY_DAYS = new Set(["Wednesday", "Thursday", "Friday"]);
 
 function kickoffLabel(iso: string): string {
   return new Date(iso)
@@ -43,7 +43,6 @@ export function GameBoard({
   const [expanded, setExpanded] = useState<string | null>(null);
   const now = Date.now();
 
-  const weekRow = weeks.find((w) => w.week === week);
   const weekGames = useMemo(
     () => games.filter((g) => g.week === week),
     [games, week],
@@ -58,7 +57,13 @@ export function GameBoard({
   const pickersByTeam = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const c of cells) {
-      if (c.week !== week || c.team === "SKIP_WEEK" || c.team === "MISSED") continue;
+      if (
+        c.week !== week ||
+        c.team === "SKIP_WEEK" ||
+        c.team === "MISSED" ||
+        c.team === "LOCKED"
+      )
+        continue;
       if (!m.has(c.team)) m.set(c.team, []);
       m.get(c.team)!.push(nameById.get(c.entryId) ?? "?");
     }
@@ -90,13 +95,11 @@ export function GameBoard({
     return m;
   }, [cells, entries, week]);
 
-  function gameDeadlinePassed(g: GameRow): boolean {
-    if (!weekRow) return false;
-    const dl =
-      week === 1 || EARLY_DAYS.has(g.dayOfWeek)
-        ? weekRow.earlyDeadlineAt
-        : weekRow.lateDeadlineAt;
-    return new Date(dl).getTime() <= now;
+  // Picks for a game are public once it kicks off (or the admin's manual
+  // reveal override says so) — never at the pick deadline, which can be
+  // hours before kickoff.
+  function picksRevealed(g: GameRow): boolean {
+    return gameIsRevealed(g, new Date(now));
   }
 
   function changeWeek(w: number) {
@@ -131,7 +134,7 @@ export function GameBoard({
 
       <div className="grid gap-3 md:grid-cols-2">
         {weekGames.map((g) => {
-          const revealed = gameDeadlinePassed(g);
+          const revealed = picksRevealed(g);
           const homePickers = pickersByTeam.get(g.homeTeam) ?? [];
           const awayPickers = pickersByTeam.get(g.awayTeam) ?? [];
           const elim = [
@@ -203,6 +206,10 @@ export function GameBoard({
                   </span>
                 ) : g.status === "in_progress" ? (
                   <span className="font-semibold text-primary">LIVE</span>
+                ) : g.network ? (
+                  <span className="rounded-sm border border-border px-1.5 py-0.5 font-semibold tracking-wide">
+                    {g.network}
+                  </span>
                 ) : null}
               </p>
 
@@ -229,7 +236,10 @@ export function GameBoard({
                     <p>No entries on this game.</p>
                   )
                 ) : (
-                  <p>Pick counts hidden until this game&apos;s deadline.</p>
+                  <p>
+                    <span aria-hidden>🔒</span> Picks unlock when this game
+                    kicks off.
+                  </p>
                 )}
 
                 {elim.length > 0 ? (

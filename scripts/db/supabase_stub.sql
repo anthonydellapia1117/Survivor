@@ -23,4 +23,10 @@ as $$
 $$;
 
 grant usage on schema public to anon, authenticated;
-alter default privileges in schema public grant select on tables to anon, authenticated;
+-- Supabase grants ALL on public tables to both roles; RLS is the gate.
+alter default privileges in schema public grant all on tables to anon, authenticated;
+alter default privileges in schema public grant all on sequences to anon, authenticated;
+
+-- Production Supabase grants these; RLS policies call is_admin() -> auth.jwt().
+grant usage on schema auth to anon, authenticated;
+grant execute on function auth.jwt() to anon, authenticated;

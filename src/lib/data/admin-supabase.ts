@@ -214,6 +214,63 @@ export const adminSupabaseBackend: AdminBackend = {
     return Number(data ?? 0);
   },
 
+  async setGameReveal(a) {
+    const c = await createSupabaseServerClient();
+    const { error } = await c.rpc("admin_set_game_reveal", {
+      p_game_id: a.gameId,
+      p_override: a.override,
+      p_actor: a.actor,
+    });
+    if (error) throw error;
+  },
+
+  // Raw picks via the authenticated client — the picks RLS lets the admin
+  // through while the public view masks. Never route admin screens or
+  // Lynne exports through v_grid_cells.
+  async listGridCells() {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c
+      .from("picks")
+      .select("entry_id, week, team, result, late, submitted_at, source, result_source")
+      .eq("is_current", true)
+      .order("week");
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      entryId: r.entry_id,
+      week: r.week,
+      team: r.team,
+      result: r.result,
+      late: Boolean(r.late),
+      submittedAt: r.submitted_at,
+      source: r.source,
+      resultSource: r.result_source,
+    }));
+  },
+
+  async listEntrySummaries() {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c
+      .from("v_entry_admin")
+      .select("*")
+      .order("entry_name");
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      entryName: r.entry_name,
+      nameIsDefault: Boolean(r.name_is_default),
+      isFreeEntry: Boolean(r.is_free_entry),
+      ownerId: r.owner_id,
+      ownerName: r.owner_name,
+      wins: Number(r.wins ?? 0),
+      losses: Number(r.losses ?? 0),
+      livesRemaining: Number(r.lives_remaining ?? 0),
+      status: r.status,
+      byeUsed: Boolean(r.bye_used),
+      teamsUsed: r.teams_used ?? [],
+      lastScoredWeek: r.last_scored_week,
+    }));
+  },
+
   async updateEntry(a) {
     const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_update_entry",

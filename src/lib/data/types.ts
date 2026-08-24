@@ -40,7 +40,23 @@ export interface GameRow {
   homeScore: number | null;
   awayScore: number | null;
   status: "scheduled" | "in_progress" | "final";
+  /** Manual pick-visibility override: null = automatic (kickoff). */
+  revealOverride: boolean | null;
+  /** Broadcast network (CBS, FOX, NBC, ESPN, Prime, Netflix, Peacock…). */
+  network: string | null;
 }
+
+/** Whether a game's picks are publicly visible right now (mirror of the
+ *  SQL rule in pick_is_public — override wins, else kickoff passed). */
+export function gameIsRevealed(
+  g: Pick<GameRow, "revealOverride" | "kickoffAt">,
+  now: Date = new Date(),
+): boolean {
+  return g.revealOverride ?? new Date(g.kickoffAt).getTime() <= now.getTime();
+}
+
+/** Sentinel team value the public views return for a not-yet-revealed pick. */
+export const LOCKED_TEAM = "LOCKED";
 
 export interface EntrySummary {
   id: string;

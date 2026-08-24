@@ -95,7 +95,7 @@ export function WeeksEditor({ weeks }: { weeks: WeekRow[] }) {
     <div className="space-y-2">
       <div className="hidden items-center gap-x-3 px-3 text-xs font-medium text-muted-foreground lg:flex">
         <span className="w-10" />
-        <span className="w-64">Thu/Fri picks lock (ET)</span>
+        <span className="w-64">Wed/Thu/Fri picks lock (ET)</span>
         <span className="w-64">Sat–Mon picks lock (ET)</span>
       </div>
       {weeks.map((w) => {

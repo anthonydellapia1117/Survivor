@@ -21,8 +21,8 @@ export default async function AdminOverviewPage() {
       data.listPayments(),
       data.auditTail(50),
       pub.getWeeks(),
-      pub.getEntries(),
-      pub.getGridCells(),
+      data.listEntrySummaries(),
+      data.listGridCells(),
       data.getConfig(),
     ]);
   const lastExport =

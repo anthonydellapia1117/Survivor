@@ -1,8 +1,10 @@
 // Lynne submission package (spec 6.2): exactly the columns her sheet
 // expects — entry label, team — for one week's current picks.
+// Admin-only: this file exists to be SENT to Lynne, and it must carry the
+// real picks — which the public payload deliberately locks pre-kickoff.
 
-import { getData } from "@/lib/data";
 import { getAdminData } from "@/lib/data/admin";
+import { getAdminSession } from "@/lib/auth";
 
 function csvField(s: string): string {
   return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
@@ -18,8 +20,13 @@ export async function GET(
     return new Response("bad week", { status: 400 });
   }
 
+  const session = await getAdminSession();
+  if (!session) {
+    return new Response("admin only", { status: 403 });
+  }
+
   const [cells, entries] = await Promise.all([
-    getData().getGridCells(),
+    getAdminData().listGridCells(),
     getAdminData().listEntries(),
   ]);
   const labelByEntry = new Map(

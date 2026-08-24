@@ -242,6 +242,9 @@ export function GridView({ entries, weeks, cells }: Props) {
           <span className="size-2.5 rounded-[2px] cell-hatched border border-loss/40" />{" "}
           Missed
         </span>
+        <span className="flex items-center gap-1.5" title="A locked pick is not in the page data at all until its game starts">
+          <span aria-hidden>🔒</span> Picks unlock when each game kicks off
+        </span>
         <span className="ml-auto tabular-nums">
           {visible.length} of {entries.length} entries
         </span>
@@ -300,6 +303,22 @@ export function GridView({ entries, weeks, cells }: Props) {
                         className="h-11 min-w-11 border-b border-border/60 text-center"
                       >
                         <span className="text-xs text-pending">·</span>
+                      </td>
+                    );
+                  }
+                  if (cell.team === "LOCKED") {
+                    return (
+                      <td
+                        key={w.week}
+                        className="h-11 min-w-11 border-b border-border/60 p-0.5 text-center"
+                      >
+                        <span
+                          className="flex h-full min-h-10 w-full flex-col items-center justify-center rounded-sm border border-border/60 bg-surface-2/60 text-[10px] font-semibold tracking-wide text-muted-foreground"
+                          title="Pick locked — visible when this game kicks off"
+                        >
+                          <span aria-hidden>🔒</span>
+                          LOCKED
+                        </span>
                       </td>
                     );
                   }

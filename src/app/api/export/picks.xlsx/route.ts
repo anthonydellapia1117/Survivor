@@ -22,6 +22,14 @@ const FILLS: Record<string, string> = {
 
 function cellFor(c: GridCell | undefined): any {
   if (!c) return { v: "", t: "s" };
+  if (c.team === "LOCKED") {
+    // Public download of a pick whose game hasn't kicked off.
+    return {
+      v: "🔒",
+      t: "s",
+      s: { font: { color: { rgb: "888888" } }, alignment: { horizontal: "center" } },
+    };
+  }
   const label = c.team === "SKIP_WEEK" ? "BYE" : c.team;
   const result = c.result ?? "pending";
   const fill = FILLS[result];
@@ -43,12 +51,14 @@ function cellFor(c: GridCell | undefined): any {
 
 export async function GET() {
   const data = getData();
-  const [entries, weeks, cells] = await Promise.all([
-    data.getEntries(),
-    data.getWeeks(),
-    data.getGridCells(),
-  ]);
   const session = await getAdminSession();
+  // Public download gets the public (locked-masked) payload; the admin's
+  // download carries the real picks.
+  const [entries, weeks, cells] = await Promise.all([
+    session ? getAdminData().listEntrySummaries() : data.getEntries(),
+    data.getWeeks(),
+    session ? getAdminData().listGridCells() : data.getGridCells(),
+  ]);
 
   const sorted = [...entries].sort(
     (a, b) =>

@@ -31,8 +31,21 @@ describe("collisionKind", () => {
   });
 
   it("edit1 across case folds — the tommybrads trap", () => {
+    // Bases differ by case ("Tommybrads" vs "tommybrads") — NOT a clean
+    // numbered set, so it stays flagged.
     expect(collisionKind("Tommybrads1", "tommybrads2")).toBe("edit1");
-    expect(collisionKind("Nick&Kels 1", "Nick&Kels 2")).toBe("edit1");
+  });
+
+  it("numbered sets are the naming convention, not a hazard", () => {
+    expect(collisionKind("Nick&Kels 1", "Nick&Kels 2")).toBeNull();
+    expect(collisionKind("Waggs1", "Waggs2")).toBeNull();
+    expect(collisionKind("ReRe #1", "ReRe #2")).toBeNull();
+    // Same number, different spacing = likely typo duplicate — flagged.
+    expect(collisionKind("Waggs1", "Waggs 1")).toBe("edit1");
+    // A cross-owner numbered pair is suspicious again.
+    expect(
+      collisionKind("Waggs1", "Waggs2", { sameOwner: false }),
+    ).toBe("edit1");
   });
 
   it("null for safely distinct names", () => {
@@ -57,7 +70,7 @@ describe("findCollisions", () => {
 });
 
 describe("collisionGroups", () => {
-  it("clusters transitive near-collisions into one group", () => {
+  it("numbered sets vanish; genuine hazards remain", () => {
     const groups = collisionGroups([
       "Nick&Kels 1",
       "Nick&Kels 2",
@@ -67,18 +80,17 @@ describe("collisionGroups", () => {
       "Tommybrads1",
       "tommybrads2",
     ]);
-    expect(groups).toHaveLength(2);
-    const kels = groups.find((g) => g.names.includes("Nick&Kels 1"))!;
-    expect(kels.names).toEqual([
-      "Nick&Kels 1",
-      "Nick&Kels 2",
-      "Nick&Kels 3",
-      "Nick&Kels 4",
-    ]);
-    expect(kels.kind).toBe("edit1");
-    const brads = groups.find((g) => g.names.includes("Tommybrads1"))!;
-    expect(brads.names).toEqual(["Tommybrads1", "tommybrads2"]);
-    expect(brads.kind).toBe("edit1");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].names).toEqual(["Tommybrads1", "tommybrads2"]);
+    expect(groups[0].kind).toBe("edit1");
+  });
+
+  it("the same numbered set across two owners stays flagged", () => {
+    const names = ["Waggs1", "Waggs2", "Waggs3"];
+    expect(collisionGroups(names, ["Waggs", "Waggs", "Waggs"])).toEqual([]);
+    const cross = collisionGroups(names, ["Waggs", "Waggs", "Somebody Else"]);
+    expect(cross).toHaveLength(1);
+    expect(cross[0].names).toContain("Waggs3");
   });
 
   it("elevates the group kind to the worst pair inside it", () => {

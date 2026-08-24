@@ -122,8 +122,10 @@ export interface Distribution {
 }
 
 /**
- * Pick distribution for the current play week. Revealed ONLY once that
- * week's deadline has passed — before that the counts stay server-side.
+ * Pick distribution for the current play week. Counts ONLY picks whose
+ * games have started — locked picks are masked out of the payload
+ * server-side (per-game visibility), so a game's counts appear the moment
+ * it kicks off and never before.
  */
 export function pickDistribution(
   weeks: WeekRow[],
@@ -132,15 +134,14 @@ export function pickDistribution(
 ): Distribution | null {
   const wk = currentPlayWeek(weeks, now);
   if (!wk) return null;
-  const revealed = new Date(wk.deadlineAt) <= now;
-  if (!revealed) return { week: wk.week, revealed: false, rows: [] };
   const counts = new Map<string, number>();
   let total = 0;
   for (const c of cells) {
-    if (c.week !== wk.week) continue;
+    if (c.week !== wk.week || c.team === "LOCKED") continue;
     counts.set(c.team, (counts.get(c.team) ?? 0) + 1);
     total += 1;
   }
+  if (total === 0) return { week: wk.week, revealed: false, rows: [] };
   const rows = [...counts.entries()]
     .map(([team, count]) => ({
       team,

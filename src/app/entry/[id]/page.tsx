@@ -50,7 +50,11 @@ export default async function EntryPage(props: {
   const { entry, picks } = detail;
 
   const usedSet = new Set(
-    picks.filter((p) => p.team !== SKIP_WEEK).map((p) => p.team),
+    picks
+      .filter(
+        (p) => p.team !== SKIP_WEEK && p.team !== "MISSED" && p.team !== "LOCKED",
+      )
+      .map((p) => p.team),
   );
   const isOut = entry.status === "eliminated";
   const elimWeek = isOut ? eliminationWeekOf(picks) : null;
@@ -169,6 +173,22 @@ export default async function EntryPage(props: {
         ) : (
           <ol className="mt-3 space-y-2">
             {picks.map((p) => {
+              if (p.team === "LOCKED") {
+                return (
+                  <li
+                    key={p.week}
+                    className="flex items-center gap-3 rounded-md border border-dashed border-border bg-surface-2/50 px-3 py-2.5"
+                  >
+                    <span className="w-9 shrink-0 text-xs tabular-nums text-muted-foreground">
+                      W{p.week}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground">
+                      <span aria-hidden className="mr-1.5">🔒</span>
+                      Locked — visible when this game kicks off
+                    </span>
+                  </li>
+                );
+              }
               const killing = isOut && elimWeek === p.week &&
                 (p.result === "loss" || p.result === "tie_loss" || p.result === "missed");
               return (

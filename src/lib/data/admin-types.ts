@@ -105,6 +105,16 @@ export interface AdminBackend {
     status: "scheduled" | "in_progress" | "final";
     actor: string;
   }): Promise<number>;
+  setGameReveal(args: {
+    gameId: string;
+    override: boolean | null;
+    actor: string;
+  }): Promise<void>;
+  /** UNMASKED picks — the public v_grid_cells hides pre-kickoff picks;
+   *  admin screens and exports need the real thing. */
+  listGridCells(): Promise<import("./types").GridCell[]>;
+  /** UNMASKED entry summaries (raw teams_used/bye_used). */
+  listEntrySummaries(): Promise<import("./types").EntrySummary[]>;
   removeEntry(args: { entryId: string; actor: string }): Promise<void>;
   voidEntry(args: { entryId: string; actor: string }): Promise<void>;
   recordPayment(args: {

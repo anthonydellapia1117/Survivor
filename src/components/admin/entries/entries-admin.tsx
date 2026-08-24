@@ -51,7 +51,11 @@ export function EntriesAdmin({
     [live],
   );
   const nearCollisions = useMemo(
-    () => collisionGroups(live.map((e) => e.entryName)),
+    () =>
+      collisionGroups(
+        live.map((e) => e.entryName),
+        live.map((e) => e.ownerName),
+      ),
     [live],
   );
 
@@ -123,11 +127,18 @@ export function EntriesAdmin({
             ))}
           </ul>
           <p className="mt-1 text-xs opacity-80">
-            Deliberate sets (Nick&Kels 1–4) are fine — this is a reference,
-            not a to-do list.
+            Numbered sets with an identical base (Nick&Kels 1–4) are the
+            naming convention and are excluded — anything listed here is a
+            genuine hazard.
           </p>
         </div>
-      ) : null}
+      ) : (
+        <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
+          No name near-collisions. Deliberate numbered sets (Waggs1–4,
+          ReRe #1–4) are excluded by convention; case-inconsistent sets and
+          cross-owner lookalikes would be flagged here.
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">

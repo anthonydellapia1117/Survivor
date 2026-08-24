@@ -90,6 +90,8 @@ export const localPgBackend: DataBackend = {
       homeScore: r.home_score,
       awayScore: r.away_score,
       status: r.status,
+      revealOverride: r.reveal_override ?? null,
+      network: r.network ?? null,
     }));
   },
 

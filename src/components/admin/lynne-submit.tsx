@@ -71,7 +71,16 @@ export function LynneSubmit({
         <span className="text-xs tabular-nums text-muted-foreground">
           {ready.length} of {aliveCount} alive entries in the block
         </span>
-        <Button size="sm" onClick={copy} disabled={ready.length === 0}>
+        <Button
+          size="sm"
+          onClick={copy}
+          disabled={ready.length === 0 || missingNumber.length > 0}
+          title={
+            missingNumber.length > 0
+              ? "Blocked: entries in this block have no Lynne number — she matches on NO."
+              : undefined
+          }
+        >
           {copied ? "Copied" : "Copy block"}
         </Button>
       </div>
@@ -81,7 +90,9 @@ export function LynneSubmit({
           <p className="font-semibold">
             {missingNumber.length}{" "}
             {missingNumber.length === 1 ? "entry has" : "entries have"} no
-            Lynne number — they CANNOT be submitted:
+            Lynne number — Copy is disabled until every entry in the block
+            has one. She matches picks by NO.; a block missing entries or
+            numbers is worse than no block:
           </p>
           <p className="mt-1 text-xs">{missingNumber.join(" · ")}</p>
           <p className="mt-1 text-xs opacity-80">
@@ -101,7 +112,9 @@ export function LynneSubmit({
       <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-4 font-mono text-sm leading-relaxed">
         {ready.length > 0
           ? block
-          : `No submittable picks for week ${week} yet.`}
+          : missingNumber.length > 0
+            ? `Nothing submittable for week ${week}: every entry with a pick is missing its Lynne number.`
+            : `No submittable picks for week ${week} yet.`}
       </pre>
     </div>
   );

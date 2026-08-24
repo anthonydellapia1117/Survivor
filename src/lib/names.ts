@@ -66,18 +66,46 @@ export function editDistance(a: string, b: string, max = 1): number {
   return prev[n] > max ? maxOut : prev[n];
 }
 
+const SET_SUFFIX = /^(.*?)[\s#]*(\d+)$/;
+
+/**
+ * The pool's naming convention: "Waggs1"–"Waggs4", "ReRe #1"–"#4",
+ * "Nick&Kels 1"–"4". Two names are a deliberate numbered set when they
+ * share the IDENTICAL base (case- and punctuation-sensitive — a base that
+ * differs only by case is the dangerous tommybrads1/Tommybrads2 class and
+ * stays flagged) and carry DIFFERENT trailing numbers (the same number
+ * spaced differently is a likely typo duplicate and stays flagged).
+ */
+export function deliberateSetPair(a: string, b: string): boolean {
+  const ma = SET_SUFFIX.exec(a);
+  const mb = SET_SUFFIX.exec(b);
+  if (!ma || !mb) return false;
+  return ma[1] === mb[1] && Number(ma[2]) !== Number(mb[2]);
+}
+
 /**
  * How `a` and `b` collide, or null when they are safely distinct.
  * exact  — the very same string
  * case   — equal once case and whitespace are folded
  * edit1  — one insertion/deletion/substitution/transposition apart (folded)
+ *
+ * Numbered-set pairs (see deliberateSetPair) are the naming convention,
+ * not a hazard — they never count as edit1. Pass `sameOwner: false` when
+ * the two names belong to DIFFERENT owners: a cross-owner numbered pair
+ * is back to being suspicious and is flagged.
  */
-export function collisionKind(a: string, b: string): CollisionKind | null {
+export function collisionKind(
+  a: string,
+  b: string,
+  opts?: { sameOwner?: boolean },
+): CollisionKind | null {
   if (a === b) return "exact";
   const fa = fold(a);
   const fb = fold(b);
   if (fa === fb) return "case";
-  return editDistance(fa, fb, 1) <= 1 ? "edit1" : null;
+  if (editDistance(fa, fb, 1) > 1) return null;
+  if (opts?.sameOwner !== false && deliberateSetPair(a, b)) return null;
+  return "edit1";
 }
 
 export interface NameCollision {
@@ -107,8 +135,13 @@ export interface CollisionGroup {
  * Cluster an existing name list into groups of mutual near-collisions
  * (connected components over pairwise collisions), so Nick&Kels 1–4 read as
  * one group instead of six pairs. Groups keep the input's name order.
+ * Pass `owners` (parallel to `names`) so a numbered set is only excused
+ * within one owner — the same pattern across two owners stays flagged.
  */
-export function collisionGroups(names: string[]): CollisionGroup[] {
+export function collisionGroups(
+  names: string[],
+  owners?: string[],
+): CollisionGroup[] {
   const parent = names.map((_, i) => i);
   function find(i: number): number {
     while (parent[i] !== i) {
@@ -120,7 +153,9 @@ export function collisionGroups(names: string[]): CollisionGroup[] {
   const worst = new Map<number, CollisionKind>();
   for (let i = 0; i < names.length; i++) {
     for (let j = i + 1; j < names.length; j++) {
-      const kind = collisionKind(names[i], names[j]);
+      const kind = collisionKind(names[i], names[j], {
+        sameOwner: owners ? owners[i] === owners[j] : undefined,
+      });
       if (!kind) continue;
       const ri = find(i);
       const rj = find(j);

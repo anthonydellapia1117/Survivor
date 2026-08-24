@@ -23,8 +23,8 @@ export default async function WeekCockpitPage(props: {
   const pub = getData();
   const [entries, cells, weeks, games, imports, adminEntries] =
     await Promise.all([
-      pub.getEntries(),
-      pub.getGridCells(),
+      getAdminData().listEntrySummaries(),
+      getAdminData().listGridCells(),
       pub.getWeeks(),
       pub.getSchedule(),
       pub.getLynneImports(),

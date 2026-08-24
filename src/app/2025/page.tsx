@@ -113,7 +113,15 @@ export default async function Archive2025Page() {
                   <tr key={label}>
                     <td className={cn("whitespace-nowrap px-2 py-1 font-semibold", cls)}>{label}</td>
                     {weekly.map((w) => (
-                      <td key={w.week} className="px-1 py-1 text-center tabular-nums">
+                      <td
+                        key={w.week}
+                        className="px-1 py-1 text-center tabular-nums"
+                        title={
+                          get(w) === null
+                            ? "Blank in her sheet — week 18's survivors are the 27 winners in Loss/Bye"
+                            : undefined
+                        }
+                      >
                         {get(w) ?? "—"}
                       </td>
                     ))}
@@ -140,6 +148,8 @@ export default async function Archive2025Page() {
           <p className="mt-2 text-xs text-muted-foreground">
             1,206 clean after week 1 → 27 winners after week 18. The week-8
             single-elimination switch (726 out) was the season&apos;s cliff.
+            The week-18 Out cell is blank in her sheet (shown as —): the 27
+            still standing in Loss/Bye are the winners.
           </p>
         </CardContent>
       </Card>

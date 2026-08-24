@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getData } from "@/lib/data";
+import { getAdminData } from "@/lib/data/admin";
 import { PicksEntry } from "@/components/admin/picks/picks-entry";
 
 export const metadata: Metadata = { title: "Picks" };
@@ -7,9 +8,9 @@ export const metadata: Metadata = { title: "Picks" };
 export default async function PicksPage() {
   const data = getData();
   const [entries, weeks, cells] = await Promise.all([
-    data.getEntries(),
+    getAdminData().listEntrySummaries(),
     data.getWeeks(),
-    data.getGridCells(),
+    getAdminData().listGridCells(),
   ]);
 
   return (

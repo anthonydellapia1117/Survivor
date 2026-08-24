@@ -67,7 +67,9 @@ export interface DuplicateTeamRisk {
 export function duplicateTeamRisks(cells: GridCell[]): DuplicateTeamRisk[] {
   const byEntryTeam = new Map<string, Map<string, number[]>>();
   for (const c of cells) {
-    if (c.team === "SKIP_WEEK" || c.team === "MISSED") continue;
+    if (c.team === "SKIP_WEEK" || c.team === "MISSED" || c.team === "LOCKED") {
+      continue;
+    }
     if (!byEntryTeam.has(c.entryId)) byEntryTeam.set(c.entryId, new Map());
     const tm = byEntryTeam.get(c.entryId)!;
     if (!tm.has(c.team)) tm.set(c.team, []);

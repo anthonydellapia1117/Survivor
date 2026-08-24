@@ -172,17 +172,49 @@ describe("pickDistribution", () => {
     cell("d", 1, null, "SF"),
   ];
 
-  it("stays hidden before the deadline — no rows leave the server", () => {
-    const d = pickDistribution(weeks, cells, new Date("2026-09-08T15:59:00Z"));
+  it("hidden while every pick is still LOCKED — nothing to count", () => {
+    const locked = cells.map((c) => ({ ...c, team: "LOCKED" }));
+    const d = pickDistribution(weeks, locked, new Date("2026-09-08T15:59:00Z"));
     expect(d).toMatchObject({ week: 1, revealed: false });
     expect(d!.rows).toHaveLength(0);
   });
 
-  it("reveals sorted counts with percentages after the deadline", () => {
+  it("counts only revealed picks — locked games stay out of the totals", () => {
+    // KC's game has started (2 picks revealed); BUF's and SF's have not.
+    const partial = [
+      cells[0],
+      cells[1],
+      { ...cells[2], team: "LOCKED" },
+      { ...cells[3], team: "LOCKED" },
+    ];
+    const d = pickDistribution(weeks, partial, new Date("2026-09-08T16:01:00Z"));
+    expect(d!.revealed).toBe(true);
+    expect(d!.rows).toEqual([{ team: "KC", count: 2, pct: 100 }]);
+  });
+
+  it("reveals sorted counts with percentages once games are underway", () => {
     const d = pickDistribution(weeks, cells, new Date("2026-09-08T16:01:00Z"));
     expect(d!.revealed).toBe(true);
     expect(d!.rows[0]).toEqual({ team: "KC", count: 2, pct: 50 });
     expect(d!.rows).toHaveLength(3);
+  });
+});
+
+describe("gameIsRevealed", () => {
+  const base = { kickoffAt: "2026-09-13T17:00:00Z" };
+  const before = new Date("2026-09-13T16:59:00Z");
+  const after = new Date("2026-09-13T17:01:00Z");
+
+  it("automatic: kickoff decides", async () => {
+    const { gameIsRevealed } = await import("@/lib/data/types");
+    expect(gameIsRevealed({ ...base, revealOverride: null }, before)).toBe(false);
+    expect(gameIsRevealed({ ...base, revealOverride: null }, after)).toBe(true);
+  });
+
+  it("the override wins in both directions", async () => {
+    const { gameIsRevealed } = await import("@/lib/data/types");
+    expect(gameIsRevealed({ ...base, revealOverride: true }, before)).toBe(true);
+    expect(gameIsRevealed({ ...base, revealOverride: false }, after)).toBe(false);
   });
 });
 

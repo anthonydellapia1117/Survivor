@@ -19,9 +19,9 @@ async function gatherInput(): Promise<SheetsInput> {
   const admin = getAdminData();
   const [entries, weeks, cells, owners, payments, imports, config, allPicks] =
     await Promise.all([
-      pub.getEntries(),
+      admin.listEntrySummaries(),
       pub.getWeeks(),
-      pub.getGridCells(),
+      admin.listGridCells(), // real picks — the sheet is Lynne's copy
       admin.listOwners(),
       admin.listPayments(),
       pub.getLynneImports(),

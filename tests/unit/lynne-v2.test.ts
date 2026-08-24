@@ -64,7 +64,7 @@ describe("duplicate team detection", () => {
     expect(risks).toEqual([{ entryId: "e1", team: "LAC", weeks: [9, 13] }]);
   });
 
-  it("ignores byes and missed picks; distinct teams are clean", () => {
+  it("ignores byes, missed picks, and locked cells; distinct teams are clean", () => {
     expect(
       duplicateTeamRisks([
         cell("e1", 8, "SKIP_WEEK"),
@@ -72,6 +72,8 @@ describe("duplicate team detection", () => {
         cell("e1", 10, "MISSED"),
         cell("e1", 11, "MISSED"),
         cell("e1", 12, "KC"),
+        cell("e1", 13, "LOCKED"),
+        cell("e1", 14, "LOCKED"),
       ]),
     ).toEqual([]);
   });

@@ -238,6 +238,21 @@ export async function setGameScoresAction(input: {
   });
 }
 
+export async function setGameRevealAction(input: {
+  gameId: string;
+  override: boolean | null;
+}): Promise<ActionResult> {
+  return guarded(async (actor) => {
+    await getAdminData().setGameReveal({
+      gameId: input.gameId,
+      override: input.override,
+      actor,
+    });
+    revalidateAll();
+    return { ok: true };
+  });
+}
+
 /**
  * D5: fetch finals from ESPN's public scoreboard to PRE-FILL the form for
  * review. Never auto-commits — the admin echo-confirms before anything is
@@ -369,7 +384,9 @@ export async function lynneImportPreviewAction(
     const buf = Buffer.from(await file.arrayBuffer());
     const admin = getAdminData();
     const entries = (await admin.listEntries()).filter((e) => !e.voidedAt);
-    const cells = (await getData().getGridCells()).filter(
+    // Raw picks — the public view masks pre-kickoff picks, which would
+    // turn every unstarted game into a false variance.
+    const cells = (await admin.listGridCells()).filter(
       (c) => c.week === week,
     );
     const localPicks = cells.map((c) => ({
@@ -393,7 +410,7 @@ export async function lynneImportPreviewAction(
       }
       const alreadyImported = await admin.importExists(grid.sha256);
 
-      const summaries = await getData().getEntries();
+      const summaries = await admin.listEntrySummaries();
       const statusById = new Map(summaries.map((s) => [s.id, s.status]));
       const targets = entries.map((e) => ({
         id: e.id,

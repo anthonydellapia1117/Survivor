@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getData } from "@/lib/data";
+import { getAdminData } from "@/lib/data/admin";
 import { buildRecap } from "@/lib/lynne/recap";
 import { RecapView } from "@/components/admin/recap-view";
 
@@ -11,8 +12,8 @@ export default async function RecapPage(props: {
   const { week: weekParam } = await props.searchParams;
   const data = getData();
   const [entries, cells, weeks] = await Promise.all([
-    data.getEntries(),
-    data.getGridCells(),
+    getAdminData().listEntrySummaries(),
+    getAdminData().listGridCells(),
     data.getWeeks(),
   ]);
 

@@ -152,6 +152,69 @@ export const adminLocalPgBackend: AdminBackend = {
     return Number(rows[0].n);
   },
 
+  async setGameReveal(a) {
+    await db().query("select admin_set_game_reveal($1,$2,$3)", [
+      a.gameId,
+      a.override,
+      a.actor,
+    ]);
+  },
+
+  async listGridCells() {
+    // Local dev runs as superuser: read picks raw, mirroring what the
+    // authenticated admin gets through RLS in production.
+    const { rows } = await db().query(
+      `select entry_id, week, team, result, late, submitted_at, source, result_source
+         from picks where is_current order by week`,
+    );
+    return rows.map((r: any) => ({
+      entryId: r.entry_id,
+      week: r.week,
+      team: r.team,
+      result: r.result,
+      late: Boolean(r.late),
+      submittedAt:
+        r.submitted_at instanceof Date
+          ? r.submitted_at.toISOString()
+          : r.submitted_at,
+      source: r.source,
+      resultSource: r.result_source,
+    }));
+  },
+
+  async listEntrySummaries() {
+    // v_entry_admin gates on is_admin(), which is JWT-based — the local
+    // superuser connection has no JWT, so query the raw base directly.
+    const { rows } = await db().query(
+      `select e.id, e.entry_name, e.name_is_default, e.is_free_entry,
+              e.owner_id, o.first_name || ' ' || o.last_name as owner_name,
+              s.wins, s.losses, s.lives_remaining, s.status, s.bye_used,
+              s.teams_used, s.last_scored_week
+         from entries e
+         join owners o on o.id = e.owner_id
+         join v_entry_standing s on s.entry_id = e.id
+        where o.participation_status = 'confirmed'
+          and o.deleted_at is null
+          and e.voided_at is null
+        order by e.entry_name`,
+    );
+    return rows.map((r: any) => ({
+      id: r.id,
+      entryName: r.entry_name,
+      nameIsDefault: Boolean(r.name_is_default),
+      isFreeEntry: Boolean(r.is_free_entry),
+      ownerId: r.owner_id,
+      ownerName: r.owner_name,
+      wins: Number(r.wins ?? 0),
+      losses: Number(r.losses ?? 0),
+      livesRemaining: Number(r.lives_remaining ?? 0),
+      status: r.status,
+      byeUsed: Boolean(r.bye_used),
+      teamsUsed: r.teams_used ?? [],
+      lastScoredWeek: r.last_scored_week,
+    }));
+  },
+
   async updateEntry(a) {
     await db().query("select admin_update_entry($1,$2,$3,$4,$5,$6)", [
       a.entryId,

@@ -102,7 +102,11 @@ export default async function DashboardPage() {
   const chalk: { week: number; team: string; count: number; result: string }[] = [];
   for (const w of weeks) {
     const weekCells = cells.filter(
-      (c) => c.week === w.week && c.team !== SKIP_WEEK && c.team !== "MISSED",
+      (c) =>
+        c.week === w.week &&
+        c.team !== SKIP_WEEK &&
+        c.team !== "MISSED" &&
+        c.team !== "LOCKED",
     );
     const scored = weekCells.filter((c) => c.result && c.result !== "pending");
     if (scored.length === 0) continue;

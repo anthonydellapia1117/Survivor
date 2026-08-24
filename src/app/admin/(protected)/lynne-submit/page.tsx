@@ -13,8 +13,8 @@ export default async function LynneSubmitPage(props: {
   const { week: weekParam } = await props.searchParams;
   const pub = getData();
   const [entries, cells, weeks, adminEntries] = await Promise.all([
-    pub.getEntries(),
-    pub.getGridCells(),
+    getAdminData().listEntrySummaries(),
+    getAdminData().listGridCells(),
     pub.getWeeks(),
     getAdminData().listEntries(),
   ]);
