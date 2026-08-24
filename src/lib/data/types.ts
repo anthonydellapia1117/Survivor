@@ -97,9 +97,28 @@ export interface DataBackend {
   getWeeks(): Promise<WeekRow[]>;
   /** The full 2026 regular-season schedule, ordered by week then kickoff. */
   getSchedule(): Promise<GameRow[]>;
+  /** Lynne's final 2025 sheet — read-only archive, partial by her design. */
+  getArchive2025(): Promise<{
+    entries: Archive2025Entry[];
+    weekly: Archive2025Weekly[];
+  }>;
   getEntries(): Promise<EntrySummary[]>;
   getEntry(id: string): Promise<EntryDetail | null>;
   getGridCells(): Promise<GridCell[]>;
   getPot(): Promise<PotSummary>;
   getLynneImports(): Promise<LynneImportRow[]>;
+}
+
+export interface Archive2025Entry {
+  lynneNumber: number;
+  entryName: string;
+  outcome: "winner" | "out";
+  picks: (string | null)[];
+}
+
+export interface Archive2025Weekly {
+  week: number;
+  noLosses: number | null;
+  lossBye: number | null;
+  out: number | null;
 }

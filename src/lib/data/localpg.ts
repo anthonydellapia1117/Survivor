@@ -93,6 +93,27 @@ export const localPgBackend: DataBackend = {
     }));
   },
 
+  async getArchive2025() {
+    const [a, b] = await Promise.all([
+      db().query("select * from archive_2025_entries order by lynne_number"),
+      db().query("select * from archive_2025_weekly order by week"),
+    ]);
+    return {
+      entries: a.rows.map((r: any) => ({
+        lynneNumber: r.lynne_number,
+        entryName: r.entry_name,
+        outcome: r.outcome,
+        picks: r.picks,
+      })),
+      weekly: b.rows.map((r: any) => ({
+        week: r.week,
+        noLosses: r.no_losses,
+        lossBye: r.loss_bye,
+        out: r.out,
+      })),
+    };
+  },
+
   async getEntries(): Promise<EntrySummary[]> {
     const { rows } = await db().query(
       "select * from v_entry_public order by entry_name",

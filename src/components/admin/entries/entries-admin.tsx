@@ -133,7 +133,7 @@ export function EntriesAdmin({
         <table className="w-full text-sm">
           <thead className="bg-surface-2">
             <tr>
-              {["Entry", "Owner", "#", "Lynne label", "", "Picks", ""].map(
+              {["Owner", "Entry", "NO.", "Lynne label", "", "Picks", ""].map(
                 (h, i) => (
                   <th
                     key={i}
@@ -194,12 +194,16 @@ function EntryRow({
         voided && "opacity-55",
       )}
     >
-      <td className="whitespace-nowrap px-3 font-medium">{entry.entryName}</td>
       <td className="whitespace-nowrap px-3 text-muted-foreground">
         {entry.ownerName}
       </td>
+      <td className="whitespace-nowrap px-3 font-medium">{entry.entryName}</td>
       <td className="whitespace-nowrap px-3 text-right tabular-nums">
-        {entry.entryIndex}
+        {entry.lynneNumber ?? (
+          <span className="font-semibold text-tie" title="No Lynne number — cannot be submitted">
+            —
+          </span>
+        )}
       </td>
       <td className="whitespace-nowrap px-3 text-muted-foreground">
         {entry.lynneLabel ?? "—"}

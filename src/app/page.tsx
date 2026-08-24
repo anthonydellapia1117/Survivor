@@ -11,7 +11,9 @@ import {
   standingsBreakdown,
   survivalCurve,
 } from "@/lib/dashboard";
-import { RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
+import { NFL_TEAMS, RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
+import { eliminationWeekOf } from "@/lib/alive";
+import { TEAM_PALETTE } from "@/lib/team-colors";
 import { lynneBucket } from "@/lib/lynne/names";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -77,6 +79,51 @@ export default async function DashboardPage() {
     { label: "Out", n: buckets.Out, cls: "bg-loss" },
   ].filter((s) => s.n > 0);
   const lynneSentence = `No Losses=${buckets["No Losses"]}, 1 Loss/Bye used=${buckets["Loss/Bye"]} and Out=${buckets.Out}. We are down to ${alive} left in the pool.`;
+
+  // F1 — carnage report: which teams have eliminated the most entries.
+  const cellsByEntry = new Map<string, typeof cells>();
+  for (const c of cells) {
+    if (!cellsByEntry.has(c.entryId)) cellsByEntry.set(c.entryId, []);
+    cellsByEntry.get(c.entryId)!.push(c);
+  }
+  const carnage = new Map<string, number>();
+  for (const e of entries) {
+    if (e.status !== "eliminated") continue;
+    const ec = cellsByEntry.get(e.id) ?? [];
+    const ew = eliminationWeekOf(ec);
+    const kill = ec.find(
+      (c) => c.week === ew && (c.result === "loss" || c.result === "tie_loss"),
+    );
+    if (kill) carnage.set(kill.team, (carnage.get(kill.team) ?? 0) + 1);
+  }
+  const carnageTop = [...carnage.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  // F1 — chalk vs contrarian: did the most-picked team win each week?
+  const chalk: { week: number; team: string; count: number; result: string }[] = [];
+  for (const w of weeks) {
+    const weekCells = cells.filter(
+      (c) => c.week === w.week && c.team !== SKIP_WEEK && c.team !== "MISSED",
+    );
+    const scored = weekCells.filter((c) => c.result && c.result !== "pending");
+    if (scored.length === 0) continue;
+    const byTeam = new Map<string, { n: number; result: string }>();
+    for (const c of weekCells) {
+      const cur = byTeam.get(c.team) ?? { n: 0, result: c.result ?? "pending" };
+      cur.n += 1;
+      if (c.result && c.result !== "pending") cur.result = c.result;
+      byTeam.set(c.team, cur);
+    }
+    const top = [...byTeam.entries()].sort((a, b) => b[1].n - a[1].n)[0];
+    if (top) chalk.push({ week: w.week, team: top[0], count: top[1].n, result: top[1].result });
+  }
+
+  // F1 — teams running out: how many ALIVE entries still hold each team.
+  const aliveEntries = entries.filter((e) => e.status !== "eliminated");
+  const scarcity = NFL_TEAMS.map((t) => ({
+    team: t.abbr,
+    left: aliveEntries.filter((e) => !e.teamsUsed.includes(t.abbr)).length,
+  })).sort((a, b) => a.left - b.left);
+  const scarce = scarcity.filter((s) => s.left < aliveEntries.length).slice(0, 8);
 
   return (
     <div className="space-y-6">
@@ -250,6 +297,106 @@ export default async function DashboardPage() {
           </p>
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="bg-surface">
+          <CardHeader>
+            <CardTitle className="text-base">Carnage report</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {carnageTop.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No eliminations yet — this fills in as teams start killing
+                entries.
+              </p>
+            ) : (
+              <ul className="space-y-1.5 text-sm">
+                {carnageTop.map(([team, n]) => (
+                  <li key={team} className="flex items-center gap-2">
+                    <span
+                      className="h-4 w-1 rounded-full"
+                      style={{ background: TEAM_PALETTE[team]?.display }}
+                    />
+                    <span className="font-medium" style={{ color: TEAM_PALETTE[team]?.display }}>
+                      {team}
+                    </span>
+                    <span className="ml-auto tabular-nums text-loss">
+                      {n} {n === 1 ? "entry" : "entries"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-surface">
+          <CardHeader>
+            <CardTitle className="text-base">Chalk vs contrarian</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {chalk.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Once weeks are scored: the most-picked team each week, and
+                whether the crowd was right.
+              </p>
+            ) : (
+              <ul className="space-y-1.5 text-sm">
+                {chalk.map((c) => (
+                  <li key={c.week} className="flex items-center gap-2">
+                    <span className="w-9 tabular-nums text-muted-foreground">W{c.week}</span>
+                    <span className="font-medium" style={{ color: TEAM_PALETTE[c.team]?.display }}>
+                      {c.team}
+                    </span>
+                    <span className="text-xs text-muted-foreground">×{c.count}</span>
+                    <span
+                      className={cn(
+                        "ml-auto text-xs font-semibold",
+                        c.result === "win" ? "text-win" : c.result === "pending" ? "text-muted-foreground" : "text-loss",
+                      )}
+                    >
+                      {c.result === "win" ? "chalk held" : c.result === "pending" ? "pending" : "CHALK FELL"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-surface">
+          <CardHeader>
+            <CardTitle className="text-base">Teams running out</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {scarce.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Every alive entry still holds all 32 teams. Scarcity shows up
+                as picks burn teams.
+              </p>
+            ) : (
+              <ul className="space-y-1.5 text-sm">
+                {scarce.map((sc) => (
+                  <li key={sc.team} className="flex items-center gap-2">
+                    <span className="font-medium" style={{ color: TEAM_PALETTE[sc.team]?.display }}>
+                      {sc.team}
+                    </span>
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
+                      <div
+                        className="h-full rounded-full bg-tie"
+                        style={{ width: `${(sc.left / Math.max(1, aliveEntries.length)) * 100}%` }}
+                      />
+                    </div>
+                    <span className="tabular-nums text-muted-foreground">
+                      {sc.left}/{aliveEntries.length}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="bg-surface">
         <CardHeader>

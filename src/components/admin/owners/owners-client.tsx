@@ -13,13 +13,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { MoreHorizontal, Pencil, Plus } from "lucide-react";
+import { GitMerge, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AddEntriesDialog,
   AddOwnerDialog,
   EditOwnerDialog,
   SOURCE_OPTIONS,
 } from "./owner-dialogs";
+import { MergeOwnerDialog } from "./merge-owner-dialog";
+import { deleteOwnerAction } from "@/app/admin/actions";
+import { useRouter } from "next/navigation";
 
 const STATUS_BADGE: Record<AdminOwner["participationStatus"], string> = {
   confirmed: "border-win/40 bg-win/10 text-win",
@@ -44,9 +47,33 @@ export function OwnersClient({
   owners: AdminOwner[];
   entries: AdminEntry[];
 }) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<AdminOwner | null>(null);
   const [addingEntries, setAddingEntries] = useState<AdminOwner | null>(null);
+  const [merging, setMerging] = useState<AdminOwner | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // H: duplicate candidates — normalized name (lowercase, punctuation and
+  // whitespace stripped) groups, names displayed verbatim.
+  const dupGroups = useMemo(() => {
+    const norm = (o: AdminOwner) =>
+      `${o.firstName} ${o.lastName}`.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const m = new Map<string, AdminOwner[]>();
+    for (const o of owners) {
+      const k = norm(o);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(o);
+    }
+    return [...m.values()].filter((g) => g.length > 1);
+  }, [owners]);
+
+  async function hardDelete(o: AdminOwner) {
+    setDeleteError(null);
+    const res = await deleteOwnerAction({ ownerId: o.id });
+    if (!res.ok) setDeleteError(res.error ?? "Delete failed");
+    else router.refresh();
+  }
 
   const namesByOwner = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -85,6 +112,24 @@ export function OwnersClient({
           {filtered.length} of {owners.length} owners
         </span>
       </div>
+
+      {dupGroups.length > 0 ? (
+        <div className="rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie">
+          <p className="font-semibold">
+            Possible duplicate owners ({dupGroups.length}{" "}
+            {dupGroups.length === 1 ? "group" : "groups"}):
+          </p>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {dupGroups.map((g, i) => (
+              <li key={i}>
+                {g.map((o) => `${o.firstName} ${o.lastName} (${o.entryCount} entries, ${formatCents(o.paidCents)} paid)`).join("  ·  ")}
+                {" — use Merge in the row menu."}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {deleteError ? <p className="text-sm text-loss">{deleteError}</p> : null}
 
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
@@ -200,6 +245,19 @@ export function OwnersClient({
                           <Plus />
                           Add entries
                         </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setMerging(o)}>
+                          <GitMerge />
+                          Merge into another owner…
+                        </DropdownMenuItem>
+                        {o.entryCount === 0 && o.paidCents === 0 ? (
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={() => hardDelete(o)}
+                          >
+                            <Trash2 />
+                            Delete (empty typo row)
+                          </DropdownMenuItem>
+                        ) : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
@@ -232,6 +290,14 @@ export function OwnersClient({
           key={addingEntries.id}
           owner={addingEntries}
           onClose={() => setAddingEntries(null)}
+        />
+      ) : null}
+      {merging ? (
+        <MergeOwnerDialog
+          key={merging.id}
+          source={merging}
+          owners={owners}
+          onClose={() => setMerging(null)}
         />
       ) : null}
     </div>

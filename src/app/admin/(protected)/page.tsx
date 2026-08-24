@@ -46,6 +46,23 @@ export default async function AdminOverviewPage() {
     .filter((w) => w.missing > 0);
   const unconfirmedWeeks = weeks.filter((w) => !w.confirmed).length;
 
+  // F3: entries with no lynne_number cannot go on the weekly submission.
+  const liveNoNumber = entries.filter(
+    (e) => !e.voidedAt && e.lynneNumber === null,
+  ).length;
+
+  // F3/E2: missing picks for the next lock, sorted by urgency; pulses
+  // when the deadline is under 6 hours.
+  const nextLock = weeks
+    .filter((w) => new Date(w.deadlineAt).getTime() > now)
+    .sort((a, b) => +new Date(a.deadlineAt) - +new Date(b.deadlineAt))[0];
+  const nextLockMissing = nextLock
+    ? alive.filter((e) => !pickedByWeek.get(nextLock.week)?.has(e.id))
+    : [];
+  const hoursToLock = nextLock
+    ? (new Date(nextLock.earlyDeadlineAt).getTime() - now) / 3600000
+    : Infinity;
+
   // C3: a current pick reusing a team is an elimination in Lynne's pool.
   const entryNameById = new Map(pubEntries.map((e) => [e.id, e.entryName]));
   const dupRisks = duplicateTeamRisks(cells).map((d) => ({
@@ -119,6 +136,35 @@ export default async function AdminOverviewPage() {
             .map((d) => `${d.entryName} has ${d.team} in weeks ${d.weeks.join(" and ")}`)
             .join("; ")}
           . In Lynne&apos;s pool this puts the entry OUT.
+        </Link>
+      ) : null}
+      {nextLock && nextLockMissing.length > 0 && hoursToLock < 72 ? (
+        <Link
+          href="/admin/picks"
+          className={
+            hoursToLock < 6
+              ? "block animate-pulse rounded-md border border-loss/60 bg-loss/15 px-3 py-2.5 text-sm text-loss"
+              : "block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
+          }
+        >
+          <span className="font-semibold">
+            Week {nextLock.week}: {nextLockMissing.length}{" "}
+            {nextLockMissing.length === 1 ? "entry" : "entries"} still without
+            a pick
+          </span>{" "}
+          — first lock in {hoursToLock < 1 ? "under an hour" : `${Math.round(hoursToLock)}h`}:{" "}
+          {nextLockMissing.slice(0, 8).map((e) => e.entryName).join(", ")}
+          {nextLockMissing.length > 8 ? ` +${nextLockMissing.length - 8} more` : ""}
+        </Link>
+      ) : null}
+      {liveNoNumber > 0 ? (
+        <Link
+          href="/admin/entries"
+          className="block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
+        >
+          {liveNoNumber} {liveNoNumber === 1 ? "entry has" : "entries have"} no
+          Lynne number — they cannot go on the weekly submission block. Set
+          them on the Entries screen.
         </Link>
       ) : null}
       {unconfirmedWeeks > 0 ? (

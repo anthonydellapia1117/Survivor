@@ -92,6 +92,30 @@ export const supabaseBackend: DataBackend = {
     }));
   },
 
+  async getArchive2025() {
+    const c = client();
+    const [{ data: entries, error: e1 }, { data: weekly, error: e2 }] =
+      await Promise.all([
+        c.from("archive_2025_entries").select("*").order("lynne_number"),
+        c.from("archive_2025_weekly").select("*").order("week"),
+      ]);
+    if (e1 || e2) throw e1 ?? e2;
+    return {
+      entries: (entries ?? []).map((r: any) => ({
+        lynneNumber: r.lynne_number,
+        entryName: r.entry_name,
+        outcome: r.outcome,
+        picks: r.picks,
+      })),
+      weekly: (weekly ?? []).map((r: any) => ({
+        week: r.week,
+        noLosses: r.no_losses,
+        lossBye: r.loss_bye,
+        out: r.out,
+      })),
+    };
+  },
+
   async getEntries(): Promise<EntrySummary[]> {
     const { data, error } = await client()
       .from("v_entry_public")

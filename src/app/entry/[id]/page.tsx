@@ -40,10 +40,11 @@ export default async function EntryPage(props: {
 }) {
   const { id } = await props.params;
   const data = getData();
-  const [detail, games, weeks] = await Promise.all([
+  const [detail, games, weeks, allEntries] = await Promise.all([
     data.getEntry(id),
     data.getSchedule(),
     data.getWeeks(),
+    data.getEntries(),
   ]);
   if (!detail) notFound();
   const { entry, picks } = detail;
@@ -54,6 +55,17 @@ export default async function EntryPage(props: {
   const isOut = entry.status === "eliminated";
   const elimWeek = isOut ? eliminationWeekOf(picks) : null;
   const dupRisks = duplicateTeamRisks(picks);
+
+  // F2: weeks survived vs the group median.
+  const survivedOf = (last: number | null) => last ?? 0;
+  const survived = survivedOf(entry.lastScoredWeek);
+  const sortedSurvived = allEntries
+    .map((e) => survivedOf(e.lastScoredWeek))
+    .sort((a, b) => a - b);
+  const median =
+    sortedSurvived.length === 0
+      ? 0
+      : sortedSurvived[Math.floor(sortedSurvived.length / 2)];
 
   // Next three matchups per remaining team, from the current play week on.
   const fromWeek = currentPlayWeek(weeks, new Date())?.week ?? 1;
@@ -97,6 +109,11 @@ export default async function EntryPage(props: {
         <p className="mt-1 text-sm text-muted-foreground">
           {entry.ownerName}
           {entry.isFreeEntry ? " · free entry" : null}
+          {survived > 0 || median > 0 ? (
+            <>
+              {" "}· survived {survived} {survived === 1 ? "week" : "weeks"} (group median {median})
+            </>
+          ) : null}
         </p>
       </div>
 

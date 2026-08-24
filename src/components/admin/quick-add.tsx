@@ -246,6 +246,7 @@ function NewOwnerForm({
 }) {
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [count, setCount] = useState(1);
   const [customNames, setCustomNames] = useState("");
@@ -277,7 +278,7 @@ function NewOwnerForm({
     const res = await createOwnerAction({
       firstName: first.trim(),
       lastName: last.trim(),
-      email: "",
+      email: email.trim(),
       phone: phone.trim(),
       source: "text",
       notes: "",
@@ -304,6 +305,21 @@ function NewOwnerForm({
           <Input value={last} onChange={(e) => setLast(e.target.value)} className="h-11" />
         </Field>
       </div>
+      <Field label="Email — the primary contact">
+        <Input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          inputMode="email"
+          type="email"
+          className="h-11"
+        />
+      </Field>
+      {email.trim() === "" ? (
+        <p className="rounded-md border border-tie/40 bg-tie/10 px-3 py-1.5 text-xs text-tie">
+          No email — this owner will miss every group send. Saving is
+          allowed, but grab it if you can.
+        </p>
+      ) : null}
       <Field label="Phone (optional)">
         <Input
           value={phone}

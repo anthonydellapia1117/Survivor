@@ -101,3 +101,19 @@ describe("team palette", () => {
     }
   });
 });
+
+describe("apostrophe round-trip through Excel", () => {
+  it("thedrick's picks survives xlsx write + read", async () => {
+    const XLSX = await import("xlsx");
+    const ws = XLSX.utils.aoa_to_sheet([["NAMES"], ["thedrick's picks"]]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    const back = XLSX.read(buf, { type: "buffer" });
+    const rows = XLSX.utils.sheet_to_json<string[]>(
+      back.Sheets[back.SheetNames[0]],
+      { header: 1 },
+    );
+    expect(rows[1][0]).toBe("thedrick's picks");
+  });
+});
