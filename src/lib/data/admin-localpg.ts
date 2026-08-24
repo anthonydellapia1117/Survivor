@@ -1,6 +1,7 @@
 // Local-Postgres admin backend (dev/visual testing). Mirrors admin-supabase.
 
 import { Pool } from "pg";
+import { FREE_ENTRY_OWNER_EMAIL } from "@/lib/free-entries";
 import type {
   AdminBackend,
   AdminEntry,
@@ -48,11 +49,14 @@ export const adminLocalPgBackend: AdminBackend = {
   },
 
   async listEntries(): Promise<AdminEntry[]> {
-    const { rows } = await db().query(`
-      select e.*, o.first_name || ' ' || o.last_name as owner_name,
+    const { rows } = await db().query(
+      `select e.*, o.first_name || ' ' || o.last_name as owner_name,
+             (o.email is not null and lower(o.email) = $1) as is_admin_entry,
              (select count(*) from picks p where p.entry_id = e.id) as pick_count
       from entries e join owners o on o.id = e.owner_id and o.deleted_at is null
-      order by o.last_name, o.first_name, e.entry_index`);
+      order by is_admin_entry desc, o.last_name, o.first_name, e.entry_index`,
+      [FREE_ENTRY_OWNER_EMAIL],
+    );
     return rows.map((r: any) => ({
       id: r.id,
       ownerId: r.owner_id,
@@ -63,6 +67,7 @@ export const adminLocalPgBackend: AdminBackend = {
       lynneLabel: r.lynne_label,
       lynneNumber: r.lynne_number,
       isFreeEntry: r.is_free_entry,
+      isAdminEntry: Boolean(r.is_admin_entry),
       voidedAt: iso(r.voided_at),
       pickCount: Number(r.pick_count),
     }));
@@ -212,6 +217,7 @@ export const adminLocalPgBackend: AdminBackend = {
       byeUsed: Boolean(r.bye_used),
       teamsUsed: r.teams_used ?? [],
       lastScoredWeek: r.last_scored_week,
+      isAdminEntry: Boolean(r.is_admin_entry),
     }));
   },
 

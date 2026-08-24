@@ -4,6 +4,7 @@
 // additionally verify the admin session before every call.
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { adminFirst, FREE_ENTRY_OWNER_EMAIL } from "@/lib/free-entries";
 import type {
   AdminBackend,
   AdminEntry,
@@ -56,12 +57,19 @@ export const adminSupabaseBackend: AdminBackend = {
     const [{ data: entries, error: e1 }, { data: owners, error: e2 }, { data: picks, error: e3 }] =
       await Promise.all([
         c.from("entries").select("*").order("entry_index"),
-        c.from("owners").select("id, first_name, last_name").is("deleted_at", null),
+        c.from("owners").select("id, first_name, last_name, email").is("deleted_at", null),
         c.from("picks").select("entry_id"),
       ]);
     if (e1 || e2 || e3) throw e1 ?? e2 ?? e3;
     const names = new Map(
       (owners ?? []).map((o: any) => [o.id, `${o.first_name} ${o.last_name}`]),
+    );
+    const adminOwners = new Set(
+      (owners ?? [])
+        .filter(
+          (o: any) => o.email?.toLowerCase() === FREE_ENTRY_OWNER_EMAIL,
+        )
+        .map((o: any) => o.id),
     );
     const counts = new Map<string, number>();
     for (const p of picks ?? []) {
@@ -80,10 +88,13 @@ export const adminSupabaseBackend: AdminBackend = {
         isFreeEntry: r.is_free_entry,
         voidedAt: r.voided_at,
         pickCount: counts.get(r.id) ?? 0,
+        isAdminEntry: adminOwners.has(r.owner_id),
       }))
       .sort(
         (a: AdminEntry, b: AdminEntry) =>
-          a.ownerName.localeCompare(b.ownerName) || a.entryIndex - b.entryIndex,
+          adminFirst(a, b) ||
+          a.ownerName.localeCompare(b.ownerName) ||
+          a.entryIndex - b.entryIndex,
       );
   },
 
@@ -268,6 +279,7 @@ export const adminSupabaseBackend: AdminBackend = {
       byeUsed: Boolean(r.bye_used),
       teamsUsed: r.teams_used ?? [],
       lastScoredWeek: r.last_scored_week,
+      isAdminEntry: Boolean(r.is_admin_entry),
     }));
   },
 

@@ -27,12 +27,16 @@ export default async function EntriesPage() {
     if (c.week === currentWeek) currentPickByEntry.set(c.entryId, c.team);
   }
 
-  const rows = entries.map((e) => ({
-    ...e,
-    currentPick: currentPickByEntry.get(e.id) ?? null,
-    weeksSurvived: e.lastScoredWeek ?? 0,
-    elimWeek: eliminationWeekOf(cells.filter((c) => c.entryId === e.id)),
-  }));
+  // Default order: admin entries first (stable within groups); clicking a
+  // column header in the table overrides it for that view.
+  const rows = [...entries]
+    .sort((a, b) => Number(b.isAdminEntry) - Number(a.isAdminEntry))
+    .map((e) => ({
+      ...e,
+      currentPick: currentPickByEntry.get(e.id) ?? null,
+      weeksSurvived: e.lastScoredWeek ?? 0,
+      elimWeek: eliminationWeekOf(cells.filter((c) => c.entryId === e.id)),
+    }));
 
   return (
     <div className="space-y-4">

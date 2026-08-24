@@ -72,6 +72,8 @@ export interface EntrySummary {
   byeUsed: boolean;
   teamsUsed: string[];
   lastScoredWeek: number | null;
+  /** The pool runner's own entry (free or paid) — sorts first by default. */
+  isAdminEntry: boolean;
 }
 
 export interface GridCell {

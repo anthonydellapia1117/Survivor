@@ -39,6 +39,7 @@ function mapEntry(r: any): EntrySummary {
     byeUsed: Boolean(r.bye_used),
     teamsUsed: r.teams_used ?? [],
     lastScoredWeek: r.last_scored_week ?? null,
+    isAdminEntry: Boolean(r.is_admin_entry),
   };
 }
 

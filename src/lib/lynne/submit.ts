@@ -13,6 +13,15 @@ export interface SubmitRow {
   lynneNumber: number;
   entryName: string;
   team: string; // app abbreviation
+  /** Runner's entry — sorts to the top of the block and CSV. */
+  isAdminEntry?: boolean;
+}
+
+function submitOrder(a: SubmitRow, b: SubmitRow): number {
+  return (
+    Number(b.isAdminEntry ?? false) - Number(a.isAdminEntry ?? false) ||
+    a.lynneNumber - b.lynneNumber
+  );
 }
 
 function csvField(s: string): string {
@@ -25,7 +34,7 @@ function csvField(s: string): string {
  * vocabulary. Filename convention: DellaPia_Week[n]_Picks.csv.
  */
 export function buildSubmissionCsv(week: number, rows: SubmitRow[]): string {
-  const sorted = [...rows].sort((a, b) => a.lynneNumber - b.lynneNumber);
+  const sorted = [...rows].sort(submitOrder);
   const teamText = (abbr: string) =>
     abbr === SKIP_WEEK ? "BYE" : (LYNNE_TEAM_NAME[abbr] ?? abbr);
   const lines = [
@@ -51,7 +60,7 @@ export interface SubmitRowsResult {
  * week cockpit so both screens carry identical preconditions.
  */
 export function buildSubmitRows(
-  alive: { id: string; entryName: string }[],
+  alive: { id: string; entryName: string; isAdminEntry?: boolean }[],
   pickByEntry: Map<string, string>,
   numberById: Map<string, number | null>,
 ): SubmitRowsResult {
@@ -69,13 +78,18 @@ export function buildSubmitRows(
       missingNumber.push(e.entryName);
       continue;
     }
-    ready.push({ lynneNumber: no, entryName: e.entryName, team });
+    ready.push({
+      lynneNumber: no,
+      entryName: e.entryName,
+      team,
+      isAdminEntry: e.isAdminEntry ?? false,
+    });
   }
   return { ready, missingNumber, missingPick, aliveCount: alive.length };
 }
 
 export function buildSubmissionBlock(week: number, rows: SubmitRow[]): string {
-  const sorted = [...rows].sort((a, b) => a.lynneNumber - b.lynneNumber);
+  const sorted = [...rows].sort(submitOrder);
   const teamText = (abbr: string) =>
     abbr === SKIP_WEEK ? "BYE" : (LYNNE_TEAM_NAME[abbr] ?? abbr);
   const noWidth = Math.max(

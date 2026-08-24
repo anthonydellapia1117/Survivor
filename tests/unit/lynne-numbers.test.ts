@@ -46,7 +46,12 @@ describe("buildSubmitRows preconditions", () => {
       ]),
     );
     expect(res.ready).toEqual([
-      { lynneNumber: 977, entryName: "Has Both", team: "KC" },
+      {
+        lynneNumber: 977,
+        entryName: "Has Both",
+        team: "KC",
+        isAdminEntry: false,
+      },
     ]);
     expect(res.missingPick).toEqual(["No Pick"]);
     expect(res.missingNumber).toEqual(["No Number"]);
@@ -129,5 +134,46 @@ describe("matchNumberPairs", () => {
       targets,
     );
     expect(renumber.matches[0].replaces).toBe(500);
+  });
+});
+
+describe("admin-first ordering", () => {
+  it("submission block and CSV put admin entries first, then by number", async () => {
+    const { buildSubmissionBlock, buildSubmissionCsv } = await import(
+      "@/lib/lynne/submit"
+    );
+    const rows = [
+      { lynneNumber: 977, entryName: "Recruit A", team: "KC" },
+      { lynneNumber: 971, entryName: "AAA 1", team: "SF", isAdminEntry: true },
+      { lynneNumber: 980, entryName: "Recruit B", team: "LV" },
+      { lynneNumber: 972, entryName: "AAA 2", team: "GB", isAdminEntry: true },
+    ];
+    const block = buildSubmissionBlock(1, rows).split("\n");
+    expect(block[1]).toContain("AAA 1");
+    expect(block[2]).toContain("AAA 2");
+    expect(block[3]).toContain("Recruit A");
+    const csv = buildSubmissionCsv(1, rows).trim().split("\n");
+    expect(csv.slice(1).map((l) => l.split(",")[1])).toEqual([
+      "AAA 1",
+      "AAA 2",
+      "Recruit A",
+      "Recruit B",
+    ]);
+  });
+
+  it("admin entries lead even when their numbers are higher", async () => {
+    const { buildSubmissionCsv } = await import("@/lib/lynne/submit");
+    const csv = buildSubmissionCsv(1, [
+      { lynneNumber: 1, entryName: "Recruit", team: "KC" },
+      { lynneNumber: 1250, entryName: "AAA 1", team: "SF", isAdminEntry: true },
+    ]).trim().split("\n");
+    expect(csv[1]).toContain("AAA 1");
+  });
+
+  it("adminFirst is stable for equal flags", async () => {
+    const { adminFirst } = await import("@/lib/free-entries");
+    expect(adminFirst({ isAdminEntry: true }, { isAdminEntry: false })).toBeLessThan(0);
+    expect(adminFirst({ isAdminEntry: false }, { isAdminEntry: true })).toBeGreaterThan(0);
+    expect(adminFirst({ isAdminEntry: true }, { isAdminEntry: true })).toBe(0);
   });
 });

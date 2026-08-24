@@ -25,6 +25,8 @@ export interface AdminEntry {
   isFreeEntry: boolean;
   voidedAt: string | null;
   pickCount: number;
+  /** Owned by the pool runner — sorts first by default. */
+  isAdminEntry: boolean;
 }
 
 export interface AdminPayment {

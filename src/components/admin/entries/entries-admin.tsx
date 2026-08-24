@@ -31,6 +31,17 @@ import {
 import { cn } from "@/lib/utils";
 
 type Filter = "all" | "free" | "default" | "voided";
+type SortKey = "owner" | "entry" | "no";
+
+const SORT_HEADERS: { label: string; key: SortKey | null }[] = [
+  { label: "Owner", key: "owner" },
+  { label: "Entry", key: "entry" },
+  { label: "NO.", key: "no" },
+  { label: "Lynne label", key: null },
+  { label: "", key: null },
+  { label: "Picks", key: null },
+  { label: "", key: null },
+];
 
 export function EntriesAdmin({
   entries,
@@ -41,6 +52,21 @@ export function EntriesAdmin({
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  // Default order (admin entries first, then owner/entry index) until a
+  // header is clicked; clicking cycles asc -> desc -> back to default.
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function clickSort(key: SortKey) {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortKey(null);
+    }
+  }
 
   // Live (non-voided) names, for creation warnings and the collision audit.
   const live = useMemo(() => entries.filter((e) => !e.voidedAt), [entries]);
@@ -77,6 +103,25 @@ export function EntriesAdmin({
       return true;
     });
   }, [entries, search, filter]);
+
+  const sorted = useMemo(() => {
+    if (sortKey === null) return filtered; // backend default: admin first
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      switch (sortKey) {
+        case "owner":
+          return dir * (a.ownerName.localeCompare(b.ownerName) || a.entryIndex - b.entryIndex);
+        case "entry":
+          return dir * a.entryName.localeCompare(b.entryName);
+        case "no":
+          return (
+            dir *
+            ((a.lynneNumber ?? Number.MAX_SAFE_INTEGER) -
+              (b.lynneNumber ?? Number.MAX_SAFE_INTEGER))
+          );
+      }
+    });
+  }, [filtered, sortKey, sortDir]);
 
   return (
     <div className="space-y-3">
@@ -148,32 +193,50 @@ export function EntriesAdmin({
         <table className="w-full text-sm">
           <thead className="bg-surface-2">
             <tr>
-              {["Owner", "Entry", "NO.", "Lynne label", "", "Picks", ""].map(
-                (h, i) => (
-                  <th
-                    key={i}
-                    className={cn(
-                      "whitespace-nowrap border-b border-border px-3 py-2 text-left text-xs font-medium text-muted-foreground",
-                      (h === "#" || h === "Picks") && "text-right",
-                    )}
-                  >
-                    {h}
-                  </th>
-                ),
-              )}
+              {SORT_HEADERS.map((h, i) => (
+                <th
+                  key={i}
+                  className={cn(
+                    "whitespace-nowrap border-b border-border px-3 py-2 text-left text-xs font-medium text-muted-foreground",
+                    h.label === "Picks" && "text-right",
+                  )}
+                >
+                  {h.key ? (
+                    <button
+                      type="button"
+                      onClick={() => clickSort(h.key!)}
+                      className={cn(
+                        "inline-flex items-center gap-1 hover:text-foreground",
+                        sortKey === h.key && "text-foreground",
+                      )}
+                      title="Click to sort; third click restores the default (admin entries first)"
+                    >
+                      {h.label}
+                      {sortKey === h.key ? (sortDir === "asc" ? " ▲" : " ▼") : null}
+                    </button>
+                  ) : (
+                    h.label
+                  )}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((entry) => (
+            {sorted.map((entry, i) => (
               <EntryRow
                 key={entry.id}
                 entry={entry}
+                adminBoundary={
+                  sortKey === null &&
+                  entry.isAdminEntry &&
+                  !(sorted[i + 1]?.isAdminEntry ?? false)
+                }
                 otherNames={live
                   .filter((e) => e.id !== entry.id)
                   .map((e) => ({ name: e.entryName, owner: e.ownerName }))}
               />
             ))}
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
               <tr>
                 <td
                   colSpan={7}
@@ -193,9 +256,12 @@ export function EntriesAdmin({
 function EntryRow({
   entry,
   otherNames,
+  adminBoundary,
 }: {
   entry: AdminEntry;
   otherNames: ExistingName[];
+  /** Last admin entry in default order — draws the boundary divider. */
+  adminBoundary?: boolean;
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -207,6 +273,7 @@ function EntryRow({
       className={cn(
         "h-12 border-b border-border/60 transition-colors duration-150 ease-out last:border-0 hover:bg-surface-2/60 sm:h-10",
         voided && "opacity-55",
+        adminBoundary && "border-b-2 border-b-primary/50",
       )}
     >
       <td className="whitespace-nowrap px-3 text-muted-foreground">
@@ -225,6 +292,15 @@ function EntryRow({
       </td>
       <td className="whitespace-nowrap px-3">
         <div className="flex items-center gap-1.5">
+          {entry.isAdminEntry ? (
+            <Badge
+              variant="outline"
+              className="border-primary/50 text-primary"
+              title="The pool runner's entry — sorts first by default"
+            >
+              ADMIN
+            </Badge>
+          ) : null}
           {entry.nameIsDefault ? (
             <Badge variant="outline">Default</Badge>
           ) : null}

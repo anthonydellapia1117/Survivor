@@ -101,3 +101,11 @@ export function computeMargin(
     netCents: spreadCents + freeNotionalCents,
   };
 }
+
+/** Default-order leading key: the runner's entries first, stable otherwise. */
+export function adminFirst(
+  a: { isAdminEntry: boolean },
+  b: { isAdminEntry: boolean },
+): number {
+  return Number(b.isAdminEntry) - Number(a.isAdminEntry);
+}

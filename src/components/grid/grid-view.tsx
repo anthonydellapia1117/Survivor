@@ -94,6 +94,7 @@ export function GridView({ entries, weeks, cells }: Props) {
     () =>
       [...entries].sort(
         (a, b) =>
+          Number(b.isAdminEntry) - Number(a.isAdminEntry) ||
           STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
           a.ownerName.localeCompare(b.ownerName) ||
           a.entryName.localeCompare(b.entryName),

@@ -1,11 +1,13 @@
 "use client";
 
 // Season-start roster for Lynne: entry names only, one per line, in the
-// order they should be numbered (owner by owner, entry 1..n). Copy block
-// and CSV download of the same list.
+// order they should be numbered — ADMIN entries (AAA 1..n) first so she
+// sees at a glance which are the runner's, then owner by owner, entry
+// 1..n. Copy block and CSV download of the same list.
 
 import { useMemo, useState } from "react";
 import type { AdminEntry } from "@/lib/data/admin-types";
+import { adminFirst } from "@/lib/free-entries";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,6 +31,7 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
         .filter((e) => !e.voidedAt)
         .sort(
           (a, b) =>
+            adminFirst(a, b) ||
             a.ownerName.localeCompare(b.ownerName) ||
             a.entryIndex - b.entryIndex,
         )

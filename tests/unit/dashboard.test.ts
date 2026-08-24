@@ -42,6 +42,7 @@ function entry(id: string, status: EntrySummary["status"]): EntrySummary {
     status,
     byeUsed: false,
     teamsUsed: [],
+    isAdminEntry: false,
     lastScoredWeek: null,
   };
 }

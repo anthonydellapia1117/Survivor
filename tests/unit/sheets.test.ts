@@ -30,6 +30,7 @@ function entry(
     status,
     byeUsed: false,
     teamsUsed: ["KC", "BUF"],
+    isAdminEntry: false,
     lastScoredWeek: 2,
   };
 }
