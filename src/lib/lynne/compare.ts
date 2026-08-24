@@ -11,7 +11,15 @@ export interface LocalPick {
 }
 
 export interface Variance {
-  type: "team_mismatch" | "no_local_pick" | "result_conflict";
+  type:
+    | "team_mismatch"
+    | "no_local_pick"
+    | "result_conflict"
+    // Grid-format types (plan-grid.ts):
+    | "status_conflict"
+    | "missing_on_sheet"
+    | "unreadable_team"
+    | "absent_but_alive";
   entryId: string;
   entryName: string;
   lynne: { team: string | null; result: string | null };

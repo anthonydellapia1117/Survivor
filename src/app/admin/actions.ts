@@ -313,6 +313,8 @@ export interface LynnePreview {
   filename: string;
   sha256: string;
   alreadyImported: boolean;
+  /** "grid" = her NO./NAMES sheet; "legacy" = old tolerant column format. */
+  format: "grid" | "legacy";
   rows: import("@/lib/lynne/parse").LynneRow[];
   matched: {
     entry: string;
@@ -321,12 +323,32 @@ export interface LynnePreview {
     team: string | null;
     result: string | null;
     matchedBy: string;
+    no?: number | null;
   }[];
   unmatched: import("@/lib/lynne/parse").LynneRow[];
   variances: import("@/lib/lynne/compare").Variance[];
   applies: import("@/lib/lynne/compare").Apply[];
   alreadyApplied: number;
   noResultYet: number;
+  /** Grid-format extras; absent on legacy files. */
+  grid?: {
+    otherPoolCount: number;
+    teamAgreements: number;
+    statusAgreements: number;
+    confirmedRemovals: number;
+    quietRows: number;
+    latestFilledWeek: number | null;
+    weeksInFile: number[];
+    conflicts: {
+      no: number;
+      name: string;
+      reason: string;
+      entryName: string | null;
+    }[];
+    numberSuggestions: { entryName: string; sheetNo: number }[];
+    herCounts: import("@/lib/lynne/parse-grid").HerWeekCounts | null;
+    noFillInfo: boolean;
+  };
 }
 
 export async function lynneImportPreviewAction(
@@ -334,8 +356,7 @@ export async function lynneImportPreviewAction(
 ): Promise<ActionResult & { preview?: LynnePreview }> {
   return guarded(async () => {
     const { parseLynneFile } = await import("@/lib/lynne/parse");
-    const { matchRows } = await import("@/lib/lynne/match");
-    const { computeImportPlan } = await import("@/lib/lynne/compare");
+    const { parseLynneGrid } = await import("@/lib/lynne/parse-grid");
     const { getData } = await import("@/lib/data");
 
     const file = formData.get("file");
@@ -346,11 +367,125 @@ export async function lynneImportPreviewAction(
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
-    const parsed = parseLynneFile(buf, file.name);
     const admin = getAdminData();
+    const entries = (await admin.listEntries()).filter((e) => !e.voidedAt);
+    const cells = (await getData().getGridCells()).filter(
+      (c) => c.week === week,
+    );
+    const localPicks = cells.map((c) => ({
+      entryId: c.entryId,
+      team: c.team,
+      result: c.result,
+    }));
+
+    // Her real format first: the NO./NAMES grid with fill-color status.
+    const grid = parseLynneGrid(buf);
+    if (grid) {
+      const { matchGridRows, computeGridPlan, normalizeGridTeam } =
+        await import("@/lib/lynne/plan-grid");
+      if (!grid.weeks.includes(week)) {
+        return {
+          ok: false,
+          error: `Her sheet has no Week ${week} column (it has ${grid.weeks
+            .map((w) => `Week ${w}`)
+            .join(", ")}).`,
+        };
+      }
+      const alreadyImported = await admin.importExists(grid.sha256);
+
+      const summaries = await getData().getEntries();
+      const statusById = new Map(summaries.map((s) => [s.id, s.status]));
+      const targets = entries.map((e) => ({
+        id: e.id,
+        entryName: e.entryName,
+        lynneLabel: e.lynneLabel,
+        lynneNumber: e.lynneNumber,
+        status: statusById.get(e.id) ?? "active",
+      }));
+
+      const { matched, conflicts, missing, otherPoolCount } = matchGridRows(
+        grid.rows,
+        targets,
+      );
+      const plan = computeGridPlan(matched, missing, week, localPicks, targets);
+      const names = new Map(entries.map((e) => [e.id, e.entryName]));
+
+      const toRow = (r: import("@/lib/lynne/parse-grid").GridEntryRow) => {
+        const raw = r.cells[week];
+        return {
+          entry: r.name,
+          team: raw ? (normalizeGridTeam(raw) ?? raw) : null,
+          result:
+            r.fill === "red" || raw?.toUpperCase() === "OUT" ? "out" : null,
+          rowIndex: r.rowIndex,
+          no: r.no,
+        };
+      };
+
+      return {
+        ok: true,
+        preview: {
+          week,
+          filename: file.name,
+          sha256: grid.sha256,
+          alreadyImported,
+          format: "grid",
+          // Store only OUR rows (matched + conflicts) — her sheet holds the
+          // whole ~1,200-entry pool and the rest is not ours to keep.
+          rows: [...matched.map((m) => toRow(m.row)), ...conflicts.map((c) => toRow(c.row))],
+          matched: matched.map((m) => {
+            const raw = m.row.cells[week];
+            return {
+              entry: m.row.name,
+              entryId: m.entryId,
+              entryName: names.get(m.entryId) ?? m.row.name,
+              team: raw ? (normalizeGridTeam(raw) ?? raw) : null,
+              result:
+                m.row.fill === "red" || raw?.toUpperCase() === "OUT"
+                  ? "out"
+                  : null,
+              matchedBy: m.matchedBy,
+              no: m.row.no,
+            };
+          }),
+          unmatched: conflicts.map((c) => toRow(c.row)),
+          variances: plan.variances,
+          applies: [], // Grid carries no per-week results; scores engine owns them.
+          alreadyApplied: 0,
+          noResultYet: 0,
+          grid: {
+            otherPoolCount,
+            teamAgreements: plan.teamAgreements,
+            statusAgreements: plan.statusAgreements,
+            confirmedRemovals: plan.confirmedRemovals,
+            quietRows: plan.quietRows,
+            latestFilledWeek: grid.latestFilledWeek,
+            weeksInFile: grid.weeks,
+            conflicts: conflicts.map((c) => ({
+              no: c.row.no,
+              name: c.row.name,
+              reason: c.reason,
+              entryName: c.entryName,
+            })),
+            numberSuggestions: matched
+              .filter((m) => m.numberOnSheetNotOnFile !== null)
+              .map((m) => ({
+                entryName: names.get(m.entryId) ?? m.row.name,
+                sheetNo: m.numberOnSheetNotOnFile as number,
+              })),
+            herCounts: grid.herCounts[week] ?? null,
+            noFillInfo: grid.rows.every((r) => r.fill === "none"),
+          },
+        },
+      };
+    }
+
+    // Legacy tolerant path (older files, hand-made CSVs).
+    const { matchRows } = await import("@/lib/lynne/match");
+    const { computeImportPlan } = await import("@/lib/lynne/compare");
+    const parsed = parseLynneFile(buf, file.name);
     const alreadyImported = await admin.importExists(parsed.sha256);
 
-    const entries = (await admin.listEntries()).filter((e) => !e.voidedAt);
     const { matched, unmatched } = matchRows(
       parsed.rows,
       entries.map((e) => ({
@@ -360,19 +495,8 @@ export async function lynneImportPreviewAction(
       })),
     );
 
-    const cells = (await getData().getGridCells()).filter(
-      (c) => c.week === week,
-    );
     const names = new Map(entries.map((e) => [e.id, e.entryName]));
-    const plan = computeImportPlan(
-      matched,
-      cells.map((c) => ({
-        entryId: c.entryId,
-        team: c.team,
-        result: c.result,
-      })),
-      names,
-    );
+    const plan = computeImportPlan(matched, localPicks, names);
 
     return {
       ok: true,
@@ -381,6 +505,7 @@ export async function lynneImportPreviewAction(
         filename: file.name,
         sha256: parsed.sha256,
         alreadyImported,
+        format: "legacy",
         rows: parsed.rows,
         matched: matched.map((m) => ({
           entry: m.row.entry,
@@ -409,7 +534,11 @@ export async function lynneImportCommitAction(
       filename: preview.filename,
       sha256: preview.sha256,
       rows: preview.rows,
-      rowCount: preview.rows.length,
+      // Grid files hold her whole pool; we store only our rows but record
+      // the true sheet size.
+      rowCount: preview.grid
+        ? preview.rows.length + preview.grid.otherPoolCount
+        : preview.rows.length,
       matchedCount: preview.matched.length,
       unmatched: preview.unmatched,
       variances: preview.variances,

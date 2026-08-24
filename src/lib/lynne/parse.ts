@@ -14,6 +14,8 @@ export interface LynneRow {
   /** Result normalized to win|loss|tie_loss|bye, else null. */
   result: string | null;
   rowIndex: number;
+  /** Her NO. for the row — grid-format files only. */
+  no?: number | null;
 }
 
 export interface ParsedLynneFile {
