@@ -201,6 +201,19 @@ export const adminSupabaseBackend: AdminBackend = {
     if (error) throw error;
   },
 
+  async setGameScore(a) {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c.rpc("admin_set_game_score", {
+      p_game_id: a.gameId,
+      p_home_score: a.homeScore,
+      p_away_score: a.awayScore,
+      p_status: a.status,
+      p_actor: a.actor,
+    });
+    if (error) throw error;
+    return Number(data ?? 0);
+  },
+
   async updateEntry(a) {
     const { error } = await (await createSupabaseServerClient()).rpc(
       "admin_update_entry",

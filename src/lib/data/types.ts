@@ -37,6 +37,9 @@ export interface GameRow {
     | "Monday";
   awayTeam: string;
   homeTeam: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: "scheduled" | "in_progress" | "final";
 }
 
 export interface EntrySummary {

@@ -86,6 +86,9 @@ export const supabaseBackend: DataBackend = {
       dayOfWeek: r.day_of_week,
       awayTeam: r.away_team,
       homeTeam: r.home_team,
+      homeScore: r.home_score,
+      awayScore: r.away_score,
+      status: r.status,
     }));
   },
 

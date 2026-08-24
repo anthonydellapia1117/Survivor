@@ -98,6 +98,13 @@ export interface AdminBackend {
     actor: string;
   }): Promise<{ deleted: boolean; entries_moved: number; payments_moved: number }>;
   deleteOwner(args: { ownerId: string; actor: string }): Promise<void>;
+  setGameScore(args: {
+    gameId: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    status: "scheduled" | "in_progress" | "final";
+    actor: string;
+  }): Promise<number>;
   removeEntry(args: { entryId: string; actor: string }): Promise<void>;
   voidEntry(args: { entryId: string; actor: string }): Promise<void>;
   recordPayment(args: {

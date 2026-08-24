@@ -144,6 +144,14 @@ export const adminLocalPgBackend: AdminBackend = {
     ]);
   },
 
+  async setGameScore(a) {
+    const { rows } = await db().query(
+      "select admin_set_game_score($1,$2,$3,$4,$5) as n",
+      [a.gameId, a.homeScore, a.awayScore, a.status, a.actor],
+    );
+    return Number(rows[0].n);
+  },
+
   async updateEntry(a) {
     await db().query("select admin_update_entry($1,$2,$3,$4,$5,$6)", [
       a.entryId,

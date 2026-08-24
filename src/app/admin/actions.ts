@@ -212,6 +212,89 @@ export async function deleteOwnerAction(input: {
   });
 }
 
+export interface GameScoreInput {
+  gameId: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: "scheduled" | "in_progress" | "final";
+}
+
+export async function setGameScoresAction(input: {
+  scores: GameScoreInput[];
+}): Promise<ActionResult & { picksRecomputed?: number; failures?: string[] }> {
+  return guarded(async (actor) => {
+    const data = getAdminData();
+    const failures: string[] = [];
+    let picksRecomputed = 0;
+    for (const g of input.scores) {
+      try {
+        picksRecomputed += await data.setGameScore({ ...g, actor });
+      } catch (e) {
+        failures.push(`${g.gameId}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    revalidateAll();
+    return { ok: failures.length === 0, picksRecomputed, failures };
+  });
+}
+
+/**
+ * D5: fetch finals from ESPN's public scoreboard to PRE-FILL the form for
+ * review. Never auto-commits — the admin echo-confirms before anything is
+ * written.
+ */
+export async function fetchEspnScoresAction(input: {
+  week: number;
+}): Promise<
+  ActionResult & {
+    games?: {
+      home: string;
+      away: string;
+      homeScore: number | null;
+      awayScore: number | null;
+      final: boolean;
+    }[];
+  }
+> {
+  return guarded(async () => {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=2026&seasontype=2&week=${input.week}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      return { ok: false, error: `ESPN returned HTTP ${res.status}` };
+    }
+    const j = (await res.json()) as {
+      events?: {
+        competitions: {
+          status?: { type?: { completed?: boolean } };
+          competitors: {
+            homeAway: string;
+            score?: string;
+            team: { abbreviation: string };
+          }[];
+        }[];
+      }[];
+    };
+    const MAP: Record<string, string> = { WSH: "WAS", JAC: "JAX", LA: "LAR" };
+    const norm = (t: string) => MAP[t] ?? t;
+    const games = (j.events ?? []).map((e) => {
+      const comp = e.competitions[0];
+      const home = comp.competitors.find((c) => c.homeAway === "home")!;
+      const away = comp.competitors.find((c) => c.homeAway === "away")!;
+      const final = comp.status?.type?.completed === true;
+      const num = (v?: string) =>
+        v !== undefined && v !== "" && final ? Number(v) : null;
+      return {
+        home: norm(home.team.abbreviation),
+        away: norm(away.team.abbreviation),
+        homeScore: num(home.score),
+        awayScore: num(away.score),
+        final,
+      };
+    });
+    return { ok: true, games };
+  });
+}
+
 export async function deadlineSweepAction(input: {
   week: number;
   commit: boolean;

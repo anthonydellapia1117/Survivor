@@ -12,6 +12,7 @@ const links = [
   { href: "/admin/entries", label: "Entries" },
   { href: "/admin/payments", label: "Payments" },
   { href: "/admin/picks", label: "Picks" },
+  { href: "/admin/scores", label: "Scores" },
   { href: "/admin/lynne-submit", label: "Submit" },
   { href: "/admin/recap", label: "Recap" },
   { href: "/admin/import", label: "Import" },
