@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getData } from "@/lib/data";
 import { currentPlayWeek } from "@/lib/dashboard";
-import { eliminationWeekOf } from "@/lib/alive";
+import { duplicateTeamRisks, eliminationWeekOf } from "@/lib/alive";
 import {
   NFL_TEAMS,
   RESULT_LABEL,
@@ -53,6 +53,7 @@ export default async function EntryPage(props: {
   );
   const isOut = entry.status === "eliminated";
   const elimWeek = isOut ? eliminationWeekOf(picks) : null;
+  const dupRisks = duplicateTeamRisks(picks);
 
   // Next three matchups per remaining team, from the current play week on.
   const fromWeek = currentPlayWeek(weeks, new Date())?.week ?? 1;
@@ -98,6 +99,16 @@ export default async function EntryPage(props: {
           {entry.isFreeEntry ? " · free entry" : null}
         </p>
       </div>
+
+      {dupRisks.length > 0 ? (
+        <div className="rounded-md border border-loss bg-loss/15 px-3 py-2.5 text-sm font-semibold text-loss">
+          ⚠ DUPLICATE TEAM RISK —{" "}
+          {dupRisks
+            .map((d) => `${d.team} picked in weeks ${d.weeks.join(" and ")}`)
+            .join("; ")}
+          . In Lynne&apos;s pool a repeated team is an elimination.
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-3 gap-3 sm:max-w-md">
         <Card className="bg-surface">

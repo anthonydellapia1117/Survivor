@@ -187,7 +187,7 @@ export function buildSummary(input: SheetsInput): TabSpec {
       : { v: "season complete" },
   );
   push("Lynne remittance owed", {
-    v: lynneRemittanceCents(entries.length, {
+    v: lynneRemittanceCents(entries.filter((e) => !e.isFreeEntry).length, {
       tier13Cents: config.tier13Cents,
       tier4PlusCents: config.tier4PlusCents,
       lynneRateCents: config.lynneRateCents,

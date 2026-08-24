@@ -53,3 +53,33 @@ export function eliminationWeekOf(cells: GridCell[]): number | null {
 }
 
 export const SHOW_STORAGE_KEY = "survivor-show-mode";
+
+export interface DuplicateTeamRisk {
+  entryId: string;
+  team: string;
+  weeks: number[];
+}
+
+/**
+ * C3: a repeated team across any two weeks — adjacent or not — is an
+ * elimination in Lynne's pool. Scans current picks only.
+ */
+export function duplicateTeamRisks(cells: GridCell[]): DuplicateTeamRisk[] {
+  const byEntryTeam = new Map<string, Map<string, number[]>>();
+  for (const c of cells) {
+    if (c.team === "SKIP_WEEK" || c.team === "MISSED") continue;
+    if (!byEntryTeam.has(c.entryId)) byEntryTeam.set(c.entryId, new Map());
+    const tm = byEntryTeam.get(c.entryId)!;
+    if (!tm.has(c.team)) tm.set(c.team, []);
+    tm.get(c.team)!.push(c.week);
+  }
+  const out: DuplicateTeamRisk[] = [];
+  for (const [entryId, tm] of byEntryTeam) {
+    for (const [team, weeks] of tm) {
+      if (weeks.length > 1) {
+        out.push({ entryId, team, weeks: [...weeks].sort((a, b) => a - b) });
+      }
+    }
+  }
+  return out;
+}

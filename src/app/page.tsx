@@ -12,6 +12,7 @@ import {
   survivalCurve,
 } from "@/lib/dashboard";
 import { RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
+import { lynneBucket } from "@/lib/lynne/names";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   PickDistributionLazy,
@@ -67,13 +68,15 @@ export default async function DashboardPage() {
       ? Math.min(100, Math.round((pot.paidCents / pot.dueCents) * 100))
       : 0;
 
+  // Lynne's three buckets, her exact words (C2/F1).
+  const buckets = { "No Losses": 0, "Loss/Bye": 0, Out: 0 };
+  for (const e of entries) buckets[lynneBucket(e)] += 1;
   const segments = [
-    { label: "Bye eligible", n: breakdown.byeEligible, cls: "bg-primary" },
-    { label: "Active", n: breakdown.active, cls: "bg-win" },
-    { label: "At risk", n: breakdown.atRisk, cls: "bg-tie" },
-    { label: "Bye used", n: breakdown.byeUsed, cls: "bg-bye" },
-    { label: "Eliminated", n: breakdown.eliminated, cls: "bg-loss" },
+    { label: "No Losses", n: buckets["No Losses"], cls: "bg-win" },
+    { label: "Loss/Bye", n: buckets["Loss/Bye"], cls: "bg-tie" },
+    { label: "Out", n: buckets.Out, cls: "bg-loss" },
   ].filter((s) => s.n > 0);
+  const lynneSentence = `No Losses=${buckets["No Losses"]}, 1 Loss/Bye used=${buckets["Loss/Bye"]} and Out=${buckets.Out}. We are down to ${alive} left in the pool.`;
 
   return (
     <div className="space-y-6">
@@ -220,7 +223,7 @@ export default async function DashboardPage() {
 
       <Card className="bg-surface">
         <CardHeader>
-          <CardTitle className="text-base">Standings</CardTitle>
+          <CardTitle className="text-base">Standings — in Lynne&apos;s words</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-2">
@@ -242,6 +245,9 @@ export default async function DashboardPage() {
               </span>
             ))}
           </div>
+          <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-sm">
+            {lynneSentence}
+          </p>
         </CardContent>
       </Card>
 

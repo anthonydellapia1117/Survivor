@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getAdminData } from "@/lib/data/admin";
 import { getData } from "@/lib/data";
 import { DEFAULT_PRICING, formatCents, freeEntryStatus } from "@/lib/pool";
+import { duplicateTeamRisks } from "@/lib/alive";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,13 @@ export default async function AdminOverviewPage() {
     .filter((w) => w.missing > 0);
   const unconfirmedWeeks = weeks.filter((w) => !w.confirmed).length;
 
+  // C3: a current pick reusing a team is an elimination in Lynne's pool.
+  const entryNameById = new Map(pubEntries.map((e) => [e.id, e.entryName]));
+  const dupRisks = duplicateTeamRisks(cells).map((d) => ({
+    ...d,
+    entryName: entryNameById.get(d.entryId) ?? d.entryId,
+  }));
+
   // Free entries: FLOOR(covered paid entries / ratio), earned as payments
   // land. Earned-but-unnamed ones must be named and registered with Lynne
   // before Week 1 picks lock — nobody notices this on their own.
@@ -70,6 +78,13 @@ export default async function AdminOverviewPage() {
             <Link href="/admin/quick">Quick add</Link>
           </Button>
           <Button asChild size="sm" variant="outline">
+            <Link
+              href={`/admin/week/${weeks.find((w) => new Date(w.deadlineAt).getTime() > now)?.week ?? 18}`}
+            >
+              Week cockpit
+            </Link>
+          </Button>
+          <Button asChild size="sm" variant="outline">
             <Link href="/admin/picks">Enter picks</Link>
           </Button>
           <Button asChild size="sm" variant="outline">
@@ -92,6 +107,18 @@ export default async function AdminOverviewPage() {
             .join("; ")}{" "}
           past the deadline. Standings are wrong until the missed-pick sweep
           runs — go to the Deadline screen.
+        </Link>
+      ) : null}
+      {dupRisks.length > 0 ? (
+        <Link
+          href="/admin/picks"
+          className="block rounded-md border border-loss bg-loss/15 px-3 py-2.5 text-sm text-loss"
+        >
+          <span className="font-bold">⚠ DUPLICATE TEAM — elimination risk:</span>{" "}
+          {dupRisks
+            .map((d) => `${d.entryName} has ${d.team} in weeks ${d.weeks.join(" and ")}`)
+            .join("; ")}
+          . In Lynne&apos;s pool this puts the entry OUT.
         </Link>
       ) : null}
       {unconfirmedWeeks > 0 ? (

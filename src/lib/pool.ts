@@ -28,7 +28,11 @@ export function amountDueCents(
   return paidEntryCount * rate;
 }
 
-/** $25/entry remitted to the master pool, every tier, always. */
+/**
+ * $25/entry remitted to the master pool, every tier, always — for PAID
+ * entries only. Free entries are excluded (her words: "You had 6 free and
+ * had 66 players at 25 = 1650"). Callers pass the paid-entry count.
+ */
 export function lynneRemittanceCents(
   entryCount: number,
   config: PricingConfig = DEFAULT_PRICING,

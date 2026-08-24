@@ -91,19 +91,35 @@ export function PicksEntry({
     [entries],
   );
 
+  /** entry -> team -> week that team was used (first current pick). */
+  const usedWeek = useMemo(() => {
+    const m = new Map<string, Map<string, number>>();
+    for (const c of cells) {
+      if (c.team === SKIP_WEEK || c.team === "MISSED") continue;
+      if (!m.has(c.entryId)) m.set(c.entryId, new Map());
+      const tm = m.get(c.entryId)!;
+      if (!tm.has(c.team) || c.week < tm.get(c.team)!) tm.set(c.team, c.week);
+    }
+    return m;
+  }, [cells]);
+
   const selectedWeek = weeks.find((w) => w.week === week) ?? null;
   const rel = selectedWeek ? relDeadline(selectedWeek.deadlineAt, Date.now()) : null;
 
   const stagedCount = Object.keys(staged).length;
-  const dupeCount = useMemo(
+  const dupes = useMemo(
     () =>
-      Object.entries(staged).filter(([id, team]) => {
-        if (team === SKIP_WEEK) return false;
+      Object.entries(staged).flatMap(([id, team]) => {
+        if (team === SKIP_WEEK) return [];
         const e = entryById.get(id);
-        return !!e && e.teamsUsed.includes(team);
-      }).length,
-    [staged, entryById],
+        const wk = usedWeek.get(id)?.get(team);
+        if (!e || wk === undefined || wk === week) return [];
+        return [{ id, entryName: e.entryName, team, usedInWeek: wk }];
+      }),
+    [staged, entryById, usedWeek, week],
   );
+  const dupeCount = dupes.length;
+  const [dupeConfirmed, setDupeConfirmed] = useState(false);
 
   function changeWeek(next: number) {
     setWeek(next);
@@ -123,6 +139,7 @@ export function PicksEntry({
       else next[entryId] = value;
       return next;
     });
+    setDupeConfirmed(false);
     setFailures((prev) => {
       if (!(entryId in prev)) return prev;
       const next = { ...prev };
@@ -153,6 +170,11 @@ export function PicksEntry({
       team,
     }));
     if (picks.length === 0) return;
+    if (dupeCount > 0 && !dupeConfirmed) {
+      // First press arms the explicit confirm; the banner names the weeks.
+      setDupeConfirmed(true);
+      return;
+    }
     setBusy(true);
     setSaveError(null);
     setSuccess(null);
@@ -231,6 +253,29 @@ export function PicksEntry({
         ) : null}
       </div>
 
+      {dupeCount > 0 ? (
+        <div className="rounded-md border border-loss bg-loss/15 px-4 py-3 text-sm text-loss">
+          <p className="font-bold">
+            ⚠ DUPLICATE TEAM — this is an ELIMINATION in Lynne&apos;s pool, not
+            a warning. She has put players out for it.
+          </p>
+          <ul className="mt-1.5 space-y-0.5 text-xs">
+            {dupes.map((d) => (
+              <li key={d.id}>
+                <span className="font-semibold">{d.entryName}</span> — {d.team}{" "}
+                was already picked in <span className="font-semibold">week {d.usedInWeek}</span>
+              </li>
+            ))}
+          </ul>
+          {dupeConfirmed ? (
+            <p className="mt-2 text-xs font-bold">
+              Press the save button again to record{" "}
+              {dupeCount === 1 ? "this duplicate" : "these duplicates"} anyway.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead className="bg-surface-2">
@@ -259,7 +304,11 @@ export function PicksEntry({
               const usedWarn =
                 isStaged &&
                 stagedTeam !== SKIP_WEEK &&
-                e.teamsUsed.includes(stagedTeam);
+                usedWeek.get(e.id)?.has(stagedTeam) === true &&
+                usedWeek.get(e.id)?.get(stagedTeam) !== week;
+              const usedWarnWeek = usedWarn
+                ? usedWeek.get(e.id)?.get(stagedTeam)
+                : undefined;
               const isOverride = isStaged && savedTeam !== "";
               const failure = failures[e.id];
 
@@ -269,7 +318,7 @@ export function PicksEntry({
                   className={cn(
                     "h-12 border-b border-border/60 transition-colors duration-150 ease-out last:border-0 sm:h-10",
                     e.status === "eliminated" && "opacity-55",
-                    isStaged && (usedWarn ? "bg-tie/10" : "bg-primary/10"),
+                    isStaged && (usedWarn ? "bg-loss/15" : "bg-primary/10"),
                   )}
                 >
                   <td className="px-3">
@@ -313,17 +362,21 @@ export function PicksEntry({
                         aria-label={`Week ${week} pick for ${e.entryName}`}
                         className={cn(
                           "h-9 w-44 rounded-md border border-border bg-surface px-2 text-sm outline-none transition-colors duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:w-56",
-                          usedWarn && "border-tie text-tie",
+                          usedWarn && "border-loss text-loss",
                         )}
                       >
                         <option value="">— no pick —</option>
                         <option value={SKIP_WEEK}>BYE — skip week</option>
-                        {NFL_TEAMS.map((t) => (
-                          <option key={t.abbr} value={t.abbr}>
-                            {t.abbr} — {t.name}
-                            {e.teamsUsed.includes(t.abbr) ? " (used)" : ""}
-                          </option>
-                        ))}
+                        {NFL_TEAMS.map((t) => {
+                          const uw = usedWeek.get(e.id)?.get(t.abbr);
+                          return (
+                            <option key={t.abbr} value={t.abbr}>
+                              {uw !== undefined
+                                ? `✕ ${t.abbr} — ${t.name} · USED WEEK ${uw}`
+                                : `${t.abbr} — ${t.name}`}
+                            </option>
+                          );
+                        })}
                       </select>
                       {isOverride ? (
                         <Badge
@@ -334,8 +387,8 @@ export function PicksEntry({
                         </Badge>
                       ) : null}
                       {usedWarn ? (
-                        <span className="hidden text-xs text-tie md:inline">
-                          already used
+                        <span className="hidden text-xs font-semibold text-loss md:inline">
+                          USED WEEK {usedWarnWeek}
                         </span>
                       ) : null}
                     </div>
@@ -365,9 +418,9 @@ export function PicksEntry({
           {stagedCount} {stagedCount === 1 ? "pick" : "picks"} staged
         </span>
         {dupeCount > 0 ? (
-          <span className="text-sm text-tie">
-            {dupeCount} duplicate-team{" "}
-            {dupeCount === 1 ? "warning" : "warnings"}
+          <span className="text-sm font-semibold text-loss">
+            ⚠ {dupeCount} duplicate-team{" "}
+            {dupeCount === 1 ? "elimination" : "eliminations"}
           </span>
         ) : null}
         {success ? <span className="text-sm text-win">{success}</span> : null}
@@ -389,12 +442,21 @@ export function PicksEntry({
               Discard
             </Button>
           ) : null}
-          <Button size="sm" disabled={busy || stagedCount === 0} onClick={save}>
+          <Button
+            size="sm"
+            variant={dupeCount > 0 ? "destructive" : "default"}
+            disabled={busy || stagedCount === 0}
+            onClick={save}
+          >
             {busy
               ? "Saving…"
-              : stagedCount > 0
-                ? `Save ${stagedCount} ${stagedCount === 1 ? "pick" : "picks"}`
-                : "Save picks"}
+              : dupeCount > 0 && !dupeConfirmed
+                ? `Review ${dupeCount} duplicate${dupeCount === 1 ? "" : "s"}…`
+                : dupeCount > 0
+                  ? `CONFIRM duplicate ${dupeCount === 1 ? "elimination" : "eliminations"} + save`
+                  : stagedCount > 0
+                    ? `Save ${stagedCount} ${stagedCount === 1 ? "pick" : "picks"}`
+                    : "Save picks"}
           </Button>
         </div>
       </div>
