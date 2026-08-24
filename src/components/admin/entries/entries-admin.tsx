@@ -8,6 +8,8 @@ import { collisionGroups, KIND_LABEL } from "@/lib/names";
 import type { ExistingName } from "@/components/admin/name-warning";
 import { EntryEditDialog } from "@/components/admin/entries/entry-edit-dialog";
 import { BulkAddDialog } from "@/components/admin/entries/bulk-add-dialog";
+import { NumbersImportDialog } from "@/components/admin/entries/numbers-import-dialog";
+import { RosterExportDialog } from "@/components/admin/entries/roster-export-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -99,7 +101,9 @@ export function EntriesAdmin({
         <span className="text-xs tabular-nums text-muted-foreground">
           {filtered.length} of {entries.length}
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap gap-2">
+          <RosterExportDialog entries={entries} />
+          <NumbersImportDialog entries={entries} />
           <BulkAddDialog owners={owners} existingNames={existingNames} />
         </div>
       </div>

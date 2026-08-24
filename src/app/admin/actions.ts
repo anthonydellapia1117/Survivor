@@ -238,6 +238,49 @@ export async function setGameScoresAction(input: {
   });
 }
 
+/**
+ * Bulk Lynne-number assignment from the paste-import. Rows arrive
+ * pre-confirmed by the admin; each write goes through the audited
+ * admin_update_entry RPC, preserving the entry's other fields. Per-row
+ * failures are reported, never silently skipped.
+ */
+export async function bulkSetLynneNumbersAction(input: {
+  rows: { entryId: string; lynneNumber: number }[];
+}): Promise<ActionResult & { applied?: number; failures?: string[] }> {
+  return guarded(async (actor) => {
+    const admin = getAdminData();
+    const entries = new Map(
+      (await admin.listEntries()).map((e) => [e.id, e]),
+    );
+    const failures: string[] = [];
+    let applied = 0;
+    for (const row of input.rows) {
+      const e = entries.get(row.entryId);
+      if (!e || e.voidedAt) {
+        failures.push(`${row.entryId}: entry not found`);
+        continue;
+      }
+      try {
+        await admin.updateEntry({
+          entryId: e.id,
+          entryName: e.entryName,
+          lynneLabel: e.lynneLabel ?? "",
+          isFree: e.isFreeEntry,
+          lynneNumber: row.lynneNumber,
+          actor,
+        });
+        applied++;
+      } catch (err) {
+        failures.push(
+          `${e.entryName}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    revalidateAll();
+    return { ok: failures.length === 0, applied, failures };
+  });
+}
+
 export async function setGameRevealAction(input: {
   gameId: string;
   override: boolean | null;

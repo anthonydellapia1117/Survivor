@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildSubmissionBlock, type SubmitRow } from "@/lib/lynne/submit";
+import { LynneCsvButton } from "@/components/admin/lynne-csv-button";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -83,6 +84,11 @@ export function LynneSubmit({
         >
           {copied ? "Copied" : "Copy block"}
         </Button>
+        <LynneCsvButton
+          week={week}
+          ready={ready}
+          missingNumberCount={missingNumber.length}
+        />
       </div>
 
       {missingNumber.length > 0 ? (

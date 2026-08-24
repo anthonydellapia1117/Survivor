@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getData } from "@/lib/data";
 import { getAdminData } from "@/lib/data/admin";
 import { isAliveStatus } from "@/lib/alive";
+import { LynneCsvButton } from "@/components/admin/lynne-csv-button";
+import { buildSubmitRows } from "@/lib/lynne/submit";
 import { formatDeadline } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,11 @@ export default async function WeekCockpitPage(props: {
 
   const numberById = new Map(adminEntries.map((e) => [e.id, e.lynneNumber]));
   const missingNumbers = submitted.filter((e) => numberById.get(e.id) == null);
+  const submitRows = buildSubmitRows(
+    alive,
+    new Map(weekCells.map((c) => [c.entryId, c.team])),
+    numberById,
+  );
 
   const weekGames = games.filter((g) => g.week === week);
   const earlyGames = weekGames.filter((g) =>
@@ -170,6 +177,11 @@ export default async function WeekCockpitPage(props: {
                   Submission block
                 </Link>
               </Button>
+              <LynneCsvButton
+                week={week}
+                ready={submitRows.ready}
+                missingNumberCount={submitRows.missingNumber.length}
+              />
               <Button asChild size="sm" variant="outline">
                 <Link href="/admin/import">Import her sheet</Link>
               </Button>

@@ -3,6 +3,7 @@ import { getAdminData } from "@/lib/data/admin";
 import { getData } from "@/lib/data";
 import { currentPlayWeek } from "@/lib/dashboard";
 import { isAliveStatus } from "@/lib/alive";
+import { buildSubmitRows } from "@/lib/lynne/submit";
 import { LynneSubmit } from "@/components/admin/lynne-submit";
 
 export const metadata: Metadata = { title: "Lynne submission" };
@@ -31,24 +32,12 @@ export default async function LynneSubmitPage(props: {
   const pickByEntry = new Map(
     cells.filter((c) => c.week === week).map((c) => [c.entryId, c.team]),
   );
-
   const alive = entries.filter((e) => isAliveStatus(e.status));
-  const ready: { lynneNumber: number; entryName: string; team: string }[] = [];
-  const missingNumber: string[] = [];
-  const missingPick: string[] = [];
-  for (const e of alive) {
-    const team = pickByEntry.get(e.id);
-    const no = numberById.get(e.id) ?? null;
-    if (!team || team === "MISSED") {
-      missingPick.push(e.entryName);
-      continue;
-    }
-    if (no === null) {
-      missingNumber.push(e.entryName);
-      continue;
-    }
-    ready.push({ lynneNumber: no, entryName: e.entryName, team });
-  }
+  const { ready, missingNumber, missingPick, aliveCount } = buildSubmitRows(
+    alive,
+    pickByEntry,
+    numberById,
+  );
 
   return (
     <LynneSubmit
@@ -57,7 +46,7 @@ export default async function LynneSubmitPage(props: {
       ready={ready}
       missingNumber={missingNumber}
       missingPick={missingPick}
-      aliveCount={alive.length}
+      aliveCount={aliveCount}
     />
   );
 }
