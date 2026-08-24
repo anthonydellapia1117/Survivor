@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getAdminData } from "@/lib/data/admin";
 import { getData } from "@/lib/data";
-import { DEFAULT_PRICING, formatCents, freeEntryStatus } from "@/lib/pool";
+import { DEFAULT_PRICING, formatCents, lynneRemittanceCents } from "@/lib/pool";
+import { computeMargin, freeEntitlement } from "@/lib/free-entries";
 import { duplicateTeamRisks } from "@/lib/alive";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,19 +71,28 @@ export default async function AdminOverviewPage() {
     entryName: entryNameById.get(d.entryId) ?? d.entryId,
   }));
 
-  // Free entries: FLOOR(covered paid entries / ratio), earned as payments
-  // land. Earned-but-unnamed ones must be named and registered with Lynne
-  // before Week 1 picks lock — nobody notices this on their own.
-  const namedFree = entries.filter((e) => e.isFreeEntry && !e.voidedAt).length;
-  const free = freeEntryStatus(owners, namedFree, {
-    ...DEFAULT_PRICING,
-    freeEntryRatio: config.freeEntryRatio,
-  });
+  // Free-entry rule: FLOOR(recruited / ratio) free entries, mine only,
+  // auto-created by the sync after every entry change. Here we surface
+  // discrepancies and new AAA entries still needing Lynne numbers.
+  const liveAll = entries.filter((e) => !e.voidedAt);
+  const recruitedCount = liveAll.filter((e) => !e.isFreeEntry).length;
+  const entitlement = freeEntitlement(recruitedCount, config.freeEntryRatio);
+  const myFree = liveAll.filter((e) => e.isFreeEntry);
+  const freeNeedingNumber = myFree.filter((e) => e.lynneNumber === null);
 
   const confirmed = owners.filter((o) => o.participationStatus === "confirmed");
   const liveEntries = entries.filter((e) => !e.voidedAt);
   const dueCents = confirmed.reduce((s, o) => s + o.dueCents, 0);
   const paidCents = confirmed.reduce((s, o) => s + o.paidCents, 0);
+  // ADMIN-ONLY margin figures — behind the same gate as payments, never
+  // on a public route or player-reachable export.
+  const margin = computeMargin(liveAll, paidCents, {
+    ...DEFAULT_PRICING,
+    tier13Cents: config.tier13Cents,
+    tier4PlusCents: config.tier4PlusCents,
+    lynneRateCents: config.lynneRateCents,
+    freeEntryRatio: config.freeEntryRatio,
+  });
   const unmatched = payments.filter((p) => !p.ownerId);
   const outstanding = confirmed.filter((o) => o.paidCents < o.dueCents);
 
@@ -177,30 +187,45 @@ export default async function AdminOverviewPage() {
           Weeks screen.
         </Link>
       ) : null}
-      {free.unnamed > 0 ? (
+      {freeNeedingNumber.length > 0 ? (
         <Link
           href="/admin/entries"
           className="block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
         >
           <span className="font-semibold">
-            {free.unnamed} free {free.unnamed === 1 ? "entry" : "entries"} earned
-            but not yet named
+            {freeNeedingNumber.length} free{" "}
+            {freeNeedingNumber.length === 1 ? "entry needs" : "entries need"} a
+            Lynne number
           </span>{" "}
-          — {free.covered} paid entries are covered by payments (1 free per{" "}
-          {config.freeEntryRatio}). Name {free.unnamed === 1 ? "it" : "them"} on
-          the Entries screen and register with Lynne before Week 1 picks lock.
+          — {freeNeedingNumber.map((e) => e.entryName).join(", ")}. She numbers
+          everyone; register these before submitting picks for them.
         </Link>
       ) : null}
-      {free.overNamed > 0 ? (
+      {myFree.length < entitlement ? (
         <Link
           href="/admin/entries"
           className="block rounded-md border border-loss/50 bg-loss/10 px-3 py-2.5 text-sm text-loss"
         >
           <span className="font-semibold">
-            More free entries named ({free.named}) than earned ({free.earned})
+            Free entries behind the rule: {myFree.length} exist,{" "}
+            {entitlement} earned
           </span>{" "}
-          — only {free.covered} paid entries are covered by payments so far.
-          Check the Free flags on the Entries screen.
+          (FLOOR({recruitedCount} recruited / {config.freeEntryRatio})). The
+          sync creates them on the next entry change — or add the missing AAA
+          on the Entries screen.
+        </Link>
+      ) : null}
+      {myFree.length > entitlement ? (
+        <Link
+          href="/admin/entries"
+          className="block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
+        >
+          <span className="font-semibold">
+            Free entries above the rule: {myFree.length} exist, only{" "}
+            {entitlement} earned
+          </span>{" "}
+          — recruited count dropped. Nothing is auto-deleted; decide whether
+          to void an AAA entry.
         </Link>
       ) : null}
 
@@ -262,6 +287,68 @@ export default async function AdminOverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* MARGIN — admin eyes only. Never on a public route, never in a
+          player-reachable export. */}
+      <Card className="border-primary/30 bg-surface">
+        <CardHeader>
+          <CardTitle className="text-base">
+            Margin — private
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Collected from recruits</dt>
+              <dd className="font-medium tabular-nums">
+                {formatCents(margin.collectedCents)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">
+                Owed to Lynne ({margin.recruited} × {formatCents(config.lynneRateCents)})
+              </dt>
+              <dd className="font-medium tabular-nums">
+                {formatCents(margin.owedLynneCents)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">
+                Spread margin ({margin.spreadEntryCount} entries at{" "}
+                {formatCents(config.tier13Cents)} ×{" "}
+                {formatCents(config.tier13Cents - config.lynneRateCents)})
+              </dt>
+              <dd className="font-medium tabular-nums text-win">
+                {formatCents(margin.spreadCents)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">
+                Free entries earned ({margin.freeCount} ×{" "}
+                {formatCents(config.lynneRateCents)} notional)
+              </dt>
+              <dd className="font-medium tabular-nums text-win">
+                {formatCents(margin.freeNotionalCents)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3 border-t border-border/60 pt-2 sm:col-span-2">
+              <dt className="font-semibold">
+                Net position (spread + free value)
+              </dt>
+              <dd className="font-semibold tabular-nums text-win">
+                {formatCents(margin.netCents)}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {margin.recruited} recruited + {margin.freeCount} free ={" "}
+            {margin.totalEntries} total entries. Remittance covers recruited
+            only ({formatCents(lynneRemittanceCents(margin.recruited))}).
+            Cash today: {formatCents(margin.collectedCents)} collected vs{" "}
+            {formatCents(margin.owedLynneCents)} owed her.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="bg-surface">
         <CardHeader>

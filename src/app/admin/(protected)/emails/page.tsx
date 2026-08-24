@@ -13,7 +13,8 @@ export default async function EmailsPage() {
         name: `${o.firstName} ${o.lastName}`,
         email: o.email,
         status: o.participationStatus,
-        paid: o.paidCents >= o.dueCents && o.dueCents > 0,
+        // dueCents 0 (the runner's free-entry row) owes nothing.
+        paid: o.dueCents === 0 || o.paidCents >= o.dueCents,
       }))}
     />
   );

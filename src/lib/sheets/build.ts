@@ -195,13 +195,18 @@ export function buildSummary(input: SheetsInput): TabSpec {
     }) / 100,
     numberFormat: MONEY,
   });
+  // Free-entry rule: FLOOR(recruited / ratio) — recruited entries, not
+  // payment-covered ones.
   push("Free entries earned", {
-    v: freeEntriesEarned(settledPaidEntries, {
-      tier13Cents: config.tier13Cents,
-      tier4PlusCents: config.tier4PlusCents,
-      lynneRateCents: config.lynneRateCents,
-      freeEntryRatio: config.freeEntryRatio,
-    }),
+    v: freeEntriesEarned(
+      entries.filter((e) => !e.isFreeEntry).length,
+      {
+        tier13Cents: config.tier13Cents,
+        tier4PlusCents: config.tier4PlusCents,
+        lynneRateCents: config.lynneRateCents,
+        freeEntryRatio: config.freeEntryRatio,
+      },
+    ),
   });
   push("Generated", { v: now.toISOString(), color: COLORS.muted });
 

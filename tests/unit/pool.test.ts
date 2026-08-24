@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   amountDueCents,
-  coveredPaidEntries,
   defaultEntryNames,
   formatCents,
   freeEntriesEarned,
-  freeEntryStatus,
   lynneRemittanceCents,
 } from "@/lib/pool";
 
@@ -45,7 +43,7 @@ describe("Lynne remittance (locked)", () => {
 });
 
 describe("free entries (locked)", () => {
-  it("is FLOOR(paid / 10)", () => {
+  it("is FLOOR(recruited / 10) — payment status irrelevant", () => {
     expect(freeEntriesEarned(0)).toBe(0);
     expect(freeEntriesEarned(9)).toBe(0); // current roster: 9 paid entries -> 0
     expect(freeEntriesEarned(10)).toBe(1);
@@ -69,52 +67,6 @@ describe("default entry naming (locked)", () => {
   });
 });
 
-describe("covered paid entries + free-entry status", () => {
-  // Spec section 9's live position: Maria $100/4, Brian $60/2, Tim $30/1,
-  // Marc $60/2, everyone else unpaid → 9 covered → FLOOR(9/10) = 0 earned.
-  const seed = [
-    { participationStatus: "confirmed", paidEntryCount: 4, dueCents: 10000, paidCents: 10000 }, // Maria
-    { participationStatus: "confirmed", paidEntryCount: 2, dueCents: 6000, paidCents: 6000 }, // Brian
-    { participationStatus: "confirmed", paidEntryCount: 1, dueCents: 3000, paidCents: 3000 }, // Tim
-    { participationStatus: "confirmed", paidEntryCount: 2, dueCents: 6000, paidCents: 6000 }, // Marc
-    { participationStatus: "confirmed", paidEntryCount: 4, dueCents: 10000, paidCents: 0 },
-    { participationStatus: "pending", paidEntryCount: 4, dueCents: 10000, paidCents: 10000 },
-  ];
-
-  it("matches the spec's worked example: 9 covered, 0 earned", () => {
-    const s = freeEntryStatus(seed, 0);
-    expect(s.covered).toBe(9);
-    expect(s.earned).toBe(0);
-    expect(s.unnamed).toBe(0);
-  });
-
-  it("partial payments cover whole entries only, at the owner's tier rate", () => {
-    // 4-entry owner at $25/entry pays $60 → 2 entries covered, not 2.4.
-    expect(
-      coveredPaidEntries({ paidEntryCount: 4, dueCents: 10000, paidCents: 6000 }),
-    ).toBe(2);
-    // Overpayment never covers more entries than the owner has.
-    expect(
-      coveredPaidEntries({ paidEntryCount: 2, dueCents: 6000, paidCents: 9000 }),
-    ).toBe(2);
-    expect(
-      coveredPaidEntries({ paidEntryCount: 0, dueCents: 0, paidCents: 5000 }),
-    ).toBe(0);
-  });
-
-  it("crossing 10 covered earns a free entry and flags it unnamed", () => {
-    const paidUp = seed.map((o) =>
-      o.participationStatus === "confirmed" ? { ...o, paidCents: o.dueCents } : o,
-    );
-    const s = freeEntryStatus(paidUp, 0); // 13 covered
-    expect(s.covered).toBe(13);
-    expect(s.earned).toBe(1);
-    expect(s.unnamed).toBe(1);
-    expect(freeEntryStatus(paidUp, 1).unnamed).toBe(0);
-    expect(freeEntryStatus(paidUp, 2).overNamed).toBe(1);
-  });
-});
-
 describe("money formatting", () => {
   it("renders whole dollars without cents", () => {
     expect(formatCents(25000)).toBe("$250");
@@ -125,5 +77,44 @@ describe("money formatting", () => {
   });
   it("renders negatives (corrections)", () => {
     expect(formatCents(-3000)).toBe("-$30");
+  });
+});
+
+describe("free-entry rule (the runner's words)", () => {
+  it("69 recruited earns 6 free, total 75; one more recruit makes it 7 and 77", async () => {
+    const { freeEntitlement } = await import("@/lib/free-entries");
+    expect(freeEntitlement(69)).toBe(6);
+    expect(freeEntitlement(70)).toBe(7);
+    expect(freeEntitlement(9)).toBe(0);
+  });
+
+  it("AAA names continue past the highest existing, never reusing", async () => {
+    const { nextFreeNames } = await import("@/lib/free-entries");
+    expect(nextFreeNames([], 2)).toEqual(["AAA 1", "AAA 2"]);
+    expect(nextFreeNames(["AAA 1", "AAA 2"], 3)).toEqual(["AAA 3"]);
+    // AAA 2 was voided out of the list; numbering still moves past AAA 3.
+    expect(nextFreeNames(["AAA 1", "AAA 3"], 3)).toEqual(["AAA 4"]);
+    expect(nextFreeNames(["AAA 1"], 1)).toEqual([]);
+  });
+
+  it("margin: worked example — 69 recruited, 13 at $30 tier, 6 free", async () => {
+    const { computeMargin } = await import("@/lib/free-entries");
+    // 3 owners x 2 entries + 1 owner x 3 + 1 x 4 = 13 spread-tier of 69.
+    const live: { ownerId: string; isFreeEntry: boolean }[] = [];
+    const add = (owner: string, n: number, free = false) => {
+      for (let i = 0; i < n; i++) live.push({ ownerId: owner, isFreeEntry: free });
+    };
+    add("a", 2); add("b", 2); add("c", 2); add("d", 3); add("e", 4);
+    add("big", 56); // 4+ tier
+    add("me", 6, true);
+    const m = computeMargin(live, 65000);
+    expect(m.recruited).toBe(69);
+    expect(m.freeCount).toBe(6);
+    expect(m.totalEntries).toBe(75);
+    expect(m.owedLynneCents).toBe(69 * 2500); // $1,725
+    expect(m.spreadEntryCount).toBe(9);
+    expect(m.spreadCents).toBe(9 * 500);
+    expect(m.freeNotionalCents).toBe(6 * 2500); // $150
+    expect(m.netCents).toBe(9 * 500 + 6 * 2500);
   });
 });

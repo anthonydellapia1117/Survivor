@@ -40,63 +40,17 @@ export function lynneRemittanceCents(
   return Math.max(0, entryCount) * config.lynneRateCents;
 }
 
-/** FLOOR(paid entries / 10). Additive entries, named before Week 1. */
+/**
+ * FLOOR(recruited / ratio). Recruited = live non-free entries — everything
+ * anyone pays for. Free entries never earn more free entries, and payment
+ * status is irrelevant to earning (the old payments-covered rule was
+ * wrong; see src/lib/free-entries.ts for the full rule).
+ */
 export function freeEntriesEarned(
-  paidEntryCount: number,
+  recruitedCount: number,
   config: PricingConfig = DEFAULT_PRICING,
 ): number {
-  return Math.floor(Math.max(0, paidEntryCount) / config.freeEntryRatio);
-}
-
-/**
- * How many of an owner's paid (non-free) entries are covered by money
- * actually received. Spec section 9's worked example counts entries this
- * way: Maria $100/4 entries + Brian $60/2 + Tim $30/1 + Marc $60/2 = 9 paid.
- * The per-entry rate falls out of due/count, so tier pricing is honored
- * without re-deriving it.
- */
-export function coveredPaidEntries(o: {
-  paidEntryCount: number;
-  dueCents: number;
-  paidCents: number;
-}): number {
-  if (o.paidEntryCount <= 0 || o.dueCents <= 0) return 0;
-  return Math.min(
-    o.paidEntryCount,
-    Math.floor((Math.max(0, o.paidCents) * o.paidEntryCount) / o.dueCents),
-  );
-}
-
-export interface FreeEntryStatus {
-  covered: number; // paid entries covered by received money, pool-wide
-  earned: number; // FLOOR(covered / ratio)
-  named: number; // live entries already flagged is_free_entry
-  unnamed: number; // earned - named, floored at 0
-  overNamed: number; // named - earned, floored at 0
-}
-
-/** Pool-wide free-entry position: earned from payments vs. named in the app. */
-export function freeEntryStatus(
-  owners: {
-    participationStatus: string;
-    paidEntryCount: number;
-    dueCents: number;
-    paidCents: number;
-  }[],
-  namedFreeEntries: number,
-  config: PricingConfig = DEFAULT_PRICING,
-): FreeEntryStatus {
-  const covered = owners
-    .filter((o) => o.participationStatus === "confirmed")
-    .reduce((s, o) => s + coveredPaidEntries(o), 0);
-  const earned = freeEntriesEarned(covered, config);
-  return {
-    covered,
-    earned,
-    named: namedFreeEntries,
-    unnamed: Math.max(0, earned - namedFreeEntries),
-    overNamed: Math.max(0, namedFreeEntries - earned),
-  };
+  return Math.floor(Math.max(0, recruitedCount) / config.freeEntryRatio);
 }
 
 export function formatCents(cents: number): string {

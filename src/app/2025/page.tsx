@@ -66,7 +66,7 @@ export default async function Archive2025Page() {
         {[
           { label: "Pool size", value: "1,245", sub: "+38 free entries" },
           { label: "Winners", value: "27", sub: "$1,008.60 each" },
-          { label: "My entries", value: "66 paid + 6 free", sub: "$1,650 remitted" },
+          { label: "My entries", value: "72", sub: "3 still on the final sheet" },
           { label: "In final sheet", value: String(entries.length), sub: `${winners.length} winners · ${outs.length} out` },
         ].map((c) => (
           <Card key={c.label} className="bg-surface">
