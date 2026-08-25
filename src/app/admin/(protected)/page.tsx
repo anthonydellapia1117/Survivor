@@ -231,6 +231,22 @@ export default async function AdminOverviewPage() {
 
       <SheetsExportButton lastExportAt={lastExport} />
 
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5">
+        <div className="min-w-0 flex-1 text-sm">
+          <p className="font-medium">Data backup</p>
+          <p className="text-xs text-muted-foreground">
+            The free plan keeps no backups. One file restores everything:
+            build a fresh database from the repo migrations, run this file
+            in the SQL editor, done. Download one after every data day.
+          </p>
+        </div>
+        <Button asChild size="sm" variant="outline">
+          <a href="/api/admin/backup" download>
+            Download backup (.sql)
+          </a>
+        </Button>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card className="bg-surface">
           <CardHeader className="pb-2">

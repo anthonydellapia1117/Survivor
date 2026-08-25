@@ -171,6 +171,11 @@ export interface AdminBackend {
     }[]
   >;
   logAudit(args: { action: string; note: string; actor: string }): Promise<void>;
+  /** Full raw rows of one whitelisted table, for the data backup. */
+  dumpTable(
+    table: string,
+    orderBy: string | null,
+  ): Promise<Record<string, unknown>[]>;
   updateWeek(args: {
     week: number;
     earlyDeadlineAt: string;

@@ -89,8 +89,10 @@ begin
   if (select c.team from v_grid_cells c where c.entry_id = e and c.week = 6) is distinct from team then
     raise exception 'pick must reveal automatically once kickoff passes';
   end if;
-  if not exists (select 1 from picks where entry_id = e and week = 6) then
-    raise exception 'raw pick should pass RLS after kickoff';
+  -- Raw picks stay closed to anon even after kickoff: the definer view is
+  -- the ONLY public path (20260824000021).
+  if exists (select 1 from picks where entry_id = e and week = 6) then
+    raise exception 'raw picks must never be directly readable by anon';
   end if;
   if not exists (select 1 from unnest(
        (select teams_used from v_entry_public where id = e)) t
@@ -242,5 +244,32 @@ begin
   end if;
 end $$;
 reset role;
+
+-- ------------------------------------------------------------ single path
+-- entries and picks tables are closed to both client roles; the definer
+-- views are the only public read path.
+select set_config('request.jwt.claims', '', true);
+set local role anon;
+do $$
+begin
+  if exists (select 1 from entries) then
+    raise exception 'entries must not be directly readable by anon';
+  end if;
+  if exists (select 1 from picks) then
+    raise exception 'picks must not be directly readable by anon';
+  end if;
+end $$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"email":"stranger@example.com"}', true);
+do $$
+begin
+  if exists (select 1 from entries) then
+    raise exception 'entries must not be readable by a non-admin user';
+  end if;
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
 
 rollback;

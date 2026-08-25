@@ -1,6 +1,6 @@
 // Local-Postgres admin backend (dev/visual testing). Mirrors admin-supabase.
 
-import { Pool } from "pg";
+import { Pool, types as pgTypes } from "pg";
 import { FREE_ENTRY_OWNER_EMAIL } from "@/lib/free-entries";
 import type {
   AdminBackend,
@@ -16,6 +16,26 @@ let pool: Pool | null = null;
 function db(): Pool {
   if (!pool) pool = new Pool({ connectionString: process.env.LOCAL_PG_URL });
   return pool;
+}
+
+// Backup dumps go through a pool that leaves date/timestamp columns as raw
+// text: JS Date only holds milliseconds, which would silently truncate the
+// database's microsecond precision on restore. (The Supabase backend gets
+// strings from PostgREST, so this matches production behavior.)
+const TIME_OIDS = new Set([1082, 1114, 1184]); // date, timestamp, timestamptz
+let rawPool: Pool | null = null;
+function rawDb(): Pool {
+  if (!rawPool)
+    rawPool = new Pool({
+      connectionString: process.env.LOCAL_PG_URL,
+      types: {
+        getTypeParser: (oid: number, format: any) =>
+          TIME_OIDS.has(oid)
+            ? (v: string) => v
+            : (pgTypes.getTypeParser as any)(oid, format),
+      } as any,
+    });
+  return rawPool;
 }
 
 const iso = (v: any) => (v instanceof Date ? v.toISOString() : v);
@@ -193,6 +213,7 @@ export const adminLocalPgBackend: AdminBackend = {
     const { rows } = await db().query(
       `select e.id, e.entry_name, e.name_is_default, e.is_free_entry,
               e.owner_id, o.first_name || ' ' || o.last_name as owner_name,
+              (o.email is not null and lower(o.email) = '${FREE_ENTRY_OWNER_EMAIL}') as is_admin_entry,
               s.wins, s.losses, s.lives_remaining, s.status, s.bye_used,
               s.teams_used, s.last_scored_week
          from entries e
@@ -327,6 +348,16 @@ export const adminLocalPgBackend: AdminBackend = {
       result: r.result,
       isCurrent: r.is_current,
     }));
+  },
+
+  async dumpTable(table, orderBy) {
+    if (!/^[a-z_][a-z0-9_]*$/.test(table) || (orderBy && !/^[a-z_][a-z0-9_]*$/.test(orderBy))) {
+      throw new Error("bad identifier");
+    }
+    const { rows } = await rawDb().query(
+      `select * from ${table}` + (orderBy ? ` order by ${orderBy}` : ""),
+    );
+    return rows;
   },
 
   async logAudit(a) {

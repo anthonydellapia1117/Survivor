@@ -409,6 +409,21 @@ export const adminSupabaseBackend: AdminBackend = {
     }));
   },
 
+  async dumpTable(table, orderBy) {
+    const c = await createSupabaseServerClient();
+    const out: Record<string, unknown>[] = [];
+    const page = 1000;
+    for (let from = 0; ; from += page) {
+      let q = c.from(table).select("*").range(from, from + page - 1);
+      if (orderBy) q = q.order(orderBy, { ascending: true });
+      const { data, error } = await q;
+      if (error) throw error;
+      out.push(...((data ?? []) as Record<string, unknown>[]));
+      if (!data || data.length < page) break;
+    }
+    return out;
+  },
+
   async logAudit(a) {
     const c = await createSupabaseServerClient();
     const { error } = await c.from("audit_log").insert({
