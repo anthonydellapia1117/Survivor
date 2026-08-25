@@ -1,7 +1,7 @@
 # SURVIVOR APP — V2 ENHANCEMENT SPECIFICATION
 
 Repo: `github.com/anthonydellapia1117/Survivor`
-Live: `survivor-khaki-eight.vercel.app`
+Live: `ad-26-survivor.vercel.app`
 Supabase: project `rpbzsmeqaqzdymfxkrzr`
 Written 2026-08-24. Week 1 locks **Tuesday 2026-09-08, 12:00 PM ET**.
 

@@ -111,7 +111,7 @@ export function nextLockBoundary(
 
 export const LOCK_KIND_LABEL: Record<LockBoundary["kind"], string> = {
   all: "all picks",
-  early: "Thu/Fri picks",
+  early: "Wed/Thu/Fri picks",
   late: "Sat–Mon picks",
 };
 
