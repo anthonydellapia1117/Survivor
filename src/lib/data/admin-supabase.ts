@@ -89,6 +89,7 @@ export const adminSupabaseBackend: AdminBackend = {
         voidedAt: r.voided_at,
         pickCount: counts.get(r.id) ?? 0,
         isAdminEntry: adminOwners.has(r.owner_id),
+        submittedToLynneAt: r.submitted_to_lynne_at,
       }))
       .sort(
         (a: AdminEntry, b: AdminEntry) =>
@@ -223,6 +224,15 @@ export const adminSupabaseBackend: AdminBackend = {
     });
     if (error) throw error;
     return Number(data ?? 0);
+  },
+
+  async markRosterSent(actor) {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c.rpc("admin_mark_roster_sent", {
+      p_actor: actor,
+    });
+    if (error) throw error;
+    return Number(data);
   },
 
   async setGameReveal(a) {

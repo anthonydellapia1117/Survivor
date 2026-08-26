@@ -27,6 +27,9 @@ export interface AdminEntry {
   pickCount: number;
   /** Owned by the pool runner — sorts first by default. */
   isAdminEntry: boolean;
+  /** When this entry was last included in a roster sent to Lynne;
+   *  null = she has not seen it yet (delta-export candidate). */
+  submittedToLynneAt: string | null;
 }
 
 export interface AdminPayment {
@@ -171,6 +174,9 @@ export interface AdminBackend {
     }[]
   >;
   logAudit(args: { action: string; note: string; actor: string }): Promise<void>;
+  /** Stamp every unsent, non-voided entry as submitted to Lynne now.
+   *  Returns how many were stamped. */
+  markRosterSent(actor: string): Promise<number>;
   /** Full raw rows of one whitelisted table, for the data backup. */
   dumpTable(
     table: string,

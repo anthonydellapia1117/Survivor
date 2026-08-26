@@ -90,6 +90,7 @@ export const adminLocalPgBackend: AdminBackend = {
       isAdminEntry: Boolean(r.is_admin_entry),
       voidedAt: iso(r.voided_at),
       pickCount: Number(r.pick_count),
+      submittedToLynneAt: iso(r.submitted_to_lynne_at),
     }));
   },
 
@@ -173,6 +174,14 @@ export const adminLocalPgBackend: AdminBackend = {
     const { rows } = await db().query(
       "select admin_set_game_score($1,$2,$3,$4,$5) as n",
       [a.gameId, a.homeScore, a.awayScore, a.status, a.actor],
+    );
+    return Number(rows[0].n);
+  },
+
+  async markRosterSent(actor) {
+    const { rows } = await db().query(
+      "select admin_mark_roster_sent($1) as n",
+      [actor],
     );
     return Number(rows[0].n);
   },

@@ -331,6 +331,16 @@ export async function bulkSetLynneNumbersAction(input: {
   });
 }
 
+export async function markRosterSentAction(): Promise<
+  ActionResult & { count?: number }
+> {
+  return guarded(async (actor) => {
+    const count = await getAdminData().markRosterSent(actor);
+    revalidateAll();
+    return { ok: true, count };
+  });
+}
+
 export async function setGameRevealAction(input: {
   gameId: string;
   override: boolean | null;

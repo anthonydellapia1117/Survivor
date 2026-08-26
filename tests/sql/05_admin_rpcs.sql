@@ -124,3 +124,40 @@ begin
 end $$;
 
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- admin_mark_roster_sent: stamps only unsent, non-voided entries; audited;
+-- idempotent second call is a zero no-op with no audit row.
+-- ---------------------------------------------------------------------------
+begin;
+
+do $$
+declare
+  v_owner uuid;
+  n int;
+  audits_before int;
+begin
+  select count(*) into audits_before from audit_log where action = 'mark_roster_sent';
+
+  -- A fresh owner whose entries have never been sent.
+  v_owner := admin_create_owner('Delta', 'Test', 'delta@example.com', null,
+                                'email', null, array['Delta Test 1','Delta Test 2'], true, 'test');
+
+  select admin_mark_roster_sent('test') into n;
+  if n < 2 then raise exception 'expected at least 2 stamped, got %', n; end if;
+
+  if exists (select 1 from entries where voided_at is null and submitted_to_lynne_at is null) then
+    raise exception 'unsent entries remain after mark_roster_sent';
+  end if;
+
+  select count(*) into n from audit_log where action = 'mark_roster_sent';
+  if n <> audits_before + 1 then raise exception 'mark_roster_sent not audited'; end if;
+
+  -- Second call: nothing left to stamp, returns 0, writes no audit row.
+  select admin_mark_roster_sent('test') into n;
+  if n <> 0 then raise exception 'second call stamped % rows', n; end if;
+  select count(*) into n from audit_log where action = 'mark_roster_sent';
+  if n <> audits_before + 1 then raise exception 'no-op call wrote an audit row'; end if;
+end $$;
+
+rollback;
