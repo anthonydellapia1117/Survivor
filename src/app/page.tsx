@@ -65,10 +65,6 @@ export default async function DashboardPage() {
   const playWeek = currentPlayWeek(weeks, now);
   const deadline = nextLockBoundary(weeks, now);
   const activity = recentActivity(entries, cells, 10);
-  const potPct =
-    pot.dueCents > 0
-      ? Math.min(100, Math.round((pot.paidCents / pot.dueCents) * 100))
-      : 0;
 
   // Lynne's three buckets, her exact words (C2/F1).
   const buckets = { "No Losses": 0, "Loss/Bye": 0, Out: 0 };
@@ -96,10 +92,13 @@ export default async function DashboardPage() {
     );
     if (kill) carnage.set(kill.team, (carnage.get(kill.team) ?? 0) + 1);
   }
-  const carnageTop = [...carnage.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const carnageTop = [...carnage.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
 
   // F1 — chalk vs contrarian: did the most-picked team win each week?
-  const chalk: { week: number; team: string; count: number; result: string }[] = [];
+  const chalk: { week: number; team: string; count: number; result: string }[] =
+    [];
   for (const w of weeks) {
     const weekCells = cells.filter(
       (c) =>
@@ -118,7 +117,13 @@ export default async function DashboardPage() {
       byTeam.set(c.team, cur);
     }
     const top = [...byTeam.entries()].sort((a, b) => b[1].n - a[1].n)[0];
-    if (top) chalk.push({ week: w.week, team: top[0], count: top[1].n, result: top[1].result });
+    if (top)
+      chalk.push({
+        week: w.week,
+        team: top[0],
+        count: top[1].n,
+        result: top[1].result,
+      });
   }
 
   // F1 — teams running out: how many ALIVE entries still hold each team.
@@ -127,7 +132,9 @@ export default async function DashboardPage() {
     team: t.abbr,
     left: aliveEntries.filter((e) => !e.teamsUsed.includes(t.abbr)).length,
   })).sort((a, b) => a.left - b.left);
-  const scarce = scarcity.filter((s) => s.left < aliveEntries.length).slice(0, 8);
+  const scarce = scarcity
+    .filter((s) => s.left < aliveEntries.length)
+    .slice(0, 8);
 
   return (
     <div className="space-y-6">
@@ -138,29 +145,52 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {/* The POOL-WIDE prize pot from Lynne's full pool — the number a
+            player actually cares about. Stays honestly empty until she
+            confirms the 2026 pool size. This group's collected/due figures
+            are not public and are not computed here. */}
         <Card className="bg-surface">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Pot
+              Pool pot
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pot.poolPotCents !== null ? (
+              <>
+                <div className="text-2xl tabular-nums">
+                  {formatCents(pot.poolPotCents)}
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {pot.poolEntryCount !== null
+                    ? `across ${pot.poolEntryCount.toLocaleString()} pool entries`
+                    : "across the full pool"}
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl text-muted-foreground">Pending</div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Set once Lynne confirms the 2026 pool size
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-surface">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Entries
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl tabular-nums">
-              {formatCents(pot.paidCents)}
-              <span className="text-sm text-muted-foreground">
-                {" "}
-                / {formatCents(pot.dueCents)}
-              </span>
+              {pot.recruitedEntryCount}
             </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-              <div
-                className="h-full rounded-full bg-primary transition-[width] duration-200"
-                style={{ width: `${potPct}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-xs tabular-nums text-muted-foreground">
-              {potPct}% collected
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              in this group
             </p>
           </CardContent>
         </Card>
@@ -258,7 +288,10 @@ export default async function DashboardPage() {
                   Hidden until the Week {dist.week} deadline passes.
                 </p>
                 {deadline && deadline.week === dist.week ? (
-                  <p className="text-xs text-muted-foreground" suppressHydrationWarning>
+                  <p
+                    className="text-xs text-muted-foreground"
+                    suppressHydrationWarning
+                  >
                     {formatDeadline(deadline.deadlineAt)}
                   </p>
                 ) : null}
@@ -274,7 +307,9 @@ export default async function DashboardPage() {
 
       <Card className="bg-surface">
         <CardHeader>
-          <CardTitle className="text-base">Standings — in Lynne&apos;s words</CardTitle>
+          <CardTitle className="text-base">
+            Standings — in Lynne&apos;s words
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-2">
@@ -321,7 +356,10 @@ export default async function DashboardPage() {
                       className="h-4 w-1 rounded-full"
                       style={{ background: TEAM_PALETTE[team]?.display }}
                     />
-                    <span className="font-medium" style={{ color: TEAM_PALETTE[team]?.display }}>
+                    <span
+                      className="font-medium"
+                      style={{ color: TEAM_PALETTE[team]?.display }}
+                    >
                       {team}
                     </span>
                     <span className="ml-auto tabular-nums text-loss">
@@ -348,18 +386,33 @@ export default async function DashboardPage() {
               <ul className="space-y-1.5 text-sm">
                 {chalk.map((c) => (
                   <li key={c.week} className="flex items-center gap-2">
-                    <span className="w-9 tabular-nums text-muted-foreground">W{c.week}</span>
-                    <span className="font-medium" style={{ color: TEAM_PALETTE[c.team]?.display }}>
+                    <span className="w-9 tabular-nums text-muted-foreground">
+                      W{c.week}
+                    </span>
+                    <span
+                      className="font-medium"
+                      style={{ color: TEAM_PALETTE[c.team]?.display }}
+                    >
                       {c.team}
                     </span>
-                    <span className="text-xs text-muted-foreground">×{c.count}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ×{c.count}
+                    </span>
                     <span
                       className={cn(
                         "ml-auto text-xs font-semibold",
-                        c.result === "win" ? "text-win" : c.result === "pending" ? "text-muted-foreground" : "text-loss",
+                        c.result === "win"
+                          ? "text-win"
+                          : c.result === "pending"
+                            ? "text-muted-foreground"
+                            : "text-loss",
                       )}
                     >
-                      {c.result === "win" ? "chalk held" : c.result === "pending" ? "pending" : "CHALK FELL"}
+                      {c.result === "win"
+                        ? "chalk held"
+                        : c.result === "pending"
+                          ? "pending"
+                          : "CHALK FELL"}
                     </span>
                   </li>
                 ))}
@@ -375,20 +428,25 @@ export default async function DashboardPage() {
           <CardContent>
             {scarce.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                Every alive entry still holds all 32 teams. Scarcity shows up
-                as picks burn teams.
+                Every alive entry still holds all 32 teams. Scarcity shows up as
+                picks burn teams.
               </p>
             ) : (
               <ul className="space-y-1.5 text-sm">
                 {scarce.map((sc) => (
                   <li key={sc.team} className="flex items-center gap-2">
-                    <span className="font-medium" style={{ color: TEAM_PALETTE[sc.team]?.display }}>
+                    <span
+                      className="font-medium"
+                      style={{ color: TEAM_PALETTE[sc.team]?.display }}
+                    >
                       {sc.team}
                     </span>
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
                       <div
                         className="h-full rounded-full bg-tie"
-                        style={{ width: `${(sc.left / Math.max(1, aliveEntries.length)) * 100}%` }}
+                        style={{
+                          width: `${(sc.left / Math.max(1, aliveEntries.length)) * 100}%`,
+                        }}
                       />
                     </div>
                     <span className="tabular-nums text-muted-foreground">

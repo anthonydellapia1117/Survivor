@@ -186,6 +186,14 @@ export const adminLocalPgBackend: AdminBackend = {
     return Number(rows[0].n);
   },
 
+  async setPoolPot(a) {
+    await db().query("select admin_set_pool_pot($1,$2,$3)", [
+      a.entryCount,
+      a.potCents,
+      a.actor,
+    ]);
+  },
+
   async setGameReveal(a) {
     await db().query("select admin_set_game_reveal($1,$2,$3)", [
       a.gameId,
@@ -360,7 +368,10 @@ export const adminLocalPgBackend: AdminBackend = {
   },
 
   async dumpTable(table, orderBy) {
-    if (!/^[a-z_][a-z0-9_]*$/.test(table) || (orderBy && !/^[a-z_][a-z0-9_]*$/.test(orderBy))) {
+    if (
+      !/^[a-z_][a-z0-9_]*$/.test(table) ||
+      (orderBy && !/^[a-z_][a-z0-9_]*$/.test(orderBy))
+    ) {
       throw new Error("bad identifier");
     }
     const { rows } = await rawDb().query(

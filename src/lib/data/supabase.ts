@@ -162,9 +162,12 @@ export const supabaseBackend: DataBackend = {
       .single();
     if (error) throw error;
     return {
-      dueCents: Number(data.due_cents),
-      paidCents: Number(data.paid_cents),
+      recruitedEntryCount: Number(data.recruited_entry_count),
       entryCount: Number(data.entry_count),
+      poolEntryCount:
+        data.pool_entry_count === null ? null : Number(data.pool_entry_count),
+      poolPotCents:
+        data.pool_pot_cents === null ? null : Number(data.pool_pot_cents),
     };
   },
 

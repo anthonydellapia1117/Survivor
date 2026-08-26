@@ -101,7 +101,11 @@ export interface AdminBackend {
     sourceId: string;
     targetId: string;
     actor: string;
-  }): Promise<{ deleted: boolean; entries_moved: number; payments_moved: number }>;
+  }): Promise<{
+    deleted: boolean;
+    entries_moved: number;
+    payments_moved: number;
+  }>;
   deleteOwner(args: { ownerId: string; actor: string }): Promise<void>;
   setGameScore(args: {
     gameId: string;
@@ -173,10 +177,22 @@ export interface AdminBackend {
       isCurrent: boolean;
     }[]
   >;
-  logAudit(args: { action: string; note: string; actor: string }): Promise<void>;
+  logAudit(args: {
+    action: string;
+    note: string;
+    actor: string;
+  }): Promise<void>;
   /** Stamp every unsent, non-voided entry as submitted to Lynne now.
    *  Returns how many were stamped. */
   markRosterSent(actor: string): Promise<number>;
+  /** Lynne's whole-pool numbers for the public pool-pot card. Either value
+   *  may be null (clears back to "pending"). The pot is entered directly —
+   *  never derived from an unconfirmed per-entry formula. */
+  setPoolPot(args: {
+    entryCount: number | null;
+    potCents: number | null;
+    actor: string;
+  }): Promise<void>;
   /** Full raw rows of one whitelisted table, for the data backup. */
   dumpTable(
     table: string,

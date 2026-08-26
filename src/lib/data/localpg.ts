@@ -146,10 +146,13 @@ export const localPgBackend: DataBackend = {
 
   async getPot(): Promise<PotSummary> {
     const { rows } = await db().query("select * from v_pot");
+    const r = rows[0];
     return {
-      dueCents: Number(rows[0].due_cents),
-      paidCents: Number(rows[0].paid_cents),
-      entryCount: Number(rows[0].entry_count),
+      recruitedEntryCount: Number(r.recruited_entry_count),
+      entryCount: Number(r.entry_count),
+      poolEntryCount:
+        r.pool_entry_count === null ? null : Number(r.pool_entry_count),
+      poolPotCents: r.pool_pot_cents === null ? null : Number(r.pool_pot_cents),
     };
   },
 

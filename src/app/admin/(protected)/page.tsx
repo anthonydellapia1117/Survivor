@@ -9,23 +9,34 @@ import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SheetsExportButton } from "@/components/admin/sheets-export-button";
+import { PoolPotForm } from "@/components/admin/pool-pot-form";
 
 export const metadata: Metadata = { title: "Admin" };
 
 export default async function AdminOverviewPage() {
   const data = getAdminData();
   const pub = getData();
-  const [owners, entries, payments, audit, weeks, pubEntries, cells, config] =
-    await Promise.all([
-      data.listOwners(),
-      data.listEntries(),
-      data.listPayments(),
-      data.auditTail(50),
-      pub.getWeeks(),
-      data.listEntrySummaries(),
-      data.listGridCells(),
-      data.getConfig(),
-    ]);
+  const [
+    owners,
+    entries,
+    payments,
+    audit,
+    weeks,
+    pubEntries,
+    cells,
+    config,
+    pot,
+  ] = await Promise.all([
+    data.listOwners(),
+    data.listEntries(),
+    data.listPayments(),
+    data.auditTail(50),
+    pub.getWeeks(),
+    data.listEntrySummaries(),
+    data.listGridCells(),
+    data.getConfig(),
+    pub.getPot(),
+  ]);
   const lastExport =
     audit.find((a) => a.action === "sheets_export")?.at ?? null;
 
@@ -130,7 +141,10 @@ export default async function AdminOverviewPage() {
         >
           <span className="font-semibold">Sweep pending:</span>{" "}
           {sweepPending
-            .map((w) => `week ${w.week} has ${w.missing} alive ${w.missing === 1 ? "entry" : "entries"} without a pick`)
+            .map(
+              (w) =>
+                `week ${w.week} has ${w.missing} alive ${w.missing === 1 ? "entry" : "entries"} without a pick`,
+            )
             .join("; ")}{" "}
           past the deadline. Standings are wrong until the missed-pick sweep
           runs — go to the Deadline screen.
@@ -141,9 +155,14 @@ export default async function AdminOverviewPage() {
           href="/admin/picks"
           className="block rounded-md border border-loss bg-loss/15 px-3 py-2.5 text-sm text-loss"
         >
-          <span className="font-bold">⚠ DUPLICATE TEAM — elimination risk:</span>{" "}
+          <span className="font-bold">
+            ⚠ DUPLICATE TEAM — elimination risk:
+          </span>{" "}
           {dupRisks
-            .map((d) => `${d.entryName} has ${d.team} in weeks ${d.weeks.join(" and ")}`)
+            .map(
+              (d) =>
+                `${d.entryName} has ${d.team} in weeks ${d.weeks.join(" and ")}`,
+            )
             .join("; ")}
           . In Lynne&apos;s pool this puts the entry OUT.
         </Link>
@@ -159,12 +178,18 @@ export default async function AdminOverviewPage() {
         >
           <span className="font-semibold">
             Week {nextLock.week}: {nextLockMissing.length}{" "}
-            {nextLockMissing.length === 1 ? "entry" : "entries"} still without
-            a pick
+            {nextLockMissing.length === 1 ? "entry" : "entries"} still without a
+            pick
           </span>{" "}
-          — first lock in {hoursToLock < 1 ? "under an hour" : `${Math.round(hoursToLock)}h`}:{" "}
-          {nextLockMissing.slice(0, 8).map((e) => e.entryName).join(", ")}
-          {nextLockMissing.length > 8 ? ` +${nextLockMissing.length - 8} more` : ""}
+          — first lock in{" "}
+          {hoursToLock < 1 ? "under an hour" : `${Math.round(hoursToLock)}h`}:{" "}
+          {nextLockMissing
+            .slice(0, 8)
+            .map((e) => e.entryName)
+            .join(", ")}
+          {nextLockMissing.length > 8
+            ? ` +${nextLockMissing.length - 8} more`
+            : ""}
         </Link>
       ) : null}
       {liveNoNumber > 0 ? (
@@ -173,8 +198,8 @@ export default async function AdminOverviewPage() {
           className="block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
         >
           {liveNoNumber} {liveNoNumber === 1 ? "entry has" : "entries have"} no
-          Lynne number — they cannot go on the weekly submission block. Set
-          them on the Entries screen.
+          Lynne number — they cannot go on the weekly submission block. Set them
+          on the Entries screen.
         </Link>
       ) : null}
       {unconfirmedWeeks > 0 ? (
@@ -182,9 +207,9 @@ export default async function AdminOverviewPage() {
           href="/admin/weeks"
           className="block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
         >
-          {unconfirmedWeeks} week {unconfirmedWeeks === 1 ? "deadline" : "deadlines"} still
-          unconfirmed — verify them against the released NFL schedule on the
-          Weeks screen.
+          {unconfirmedWeeks} week{" "}
+          {unconfirmedWeeks === 1 ? "deadline" : "deadlines"} still unconfirmed
+          — verify them against the released NFL schedule on the Weeks screen.
         </Link>
       ) : null}
       {freeNeedingNumber.length > 0 ? (
@@ -207,12 +232,12 @@ export default async function AdminOverviewPage() {
           className="block rounded-md border border-loss/50 bg-loss/10 px-3 py-2.5 text-sm text-loss"
         >
           <span className="font-semibold">
-            Free entries behind the rule: {myFree.length} exist,{" "}
-            {entitlement} earned
+            Free entries behind the rule: {myFree.length} exist, {entitlement}{" "}
+            earned
           </span>{" "}
           (FLOOR({recruitedCount} recruited / {config.freeEntryRatio})). The
-          sync creates them on the next entry change — or add the missing AAA
-          on the Entries screen.
+          sync creates them on the next entry change — or add the missing AAA on
+          the Entries screen.
         </Link>
       ) : null}
       {myFree.length > entitlement ? (
@@ -224,8 +249,8 @@ export default async function AdminOverviewPage() {
             Free entries above the rule: {myFree.length} exist, only{" "}
             {entitlement} earned
           </span>{" "}
-          — recruited count dropped. Nothing is auto-deleted; decide whether
-          to void an AAA entry.
+          — recruited count dropped. Nothing is auto-deleted; decide whether to
+          void an AAA entry.
         </Link>
       ) : null}
 
@@ -235,9 +260,9 @@ export default async function AdminOverviewPage() {
         <div className="min-w-0 flex-1 text-sm">
           <p className="font-medium">Data backup</p>
           <p className="text-xs text-muted-foreground">
-            The free plan keeps no backups. One file restores everything:
-            build a fresh database from the repo migrations, run this file
-            in the SQL editor, done. Download one after every data day.
+            The free plan keeps no backups. One file restores everything: build
+            a fresh database from the repo migrations, run this file in the SQL
+            editor, done. Download one after every data day.
           </p>
         </div>
         <Button asChild size="sm" variant="outline">
@@ -304,13 +329,55 @@ export default async function AdminOverviewPage() {
         </Card>
       </div>
 
+      {/* POOL POT — Lynne's whole pool. Public by design once set: this is
+          pool information, unlike the margin panel below. */}
+      <Card className="bg-surface">
+        <CardHeader>
+          <CardTitle className="text-base">
+            Pool pot — Lynne&apos;s full pool
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {pot.poolPotCents === null && pot.poolEntryCount === null ? (
+              <>
+                Not set — the public dashboard shows &quot;Pending&quot; until
+                Lynne confirms the 2026 pool size.
+              </>
+            ) : (
+              <>
+                Public card currently reads{" "}
+                <span className="font-medium text-foreground tabular-nums">
+                  {pot.poolPotCents === null
+                    ? "Pending"
+                    : formatCents(pot.poolPotCents)}
+                </span>
+                {pot.poolEntryCount !== null ? (
+                  <>
+                    {" "}
+                    across{" "}
+                    <span className="tabular-nums">
+                      {pot.poolEntryCount.toLocaleString()}
+                    </span>{" "}
+                    pool entries
+                  </>
+                ) : null}
+                .
+              </>
+            )}
+          </p>
+          <PoolPotForm
+            entryCount={pot.poolEntryCount}
+            potCents={pot.poolPotCents}
+          />
+        </CardContent>
+      </Card>
+
       {/* MARGIN — admin eyes only. Never on a public route, never in a
           player-reachable export. */}
       <Card className="border-primary/30 bg-surface">
         <CardHeader>
-          <CardTitle className="text-base">
-            Margin — private
-          </CardTitle>
+          <CardTitle className="text-base">Margin — private</CardTitle>
         </CardHeader>
         <CardContent>
           <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
@@ -322,7 +389,8 @@ export default async function AdminOverviewPage() {
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">
-                Owed to Lynne ({margin.recruited} × {formatCents(config.lynneRateCents)})
+                Owed to Lynne ({margin.recruited} ×{" "}
+                {formatCents(config.lynneRateCents)})
               </dt>
               <dd className="font-medium tabular-nums">
                 {formatCents(margin.owedLynneCents)}
@@ -359,8 +427,8 @@ export default async function AdminOverviewPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             {margin.recruited} recruited + {margin.freeCount} free ={" "}
             {margin.totalEntries} total entries. Remittance covers recruited
-            only ({formatCents(lynneRemittanceCents(margin.recruited))}).
-            Cash today: {formatCents(margin.collectedCents)} collected vs{" "}
+            only ({formatCents(lynneRemittanceCents(margin.recruited))}). Cash
+            today: {formatCents(margin.collectedCents)} collected vs{" "}
             {formatCents(margin.owedLynneCents)} owed her.
           </p>
         </CardContent>
@@ -386,9 +454,7 @@ export default async function AdminOverviewPage() {
                     {formatEtDateTime(a.at)}
                   </span>
                   <span className="font-medium">{a.action}</span>
-                  <span className="text-muted-foreground">
-                    {a.targetTable}
-                  </span>
+                  <span className="text-muted-foreground">{a.targetTable}</span>
                   <span className="ml-auto truncate text-xs text-muted-foreground">
                     {a.actor}
                   </span>

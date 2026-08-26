@@ -88,9 +88,15 @@ export interface GridCell {
 }
 
 export interface PotSummary {
-  dueCents: number;
-  paidCents: number;
+  /** Entries people actually pay for — the runner's free entries excluded. */
+  recruitedEntryCount: number;
+  /** Every live entry, free ones included. */
   entryCount: number;
+  /** Lynne's whole-pool numbers. Null until the runner enters what she sends;
+   *  the pool pot is pool information and is public by design. THIS group's
+   *  collected/due figures are deliberately absent from the public payload. */
+  poolEntryCount: number | null;
+  poolPotCents: number | null;
 }
 
 export interface EntryDetail {

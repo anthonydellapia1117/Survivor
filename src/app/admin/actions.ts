@@ -242,7 +242,15 @@ export async function updateWeekAction(input: {
 export async function mergeOwnerAction(input: {
   sourceId: string;
   targetId: string;
-}): Promise<ActionResult & { summary?: { deleted: boolean; entries_moved: number; payments_moved: number } }> {
+}): Promise<
+  ActionResult & {
+    summary?: {
+      deleted: boolean;
+      entries_moved: number;
+      payments_moved: number;
+    };
+  }
+> {
   return guarded(async (actor) => {
     const summary = await getAdminData().mergeOwner({ ...input, actor });
     await syncFreeEntries(actor);
@@ -280,7 +288,9 @@ export async function setGameScoresAction(input: {
       try {
         picksRecomputed += await data.setGameScore({ ...g, actor });
       } catch (e) {
-        failures.push(`${g.gameId}: ${e instanceof Error ? e.message : String(e)}`);
+        failures.push(
+          `${g.gameId}: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     }
     revalidateAll();
@@ -299,9 +309,7 @@ export async function bulkSetLynneNumbersAction(input: {
 }): Promise<ActionResult & { applied?: number; failures?: string[] }> {
   return guarded(async (actor) => {
     const admin = getAdminData();
-    const entries = new Map(
-      (await admin.listEntries()).map((e) => [e.id, e]),
-    );
+    const entries = new Map((await admin.listEntries()).map((e) => [e.id, e]));
     const failures: string[] = [];
     let applied = 0;
     for (const row of input.rows) {
@@ -341,6 +349,23 @@ export async function markRosterSentAction(): Promise<
   });
 }
 
+/**
+ * The pool-wide numbers behind the public "Pool pot" card. Both are entered
+ * by hand from what Lynne sends — the pot is stored as given, never computed
+ * from a per-entry rate the pool has not confirmed. Passing nulls puts the
+ * card back to "pending".
+ */
+export async function setPoolPotAction(input: {
+  entryCount: number | null;
+  potCents: number | null;
+}): Promise<ActionResult> {
+  return guarded(async (actor) => {
+    await getAdminData().setPoolPot({ ...input, actor });
+    revalidateAll();
+    return { ok: true };
+  });
+}
+
 export async function setGameRevealAction(input: {
   gameId: string;
   override: boolean | null;
@@ -361,9 +386,7 @@ export async function setGameRevealAction(input: {
  * review. Never auto-commits — the admin echo-confirms before anything is
  * written.
  */
-export async function fetchEspnScoresAction(input: {
-  week: number;
-}): Promise<
+export async function fetchEspnScoresAction(input: { week: number }): Promise<
   ActionResult & {
     games?: {
       home: string;
@@ -417,7 +440,9 @@ export async function deadlineSweepAction(input: {
   week: number;
   commit: boolean;
 }): Promise<
-  ActionResult & { rows?: { entryId: string; entryName: string; ownerName: string }[] }
+  ActionResult & {
+    rows?: { entryId: string; entryName: string; ownerName: string }[];
+  }
 > {
   return guarded(async (actor) => {
     const rows = await getAdminData().deadlineSweep({ ...input, actor });
@@ -489,9 +514,7 @@ export async function lynneImportPreviewAction(
     const entries = (await admin.listEntries()).filter((e) => !e.voidedAt);
     // Raw picks — the public view masks pre-kickoff picks, which would
     // turn every unstarted game into a false variance.
-    const cells = (await admin.listGridCells()).filter(
-      (c) => c.week === week,
-    );
+    const cells = (await admin.listGridCells()).filter((c) => c.week === week);
     const localPicks = cells.map((c) => ({
       entryId: c.entryId,
       team: c.team,
@@ -552,7 +575,10 @@ export async function lynneImportPreviewAction(
           format: "grid",
           // Store only OUR rows (matched + conflicts) — her sheet holds the
           // whole ~1,200-entry pool and the rest is not ours to keep.
-          rows: [...matched.map((m) => toRow(m.row)), ...conflicts.map((c) => toRow(c.row))],
+          rows: [
+            ...matched.map((m) => toRow(m.row)),
+            ...conflicts.map((c) => toRow(c.row)),
+          ],
           matched: matched.map((m) => {
             const raw = m.row.cells[week];
             return {
