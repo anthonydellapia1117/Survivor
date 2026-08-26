@@ -12,7 +12,7 @@ import {
   createSupabaseServerClient,
   supabaseConfigured,
 } from "@/lib/supabase/server";
-import { passwordProblems } from "@/lib/password";
+import { passwordChecklistProblems } from "@/lib/password";
 
 export interface ChangePasswordResult {
   ok: boolean;
@@ -39,7 +39,7 @@ export async function changePasswordAction(input: {
   }
   // The server re-checks the same rules the form displays: a client that
   // skips the checklist (or a stale tab) still cannot set a weak password.
-  const problems = passwordProblems(newPassword);
+  const problems = passwordChecklistProblems(newPassword, currentPassword);
   if (problems.length > 0) {
     return {
       ok: false,
@@ -48,12 +48,6 @@ export async function changePasswordAction(input: {
   }
   if (newPassword !== confirmPassword) {
     return { ok: false, error: "New password and confirmation do not match." };
-  }
-  if (newPassword === currentPassword) {
-    return {
-      ok: false,
-      error: "New password must be different from the current one.",
-    };
   }
 
   // Throwaway client: verifying the current password must not touch the

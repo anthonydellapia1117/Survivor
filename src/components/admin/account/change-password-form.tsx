@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { Check, Circle, Eye, EyeOff } from "lucide-react";
 import { changePasswordAction } from "@/app/admin/(protected)/account/actions";
-import { passwordRules } from "@/lib/password";
+import { passwordChecklist } from "@/lib/password";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +43,7 @@ export function ChangePasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const rules = passwordRules(next);
+  const rules = passwordChecklist(next, current);
   const rulesMet = rules.every((r) => r.met);
   const matches = confirm.length > 0 && next === confirm;
   const ready = current.length > 0 && rulesMet && matches && !busy;
