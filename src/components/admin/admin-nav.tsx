@@ -19,6 +19,7 @@ const links = [
   { href: "/admin/recap", label: "Recap" },
   { href: "/admin/import", label: "Import" },
   { href: "/admin/deadline", label: "Deadline" },
+  { href: "/admin/account", label: "Account" },
 ];
 
 export function AdminNav() {
