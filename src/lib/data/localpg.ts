@@ -29,7 +29,6 @@ function mapEntry(r: any): EntrySummary {
     id: r.id,
     entryName: r.entry_name,
     nameIsDefault: r.name_is_default,
-    isFreeEntry: r.is_free_entry,
     ownerId: r.owner_id,
     ownerName: r.owner_name,
     wins: Number(r.wins ?? 0),
@@ -148,7 +147,6 @@ export const localPgBackend: DataBackend = {
     const { rows } = await db().query("select * from v_pot");
     const r = rows[0];
     return {
-      recruitedEntryCount: Number(r.recruited_entry_count),
       entryCount: Number(r.entry_count),
       poolEntryCount:
         r.pool_entry_count === null ? null : Number(r.pool_entry_count),

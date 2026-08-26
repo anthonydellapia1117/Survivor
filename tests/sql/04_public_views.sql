@@ -8,28 +8,43 @@ begin
   select count(*) into n from v_entry_public;
   if n <> 47 then raise exception 'v_entry_public should have 47 rows, got %', n; end if;
 
-  -- v_pot carries counts and the pool-wide pot only. The runner's own
-  -- collection status (due/paid) must not exist as a column at all.
+  -- v_pot carries the competing-entry count and the pool-wide pot only.
+  -- The runner's collection status (due/paid) must not exist as a column.
   select * into r from v_pot;
   if r.entry_count <> 47 then raise exception 'v_pot entry_count mismatch: %', r.entry_count; end if;
-  if r.recruited_entry_count <> 47 then
-    raise exception 'v_pot recruited_entry_count mismatch: %', r.recruited_entry_count;
-  end if;
   if r.pool_entry_count is not null or r.pool_pot_cents is not null then
     raise exception 'pool numbers should start unset (pending)';
   end if;
 
-  -- Free entries are excluded from the recruited count.
+  -- Marking entries free changes nothing a player can see: the public count
+  -- is every entry competing, and no public view carries the split.
   update entries set is_free_entry = true
    where id in (select id from entries where voided_at is null limit 3);
   select * into r from v_pot;
-  if r.recruited_entry_count <> 44 then
-    raise exception 'free entries must not count as recruited, got %', r.recruited_entry_count;
-  end if;
   if r.entry_count <> 47 then
-    raise exception 'total entry_count should still be 47, got %', r.entry_count;
+    raise exception 'public entry_count must stay 47 regardless of free flags, got %', r.entry_count;
   end if;
+  select count(*) into n from v_entry_public;
+  if n <> 47 then raise exception 'v_entry_public should still list 47, got %', n; end if;
   update entries set is_free_entry = false;
+
+  -- The recruited-vs-free split is admin-only: no public view exposes it.
+  select count(*) into n
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name in ('v_entry_public','v_grid_cells','v_pot','v_public_owners')
+    and column_name ~ 'free|recruit';
+  if n <> 0 then
+    raise exception 'a public view exposes the recruited/free split';
+  end if;
+
+  -- ...while the admin views keep it.
+  select count(*) into n
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = 'v_entry_admin'
+    and column_name = 'is_free_entry';
+  if n <> 1 then raise exception 'v_entry_admin lost is_free_entry'; end if;
 
   -- Acceptance 10: no contact or payment fields on any public view, and no
   -- column carrying THIS group's money in any shape.

@@ -27,7 +27,6 @@ function mapEntry(r: any): EntrySummary {
     id: r.id,
     entryName: r.entry_name,
     nameIsDefault: r.name_is_default,
-    isFreeEntry: r.is_free_entry,
     ownerId: r.owner_id,
     ownerName: r.owner_name,
     wins: Number(r.wins ?? 0),
@@ -156,13 +155,9 @@ export const supabaseBackend: DataBackend = {
   },
 
   async getPot(): Promise<PotSummary> {
-    const { data, error } = await client()
-      .from("v_pot")
-      .select("*")
-      .single();
+    const { data, error } = await client().from("v_pot").select("*").single();
     if (error) throw error;
     return {
-      recruitedEntryCount: Number(data.recruited_entry_count),
       entryCount: Number(data.entry_count),
       poolEntryCount:
         data.pool_entry_count === null ? null : Number(data.pool_entry_count),

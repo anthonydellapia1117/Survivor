@@ -52,7 +52,8 @@ export default async function EntryPage(props: {
   const usedSet = new Set(
     picks
       .filter(
-        (p) => p.team !== SKIP_WEEK && p.team !== "MISSED" && p.team !== "LOCKED",
+        (p) =>
+          p.team !== SKIP_WEEK && p.team !== "MISSED" && p.team !== "LOCKED",
       )
       .map((p) => p.team),
   );
@@ -107,15 +108,18 @@ export default async function EntryPage(props: {
             }
           >
             <StatusDot status={entry.status} />
-            {isOut ? `OUT${elimWeek ? ` · WK ${elimWeek}` : ""}` : STATUS_LABEL[entry.status]}
+            {isOut
+              ? `OUT${elimWeek ? ` · WK ${elimWeek}` : ""}`
+              : STATUS_LABEL[entry.status]}
           </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {entry.ownerName}
-          {entry.isFreeEntry ? " · free entry" : null}
           {survived > 0 || median > 0 ? (
             <>
-              {" "}· survived {survived} {survived === 1 ? "week" : "weeks"} (group median {median})
+              {" "}
+              · survived {survived} {survived === 1 ? "week" : "weeks"} (group
+              median {median})
             </>
           ) : null}
         </p>
@@ -159,7 +163,11 @@ export default async function EntryPage(props: {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xl">
-            {entry.byeUsed ? "Used" : entry.status === "bye_eligible" ? "Earned" : "—"}
+            {entry.byeUsed
+              ? "Used"
+              : entry.status === "bye_eligible"
+                ? "Earned"
+                : "—"}
           </CardContent>
         </Card>
       </div>
@@ -183,53 +191,63 @@ export default async function EntryPage(props: {
                       W{p.week}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground">
-                      <span aria-hidden className="mr-1.5">🔒</span>
+                      <span aria-hidden className="mr-1.5">
+                        🔒
+                      </span>
                       Locked — visible when this game kicks off
                     </span>
                   </li>
                 );
               }
-              const killing = isOut && elimWeek === p.week &&
-                (p.result === "loss" || p.result === "tie_loss" || p.result === "missed");
+              const killing =
+                isOut &&
+                elimWeek === p.week &&
+                (p.result === "loss" ||
+                  p.result === "tie_loss" ||
+                  p.result === "missed");
               return (
-              <li
-                key={p.week}
-                className={
-                  killing
-                    ? "flex items-center gap-3 rounded-md border border-loss/60 bg-loss/15 px-3 py-2.5"
-                    : "flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5"
-                }
-              >
-                <span className="w-9 shrink-0 text-xs tabular-nums text-muted-foreground">
-                  W{p.week}
-                </span>
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {killing ? <span className="mr-1 font-bold text-loss">✕</span> : null}
-                  {p.team === SKIP_WEEK
-                    ? "Bye (skip week)"
-                    : (TEAM_NAME[p.team] ?? p.team)}
-                  {killing ? (
-                    <span className="ml-2 text-xs font-semibold text-loss">the killing pick</span>
+                <li
+                  key={p.week}
+                  className={
+                    killing
+                      ? "flex items-center gap-3 rounded-md border border-loss/60 bg-loss/15 px-3 py-2.5"
+                      : "flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5"
+                  }
+                >
+                  <span className="w-9 shrink-0 text-xs tabular-nums text-muted-foreground">
+                    W{p.week}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {killing ? (
+                      <span className="mr-1 font-bold text-loss">✕</span>
+                    ) : null}
+                    {p.team === SKIP_WEEK
+                      ? "Bye (skip week)"
+                      : (TEAM_NAME[p.team] ?? p.team)}
+                    {killing ? (
+                      <span className="ml-2 text-xs font-semibold text-loss">
+                        the killing pick
+                      </span>
+                    ) : null}
+                  </span>
+                  {p.late ? (
+                    <span className="text-xs font-medium text-tie">late</span>
                   ) : null}
-                </span>
-                {p.late ? (
-                  <span className="text-xs font-medium text-tie">late</span>
-                ) : null}
-                <span
-                  className="hidden text-xs text-muted-foreground sm:inline"
-                  suppressHydrationWarning
-                >
-                  {formatEtDateTime(p.submittedAt)} ET
-                </span>
-                <span
-                  className={cn(
-                    "w-20 shrink-0 rounded-full px-2 py-0.5 text-center text-xs font-medium",
-                    RESULT_BADGE[p.result ?? "pending"],
-                  )}
-                >
-                  {p.result ? RESULT_LABEL[p.result] : "Pending"}
-                </span>
-              </li>
+                  <span
+                    className="hidden text-xs text-muted-foreground sm:inline"
+                    suppressHydrationWarning
+                  >
+                    {formatEtDateTime(p.submittedAt)} ET
+                  </span>
+                  <span
+                    className={cn(
+                      "w-20 shrink-0 rounded-full px-2 py-0.5 text-center text-xs font-medium",
+                      RESULT_BADGE[p.result ?? "pending"],
+                    )}
+                  >
+                    {p.result ? RESULT_LABEL[p.result] : "Pending"}
+                  </span>
+                </li>
               );
             })}
           </ol>
@@ -272,7 +290,9 @@ export default async function EntryPage(props: {
                   <>
                     <span className="font-medium">{t.abbr}</span>
                     <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
-                      {upcoming.length > 0 ? upcoming.join(" · ") : "season done"}
+                      {upcoming.length > 0
+                        ? upcoming.join(" · ")
+                        : "season done"}
                     </span>
                   </>
                 )}

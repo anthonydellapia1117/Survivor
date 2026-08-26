@@ -186,9 +186,7 @@ export default async function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl tabular-nums">
-              {pot.recruitedEntryCount}
-            </div>
+            <div className="text-2xl tabular-nums">{entries.length}</div>
             <p className="mt-1.5 text-xs text-muted-foreground">
               in this group
             </p>

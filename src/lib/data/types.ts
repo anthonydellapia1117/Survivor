@@ -62,7 +62,9 @@ export interface EntrySummary {
   id: string;
   entryName: string;
   nameIsDefault: boolean;
-  isFreeEntry: boolean;
+  /** ADMIN payloads only — the public view does not carry this flag,
+   *  so nothing public can reconstruct the recruited-vs-free split. */
+  isFreeEntry?: boolean;
   ownerId: string;
   ownerName: string;
   wins: number;
@@ -88,9 +90,8 @@ export interface GridCell {
 }
 
 export interface PotSummary {
-  /** Entries people actually pay for — the runner's free entries excluded. */
-  recruitedEntryCount: number;
-  /** Every live entry, free ones included. */
+  /** Every entry competing — the count the whole public surface agrees on.
+   *  The recruited-vs-free split is a billing concept and is admin-only. */
   entryCount: number;
   /** Lynne's whole-pool numbers. Null until the runner enters what she sends;
    *  the pool pot is pool information and is public by design. THIS group's
