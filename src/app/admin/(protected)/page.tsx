@@ -58,6 +58,16 @@ export default async function AdminOverviewPage() {
     .filter((w) => w.missing > 0);
   const unconfirmedWeeks = weeks.filter((w) => !w.confirmed).length;
 
+  // Renamed after Lynne already had them: her list — and the numbers she
+  // will send back — still carry the old name until she is told.
+  const renamedSinceSubmission = entries.filter(
+    (e) =>
+      !e.voidedAt &&
+      e.submittedToLynneAt !== null &&
+      e.submittedAsName !== null &&
+      e.submittedAsName !== e.entryName,
+  );
+
   // F3: entries with no lynne_number cannot go on the weekly submission.
   const liveNoNumber = entries.filter(
     (e) => !e.voidedAt && e.lynneNumber === null,
@@ -200,6 +210,25 @@ export default async function AdminOverviewPage() {
           {liveNoNumber} {liveNoNumber === 1 ? "entry has" : "entries have"} no
           Lynne number — they cannot go on the weekly submission block. Set them
           on the Entries screen.
+        </Link>
+      ) : null}
+      {renamedSinceSubmission.length > 0 ? (
+        <Link
+          href="/admin/entries"
+          className="block rounded-md border border-tie/40 bg-tie/10 px-3 py-2.5 text-sm text-tie"
+        >
+          <span className="font-semibold">
+            {renamedSinceSubmission.length}{" "}
+            {renamedSinceSubmission.length === 1 ? "entry was" : "entries were"}{" "}
+            renamed after Lynne got the list
+          </span>{" "}
+          —{" "}
+          {renamedSinceSubmission
+            .map((e) => `${e.submittedAsName} → ${e.entryName}`)
+            .join(", ")}
+          . Send her the corrections (Roster for Lynne → Renamed), then mark her
+          list current. Until then her numbers come back under the old names —
+          the import still matches them.
         </Link>
       ) : null}
       {unconfirmedWeeks > 0 ? (

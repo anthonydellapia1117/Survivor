@@ -91,6 +91,7 @@ export const adminLocalPgBackend: AdminBackend = {
       voidedAt: iso(r.voided_at),
       pickCount: Number(r.pick_count),
       submittedToLynneAt: iso(r.submitted_to_lynne_at),
+      submittedAsName: r.submitted_as_name ?? null,
     }));
   },
 
@@ -180,10 +181,11 @@ export const adminLocalPgBackend: AdminBackend = {
 
   async markRosterSent(actor) {
     const { rows } = await db().query(
-      "select admin_mark_roster_sent($1) as n",
+      "select admin_mark_roster_sent($1) as r",
       [actor],
     );
-    return Number(rows[0].n);
+    const r = rows[0].r ?? {};
+    return { sent: Number(r.sent ?? 0), renamed: Number(r.renamed ?? 0) };
   },
 
   async setPoolPot(a) {

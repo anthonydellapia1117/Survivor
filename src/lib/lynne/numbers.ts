@@ -34,9 +34,15 @@ export function parseNumberPairs(text: string): ParseResult {
     if (raw === "") continue;
     // Prefer explicit separators when present.
     const parts = raw.includes("\t")
-      ? raw.split("\t").map((s) => s.trim()).filter(Boolean)
+      ? raw
+          .split("\t")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : raw.includes(",")
-        ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+        ? raw
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
         : null;
     if (parts && parts.length === 2) {
       if (INT.test(parts[0]) && !INT.test(parts[1])) {
@@ -75,6 +81,10 @@ export interface NumberTarget {
   id: string;
   entryName: string;
   lynneNumber: number | null;
+  /** The name this entry went to Lynne under, when it has since been
+   *  renamed. Her numbers come back keyed to HER list, so this is the only
+   *  thing a renamed entry's row can match on. */
+  submittedAsName?: string | null;
 }
 
 export interface NumberMatch {
@@ -82,7 +92,11 @@ export interface NumberMatch {
   entryName: string; // ours, verbatim
   pastedName: string; // hers, verbatim
   no: number;
-  matchedBy: "entry_name" | "entry_name_ci";
+  matchedBy:
+    | "entry_name"
+    | "entry_name_ci"
+    | "submitted_name"
+    | "submitted_name_ci";
   /** Number already on this entry, when different — shown as old -> new. */
   replaces: number | null;
 }
@@ -110,10 +124,22 @@ export function matchNumberPairs(
 ): MatchNumbersResult {
   const byName = new Map<string, NumberTarget[]>();
   const byNameCi = new Map<string, NumberTarget[]>();
+  // Renamed-after-submission entries: Lynne's paste still carries the OLD
+  // name, so index that too. Current names always win; the submitted name is
+  // only consulted when nothing current matches. Still exact-then-case-
+  // insensitive, never fuzzy.
+  const bySubmitted = new Map<string, NumberTarget[]>();
+  const bySubmittedCi = new Map<string, NumberTarget[]>();
   for (const t of targets) {
     byName.set(t.entryName, [...(byName.get(t.entryName) ?? []), t]);
     const ci = t.entryName.toLowerCase();
     byNameCi.set(ci, [...(byNameCi.get(ci) ?? []), t]);
+    const sub = t.submittedAsName;
+    if (sub && sub !== t.entryName) {
+      bySubmitted.set(sub, [...(bySubmitted.get(sub) ?? []), t]);
+      const subCi = sub.toLowerCase();
+      bySubmittedCi.set(subCi, [...(bySubmittedCi.get(subCi) ?? []), t]);
+    }
   }
   const numberOwner = new Map<number, NumberTarget>();
   for (const t of targets) {
@@ -138,16 +164,28 @@ export function matchNumberPairs(
     }
 
     let hit: { t: NumberTarget; by: NumberMatch["matchedBy"] } | null = null;
-    const exact = byName.get(p.name);
-    const ci = byNameCi.get(p.name.toLowerCase());
-    if (exact && exact.length === 1) {
-      hit = { t: exact[0], by: "entry_name" };
-    } else if (exact && exact.length > 1) {
-      issues.push({ line: p.line, text, reason: "ambiguous_name" });
-      continue;
-    } else if (ci && ci.length === 1) {
-      hit = { t: ci[0], by: "entry_name_ci" };
-    } else if (ci && ci.length > 1) {
+    let ambiguous = false;
+    const tiers: [
+      Map<string, NumberTarget[]>,
+      string,
+      NumberMatch["matchedBy"],
+    ][] = [
+      [byName, p.name, "entry_name"],
+      [byNameCi, p.name.toLowerCase(), "entry_name_ci"],
+      [bySubmitted, p.name, "submitted_name"],
+      [bySubmittedCi, p.name.toLowerCase(), "submitted_name_ci"],
+    ];
+    for (const [index, key, by] of tiers) {
+      const found = index.get(key);
+      if (!found) continue;
+      if (found.length > 1) {
+        ambiguous = true;
+        break;
+      }
+      hit = { t: found[0], by };
+      break;
+    }
+    if (ambiguous) {
       issues.push({ line: p.line, text, reason: "ambiguous_name" });
       continue;
     }

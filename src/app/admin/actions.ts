@@ -340,12 +340,12 @@ export async function bulkSetLynneNumbersAction(input: {
 }
 
 export async function markRosterSentAction(): Promise<
-  ActionResult & { count?: number }
+  ActionResult & { sent?: number; renamed?: number }
 > {
   return guarded(async (actor) => {
-    const count = await getAdminData().markRosterSent(actor);
+    const res = await getAdminData().markRosterSent(actor);
     revalidateAll();
-    return { ok: true, count };
+    return { ok: true, ...res };
   });
 }
 

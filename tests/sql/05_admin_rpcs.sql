@@ -143,7 +143,7 @@ begin
   v_owner := admin_create_owner('Delta', 'Test', 'delta@example.com', null,
                                 'email', null, array['Delta Test 1','Delta Test 2'], true, 'test');
 
-  select admin_mark_roster_sent('test') into n;
+  select (admin_mark_roster_sent('test') ->> 'sent')::int into n;
   if n < 2 then raise exception 'expected at least 2 stamped, got %', n; end if;
 
   if exists (select 1 from entries where voided_at is null and submitted_to_lynne_at is null) then
@@ -153,11 +153,56 @@ begin
   select count(*) into n from audit_log where action = 'mark_roster_sent';
   if n <> audits_before + 1 then raise exception 'mark_roster_sent not audited'; end if;
 
-  -- Second call: nothing left to stamp, returns 0, writes no audit row.
-  select admin_mark_roster_sent('test') into n;
+  -- Second call: nothing left to stamp, returns zeroes, no audit row.
+  select (admin_mark_roster_sent('test') ->> 'sent')::int into n;
   if n <> 0 then raise exception 'second call stamped % rows', n; end if;
   select count(*) into n from audit_log where action = 'mark_roster_sent';
   if n <> audits_before + 1 then raise exception 'no-op call wrote an audit row'; end if;
+end $$;
+
+rollback;
+
+-- ---------------------------------------------------------------------------
+-- Renamed after submission: the name Lynne has is kept, the difference is the
+-- signal, and marking her list current re-syncs it.
+-- ---------------------------------------------------------------------------
+begin;
+
+do $$
+declare
+  v_owner uuid;
+  v_entry uuid;
+  r record;
+  n int;
+begin
+  v_owner := admin_create_owner('Rename', 'Case', 'rename@example.com', null,
+                                'email', null, array['Rename Case 1'], true, 'test');
+  perform admin_mark_roster_sent('test');
+
+  select id, entry_name, submitted_as_name into r
+    from entries where entry_name = 'Rename Case 1';
+  if r.submitted_as_name <> 'Rename Case 1' then
+    raise exception 'submitted name not recorded on send: %', r.submitted_as_name;
+  end if;
+  v_entry := r.id;
+
+  -- Rename it: the entry's own name moves, the recorded one does NOT.
+  perform admin_update_entry(v_entry, 'Real Name 1', null, null, null, 'test');
+  select entry_name, submitted_as_name, name_is_default into r
+    from entries where id = v_entry;
+  if r.entry_name <> 'Real Name 1' then raise exception 'rename did not apply'; end if;
+  if r.submitted_as_name <> 'Rename Case 1' then
+    raise exception 'the name Lynne has must survive a rename, got %', r.submitted_as_name;
+  end if;
+  if r.name_is_default then raise exception 'rename must clear name_is_default'; end if;
+
+  -- Telling her re-syncs it, and is counted separately from new sends.
+  select (admin_mark_roster_sent('test') ->> 'renamed')::int into n;
+  if n < 1 then raise exception 'rename not counted as reconciled, got %', n; end if;
+  select entry_name, submitted_as_name into r from entries where id = v_entry;
+  if r.submitted_as_name <> r.entry_name then
+    raise exception 'reconcile did not re-record the name';
+  end if;
 end $$;
 
 rollback;

@@ -139,9 +139,8 @@ describe("matchNumberPairs", () => {
 
 describe("admin-first ordering", () => {
   it("submission block and CSV put admin entries first, then by number", async () => {
-    const { buildSubmissionBlock, buildSubmissionCsv } = await import(
-      "@/lib/lynne/submit"
-    );
+    const { buildSubmissionBlock, buildSubmissionCsv } =
+      await import("@/lib/lynne/submit");
     const rows = [
       { lynneNumber: 977, entryName: "Recruit A", team: "KC" },
       { lynneNumber: 971, entryName: "AAA 1", team: "SF", isAdminEntry: true },
@@ -166,14 +165,97 @@ describe("admin-first ordering", () => {
     const csv = buildSubmissionCsv(1, [
       { lynneNumber: 1, entryName: "Recruit", team: "KC" },
       { lynneNumber: 1250, entryName: "AAA 1", team: "SF", isAdminEntry: true },
-    ]).trim().split("\n");
+    ])
+      .trim()
+      .split("\n");
     expect(csv[1]).toContain("AAA 1");
   });
 
   it("adminFirst is stable for equal flags", async () => {
     const { adminFirst } = await import("@/lib/free-entries");
-    expect(adminFirst({ isAdminEntry: true }, { isAdminEntry: false })).toBeLessThan(0);
-    expect(adminFirst({ isAdminEntry: false }, { isAdminEntry: true })).toBeGreaterThan(0);
+    expect(
+      adminFirst({ isAdminEntry: true }, { isAdminEntry: false }),
+    ).toBeLessThan(0);
+    expect(
+      adminFirst({ isAdminEntry: false }, { isAdminEntry: true }),
+    ).toBeGreaterThan(0);
     expect(adminFirst({ isAdminEntry: true }, { isAdminEntry: true })).toBe(0);
+  });
+});
+
+describe("numbers for entries renamed after submission", () => {
+  // Lynne's paste carries the name SHE has. An entry renamed since then must
+  // still take its number, and the mapping must say which name matched.
+  const targets = [
+    {
+      id: "nick1",
+      entryName: "Nicky DiVirgilio 1",
+      lynneNumber: null,
+      submittedAsName: "Nick DiVirgilio 1",
+    },
+    {
+      id: "lou1",
+      entryName: "Lou Direnzo 1",
+      lynneNumber: null,
+      submittedAsName: "Nick DiVirgilio 3",
+    },
+    { id: "plain", entryName: "Waggs1", lynneNumber: null },
+  ];
+
+  it("matches her old name and reports it as a submitted-name match", () => {
+    const { matches, issues } = matchNumberPairs(
+      [
+        { no: 900, name: "Nick DiVirgilio 1", line: 1 },
+        { no: 901, name: "nick divirgilio 3", line: 2 },
+        { no: 902, name: "Waggs1", line: 3 },
+      ],
+      targets,
+    );
+    expect(issues).toEqual([]);
+    expect(matches.map((m) => [m.entryId, m.no, m.matchedBy])).toEqual([
+      ["nick1", 900, "submitted_name"],
+      ["lou1", 901, "submitted_name_ci"],
+      ["plain", 902, "entry_name"],
+    ]);
+  });
+
+  it("prefers the current name when both could match", () => {
+    const { matches } = matchNumberPairs(
+      [{ no: 910, name: "Nicky DiVirgilio 1", line: 1 }],
+      targets,
+    );
+    expect(matches[0].matchedBy).toBe("entry_name");
+    expect(matches[0].entryId).toBe("nick1");
+  });
+
+  it("still refuses anything fuzzy", () => {
+    const { matches, issues } = matchNumberPairs(
+      [{ no: 920, name: "Nick DiVirgilio", line: 1 }],
+      targets,
+    );
+    expect(matches).toEqual([]);
+    expect(issues[0].reason).toBe("no_match");
+  });
+
+  it("reports ambiguity rather than guessing when two entries share her name", () => {
+    const { matches, issues } = matchNumberPairs(
+      [{ no: 930, name: "Shared Old Name", line: 1 }],
+      [
+        {
+          id: "a",
+          entryName: "A 1",
+          lynneNumber: null,
+          submittedAsName: "Shared Old Name",
+        },
+        {
+          id: "b",
+          entryName: "B 1",
+          lynneNumber: null,
+          submittedAsName: "Shared Old Name",
+        },
+      ],
+    );
+    expect(matches).toEqual([]);
+    expect(issues[0].reason).toBe("ambiguous_name");
   });
 });

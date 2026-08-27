@@ -103,6 +103,7 @@ export const adminSupabaseBackend: AdminBackend = {
         pickCount: counts.get(r.id) ?? 0,
         isAdminEntry: adminOwners.has(r.owner_id),
         submittedToLynneAt: r.submitted_to_lynne_at,
+        submittedAsName: r.submitted_as_name,
       }))
       .sort(
         (a: AdminEntry, b: AdminEntry) =>
@@ -252,7 +253,10 @@ export const adminSupabaseBackend: AdminBackend = {
       p_actor: actor,
     });
     if (error) throw error;
-    return Number(data);
+    return {
+      sent: Number((data as any)?.sent ?? 0),
+      renamed: Number((data as any)?.renamed ?? 0),
+    };
   },
 
   async setPoolPot(a) {

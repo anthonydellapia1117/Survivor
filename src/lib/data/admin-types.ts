@@ -30,6 +30,9 @@ export interface AdminEntry {
   /** When this entry was last included in a roster sent to Lynne;
    *  null = she has not seen it yet (delta-export candidate). */
   submittedToLynneAt: string | null;
+  /** The name Lynne's list carries for this entry. Differs from entryName
+   *  exactly when the entry was renamed after it was submitted. */
+  submittedAsName: string | null;
 }
 
 export interface AdminPayment {
@@ -182,9 +185,9 @@ export interface AdminBackend {
     note: string;
     actor: string;
   }): Promise<void>;
-  /** Stamp every unsent, non-voided entry as submitted to Lynne now.
-   *  Returns how many were stamped. */
-  markRosterSent(actor: string): Promise<number>;
+  /** Bring Lynne's list into sync: stamp entries she has not seen, and
+   *  re-record the name for entries renamed since she got them. */
+  markRosterSent(actor: string): Promise<{ sent: number; renamed: number }>;
   /** Lynne's whole-pool numbers for the public pool-pot card. Either value
    *  may be null (clears back to "pending"). The pot is entered directly —
    *  never derived from an unconfirmed per-entry formula. */

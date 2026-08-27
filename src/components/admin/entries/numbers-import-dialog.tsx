@@ -2,16 +2,15 @@
 
 // Season-start bulk import of Lynne's numbers. Paste her list (name-number
 // or number-name, either order), see the exact mapping, approve, write.
-// Matching is exact name then case-insensitive — never fuzzy. Unmatched
+// Matching is exact name then case-insensitive — never fuzzy. An entry
+// renamed after it went to Lynne also matches on the name SHE has (again
+// exact then case-insensitive), and the mapping row says so. Unmatched
 // lines are reported, never guessed.
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminEntry } from "@/lib/data/admin-types";
-import {
-  matchNumberPairs,
-  parseNumberPairs,
-} from "@/lib/lynne/numbers";
+import { matchNumberPairs, parseNumberPairs } from "@/lib/lynne/numbers";
 import { bulkSetLynneNumbersAction } from "@/app/admin/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,6 +50,7 @@ export function NumbersImportDialog({ entries }: { entries: AdminEntry[] }) {
         id: e.id,
         entryName: e.entryName,
         lynneNumber: e.lynneNumber,
+        submittedAsName: e.submittedAsName,
       })),
     );
     return { ...matched, unparsed: parsed.unparsed };
@@ -101,10 +101,10 @@ export function NumbersImportDialog({ entries }: { entries: AdminEntry[] }) {
         <DialogHeader>
           <DialogTitle>Import Lynne&apos;s numbers</DialogTitle>
           <DialogDescription>
-            Paste her list — one entry per line, number first or last
-            (&quot;993 Nick&amp;Kels 1&quot; or &quot;Nick&amp;Kels 1,
-            993&quot;). Exact then case-insensitive name matching, never
-            fuzzy. Nothing is written until you approve the mapping.
+            Paste her list — one entry per line, number first or last (&quot;993
+            Nick&amp;Kels 1&quot; or &quot;Nick&amp;Kels 1, 993&quot;). Exact
+            then case-insensitive name matching, never fuzzy. Nothing is written
+            until you approve the mapping.
           </DialogDescription>
         </DialogHeader>
 
@@ -117,7 +117,9 @@ export function NumbersImportDialog({ entries }: { entries: AdminEntry[] }) {
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={12}
-              placeholder={"977\tAnthony DellaPia 1\n978\tAnthony DellaPia 2\n…"}
+              placeholder={
+                "977\tAnthony DellaPia 1\n978\tAnthony DellaPia 2\n…"
+              }
               className="w-full rounded-md border border-border bg-surface p-3 font-mono text-xs leading-relaxed"
             />
             <DialogFooter>
@@ -136,8 +138,8 @@ export function NumbersImportDialog({ entries }: { entries: AdminEntry[] }) {
               <div className="rounded-md border border-loss/40 bg-loss/10 px-3 py-2 text-xs text-loss">
                 <p className="font-semibold">
                   {preview.unparsed.length} unreadable{" "}
-                  {preview.unparsed.length === 1 ? "line" : "lines"} (no
-                  number found):
+                  {preview.unparsed.length === 1 ? "line" : "lines"} (no number
+                  found):
                 </p>
                 {preview.unparsed.map((u) => (
                   <p key={u.line} className="mt-0.5 font-mono">
@@ -149,8 +151,7 @@ export function NumbersImportDialog({ entries }: { entries: AdminEntry[] }) {
             {preview.issues.length > 0 ? (
               <div className="rounded-md border border-loss/40 bg-loss/10 px-3 py-2 text-xs text-loss">
                 <p className="font-semibold">
-                  {preview.issues.length} not applied — reported, never
-                  guessed:
+                  {preview.issues.length} not applied — reported, never guessed:
                 </p>
                 {preview.issues.map((iss, i) => (
                   <p key={i} className="mt-0.5 font-mono">
