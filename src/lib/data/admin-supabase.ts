@@ -148,7 +148,9 @@ export const adminSupabaseBackend: AdminBackend = {
     const c = await createSupabaseServerClient();
     const { data, error } = await c
       .from("audit_log")
-      .select("id, at, actor, action, target_table, target_id, note")
+      .select(
+        "id, at, actor, action, target_table, target_id, note, before, after",
+      )
       .order("id", { ascending: false })
       .limit(limit);
     if (error) throw error;
@@ -160,6 +162,8 @@ export const adminSupabaseBackend: AdminBackend = {
       targetTable: r.target_table,
       targetId: r.target_id,
       note: r.note,
+      before: r.before ?? null,
+      after: r.after ?? null,
     }));
   },
 

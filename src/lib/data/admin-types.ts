@@ -56,6 +56,11 @@ export interface AuditRow {
   targetTable: string;
   targetId: string | null;
   note: string | null;
+  /** The row as it stood before / after the write. Null for actions that
+   *  record an event rather than a row change (exports, backups). The audit
+   *  viewer diffs these; nothing else reads them. */
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
 }
 
 export interface AdminBackend {

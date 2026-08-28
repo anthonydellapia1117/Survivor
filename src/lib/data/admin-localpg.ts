@@ -116,7 +116,7 @@ export const adminLocalPgBackend: AdminBackend = {
 
   async auditTail(limit: number): Promise<AuditRow[]> {
     const { rows } = await db().query(
-      "select id, at, actor, action, target_table, target_id, note from audit_log order by id desc limit $1",
+      "select id, at, actor, action, target_table, target_id, note, before, after from audit_log order by id desc limit $1",
       [limit],
     );
     return rows.map((r: any) => ({
@@ -127,6 +127,8 @@ export const adminLocalPgBackend: AdminBackend = {
       targetTable: r.target_table,
       targetId: r.target_id,
       note: r.note,
+      before: r.before ?? null,
+      after: r.after ?? null,
     }));
   },
 

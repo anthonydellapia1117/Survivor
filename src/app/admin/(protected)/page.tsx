@@ -465,7 +465,15 @@ export default async function AdminOverviewPage() {
 
       <Card className="bg-surface">
         <CardHeader>
-          <CardTitle className="text-base">Audit log</CardTitle>
+          <CardTitle className="flex items-center justify-between gap-3 text-base">
+            Audit log
+            <Link
+              href="/admin/audit"
+              className="text-xs font-medium text-primary"
+            >
+              View all →
+            </Link>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {audit.length === 0 ? (
