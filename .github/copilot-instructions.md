@@ -1,32 +1,13 @@
-# NFL Survivor Pool
+# NFL Survivor Pool — see CLAUDE.md
 
-## Project Overview
-Web app for an NFL survivor/knockout pool. Participants pick one team per week, can't reuse teams, and are eliminated on a loss.
+**This project has one source of truth: [`CLAUDE.md`](../CLAUDE.md) in the
+repository root.** Read it before changing anything here.
 
-## Tech Stack
-- Framework: Next.js 15 (App Router) + TypeScript
-- Database: Supabase (PostgreSQL)
-- Styling: Tailwind CSS (PostCSS)
-- Testing: Vitest
-- Data source: Football_2025-54.xlsx - weekly NFL schedule/results
+Keeping a second copy of the rules in this file caused it to drift out of
+date, so it is deliberately a pointer rather than a summary. Do not restate
+project rules here — add them to `CLAUDE.md` instead.
 
-## Build & Test Commands
-- npm run dev / npm run build / npm run test / npm run lint
-
-## Architecture Notes
-- Supabase schema in /supabase/ - migrations, RLS policies, views
-- Participant state machine: ALIVE -> PICKED -> ELIMINATED
-- Team reuse rule: cannot pick same NFL team twice. Hard constraint, enforce at DB level.
-- Weekly scores come from Excel file; do not hardcode scores or schedules.
-- Must handle bye weeks and Thursday/Saturday/Monday games.
-
-## Coding Conventions
-- TypeScript strict mode. No any types. Server components by default.
-- Supabase RLS on all tables. Input validation on all API routes.
-- Vitest tests required for pick validation and elimination rules.
-
-## What NOT To Do
-- Do not expose Supabase service role key to the client
-- Do not allow picks after a game has started (server-side timestamp check)
-- Do not store participant data in local storage
-- Do not assume all games are on Sunday
+What is in `CLAUDE.md`: who is authoritative on results vs. submissions,
+pricing and payment-sweep rules, free-entry and remittance math, what may
+never appear on a public route, name handling, the working rules for writes
+and audit, the stack, the commands, and the conventions.
