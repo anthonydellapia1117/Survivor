@@ -247,16 +247,22 @@ export const adminSupabaseBackend: AdminBackend = {
     return Number(data ?? 0);
   },
 
-  async markRosterSent(actor) {
+  async markNewEntriesSent(actor) {
     const c = await createSupabaseServerClient();
-    const { data, error } = await c.rpc("admin_mark_roster_sent", {
+    const { data, error } = await c.rpc("admin_mark_new_entries_sent", {
       p_actor: actor,
     });
     if (error) throw error;
-    return {
-      sent: Number((data as any)?.sent ?? 0),
-      renamed: Number((data as any)?.renamed ?? 0),
-    };
+    return Number(data);
+  },
+
+  async markRenamesCommunicated(actor) {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c.rpc("admin_mark_renames_communicated", {
+      p_actor: actor,
+    });
+    if (error) throw error;
+    return Number(data);
   },
 
   async setPoolPot(a) {

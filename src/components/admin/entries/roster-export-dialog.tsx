@@ -11,13 +11,18 @@
 //     into an email. Until she is told, her numbers come back keyed to the
 //     old name; the number import matches those on the recorded name.
 //   • Full roster — everything, for a fresh send.
-// "Mark Lynne's list as current" stamps both: new entries become submitted,
-// renamed entries re-record the name she now has.
+// The two stamps are INDEPENDENT, because the two emails are: telling her
+// about a rename says nothing about whether late joiners have gone out, and
+// stamping them together would have quietly marked unsent entries as sent.
+// Each view carries its own button.
 
 import { useMemo, useState, useTransition } from "react";
 import type { AdminEntry } from "@/lib/data/admin-types";
 import { adminFirst } from "@/lib/free-entries";
-import { markRosterSentAction } from "@/app/admin/actions";
+import {
+  markNewEntriesSentAction,
+  markRenamesCommunicatedAction,
+} from "@/app/admin/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -54,10 +59,8 @@ type View = "delta" | "renamed" | "full";
 export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
   const [view, setView] = useState<View>("delta");
   const [copied, setCopied] = useState(false);
-  const [marked, setMarked] = useState<{
-    sent: number;
-    renamed: number;
-  } | null>(null);
+  const [sentDone, setSentDone] = useState<number | null>(null);
+  const [renamedDone, setRenamedDone] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
 
   const active = useMemo(
@@ -113,12 +116,17 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
     URL.revokeObjectURL(url);
   }
 
-  function markSent() {
+  function markNewSent() {
     startTransition(async () => {
-      const res = await markRosterSentAction();
-      if (res.ok) {
-        setMarked({ sent: res.sent ?? 0, renamed: res.renamed ?? 0 });
-      }
+      const res = await markNewEntriesSentAction();
+      if (res.ok) setSentDone(res.count ?? 0);
+    });
+  }
+
+  function markRenamesTold() {
+    startTransition(async () => {
+      const res = await markRenamesCommunicatedAction();
+      if (res.ok) setRenamedDone(res.count ?? 0);
     });
   }
 
@@ -193,32 +201,56 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
             </pre>
           </>
         ) : null}
-        {view !== "full" && pendingWork > 0 ? (
+        {/* Each stamp belongs to its own view and its own email. Marking
+            corrections as communicated never touches entries she has not
+            been sent, and vice versa. */}
+        {view === "delta" && delta.length > 0 ? (
           <div className="rounded-md border border-border bg-surface p-3 text-sm">
-            {marked !== null ? (
+            {sentDone !== null ? (
               <p>
-                Marked {marked.sent} new{" "}
-                {marked.sent === 1 ? "entry" : "entries"} as sent
-                {marked.renamed > 0
-                  ? ` and re-recorded ${marked.renamed} renamed ${marked.renamed === 1 ? "entry" : "entries"}`
-                  : ""}
-                .
+                Marked {sentDone} new {sentDone === 1 ? "entry" : "entries"} as
+                sent to Lynne. Renames were not touched.
               </p>
             ) : (
               <>
                 <p className="mb-2 text-muted-foreground">
-                  Once Lynne has the additions and the corrections above, stamp
-                  them so the next round starts clean:
+                  After this additions list has gone to Lynne:
                 </p>
                 <Button
                   size="sm"
                   variant="secondary"
                   disabled={pending}
-                  onClick={markSent}
+                  onClick={markNewSent}
                 >
                   {pending
                     ? "Marking…"
-                    : `Mark Lynne's list as current (${delta.length} new, ${renamed.length} renamed)`}
+                    : `Mark ${delta.length} new ${delta.length === 1 ? "entry" : "entries"} as sent`}
+                </Button>
+              </>
+            )}
+          </div>
+        ) : null}
+        {view === "renamed" && renamed.length > 0 ? (
+          <div className="rounded-md border border-border bg-surface p-3 text-sm">
+            {renamedDone !== null ? (
+              <p>
+                Marked {renamedDone} {renamedDone === 1 ? "rename" : "renames"}{" "}
+                as communicated. New entries were not touched.
+              </p>
+            ) : (
+              <>
+                <p className="mb-2 text-muted-foreground">
+                  After Lynne has acknowledged these corrections:
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={markRenamesTold}
+                >
+                  {pending
+                    ? "Marking…"
+                    : `Mark ${renamed.length} ${renamed.length === 1 ? "rename" : "renames"} as communicated`}
                 </Button>
               </>
             )}

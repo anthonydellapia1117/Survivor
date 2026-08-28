@@ -137,26 +137,26 @@ declare
   n int;
   audits_before int;
 begin
-  select count(*) into audits_before from audit_log where action = 'mark_roster_sent';
+  select count(*) into audits_before from audit_log where action = 'mark_new_entries_sent';
 
   -- A fresh owner whose entries have never been sent.
   v_owner := admin_create_owner('Delta', 'Test', 'delta@example.com', null,
                                 'email', null, array['Delta Test 1','Delta Test 2'], true, 'test');
 
-  select (admin_mark_roster_sent('test') ->> 'sent')::int into n;
+  select admin_mark_new_entries_sent('test') into n;
   if n < 2 then raise exception 'expected at least 2 stamped, got %', n; end if;
 
   if exists (select 1 from entries where voided_at is null and submitted_to_lynne_at is null) then
     raise exception 'unsent entries remain after mark_roster_sent';
   end if;
 
-  select count(*) into n from audit_log where action = 'mark_roster_sent';
-  if n <> audits_before + 1 then raise exception 'mark_roster_sent not audited'; end if;
+  select count(*) into n from audit_log where action = 'mark_new_entries_sent';
+  if n <> audits_before + 1 then raise exception 'send not audited'; end if;
 
-  -- Second call: nothing left to stamp, returns zeroes, no audit row.
-  select (admin_mark_roster_sent('test') ->> 'sent')::int into n;
+  -- Second call: nothing left to stamp, returns zero, no audit row.
+  select admin_mark_new_entries_sent('test') into n;
   if n <> 0 then raise exception 'second call stamped % rows', n; end if;
-  select count(*) into n from audit_log where action = 'mark_roster_sent';
+  select count(*) into n from audit_log where action = 'mark_new_entries_sent';
   if n <> audits_before + 1 then raise exception 'no-op call wrote an audit row'; end if;
 end $$;
 
@@ -177,7 +177,7 @@ declare
 begin
   v_owner := admin_create_owner('Rename', 'Case', 'rename@example.com', null,
                                 'email', null, array['Rename Case 1'], true, 'test');
-  perform admin_mark_roster_sent('test');
+  perform admin_mark_new_entries_sent('test');
 
   select id, entry_name, submitted_as_name into r
     from entries where entry_name = 'Rename Case 1';
@@ -197,11 +197,65 @@ begin
   if r.name_is_default then raise exception 'rename must clear name_is_default'; end if;
 
   -- Telling her re-syncs it, and is counted separately from new sends.
-  select (admin_mark_roster_sent('test') ->> 'renamed')::int into n;
+  select admin_mark_renames_communicated('test') into n;
   if n < 1 then raise exception 'rename not counted as reconciled, got %', n; end if;
   select entry_name, submitted_as_name into r from entries where id = v_entry;
   if r.submitted_as_name <> r.entry_name then
     raise exception 'reconcile did not re-record the name';
+  end if;
+end $$;
+
+rollback;
+
+-- ---------------------------------------------------------------------------
+-- THE SPLIT: the two stamps are independent. Marking renames as communicated
+-- must never sweep in an entry Lynne has not been sent — the exact failure
+-- that made a real, acknowledged rename impossible to clear.
+-- ---------------------------------------------------------------------------
+begin;
+
+do $$
+declare
+  v_sent_owner uuid;
+  v_new_owner uuid;
+  v_sent_entry uuid;
+  r record;
+  n int;
+begin
+  -- One entry she HAS (and we then rename), one she has never seen.
+  v_sent_owner := admin_create_owner('Told', 'Her', 'told@example.com', null,
+                                     'email', null, array['Told Her 1'], true, 'test');
+  perform admin_mark_new_entries_sent('test');
+  select id into v_sent_entry from entries where entry_name = 'Told Her 1';
+  perform admin_update_entry(v_sent_entry, 'Told Her Renamed', null, null, null, 'test');
+
+  v_new_owner := admin_create_owner('Not', 'Yet', 'notyet@example.com', null,
+                                    'email', null, array['Not Yet 1'], true, 'test');
+
+  -- Marking the rename communicated must leave the never-sent entry alone.
+  select admin_mark_renames_communicated('test') into n;
+  if n <> 1 then raise exception 'expected exactly 1 rename reconciled, got %', n; end if;
+
+  select submitted_to_lynne_at, submitted_as_name into r
+    from entries where entry_name = 'Not Yet 1';
+  if r.submitted_to_lynne_at is not null or r.submitted_as_name is not null then
+    raise exception 'communicating a rename falsely stamped an unsent entry as sent';
+  end if;
+
+  select submitted_as_name into r from entries where id = v_sent_entry;
+  if r.submitted_as_name <> 'Told Her Renamed' then
+    raise exception 'rename was not reconciled';
+  end if;
+
+  -- And the reverse: sending new entries must not silently reconcile a
+  -- rename the runner has NOT yet told her about.
+  perform admin_update_entry(v_sent_entry, 'Told Her Renamed Again', null, null, null, 'test');
+  select admin_mark_new_entries_sent('test') into n;
+  if n <> 1 then raise exception 'expected exactly 1 new entry sent, got %', n; end if;
+
+  select entry_name, submitted_as_name into r from entries where id = v_sent_entry;
+  if r.submitted_as_name = r.entry_name then
+    raise exception 'sending new entries silently cleared an uncommunicated rename';
   end if;
 end $$;
 

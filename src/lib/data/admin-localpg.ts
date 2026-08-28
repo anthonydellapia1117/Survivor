@@ -179,13 +179,20 @@ export const adminLocalPgBackend: AdminBackend = {
     return Number(rows[0].n);
   },
 
-  async markRosterSent(actor) {
+  async markNewEntriesSent(actor) {
     const { rows } = await db().query(
-      "select admin_mark_roster_sent($1) as r",
+      "select admin_mark_new_entries_sent($1) as n",
       [actor],
     );
-    const r = rows[0].r ?? {};
-    return { sent: Number(r.sent ?? 0), renamed: Number(r.renamed ?? 0) };
+    return Number(rows[0].n);
+  },
+
+  async markRenamesCommunicated(actor) {
+    const { rows } = await db().query(
+      "select admin_mark_renames_communicated($1) as n",
+      [actor],
+    );
+    return Number(rows[0].n);
   },
 
   async setPoolPot(a) {

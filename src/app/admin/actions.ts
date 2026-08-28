@@ -339,13 +339,25 @@ export async function bulkSetLynneNumbersAction(input: {
   });
 }
 
-export async function markRosterSentAction(): Promise<
-  ActionResult & { sent?: number; renamed?: number }
+/** "I emailed Lynne the additions." Touches nothing about renames. */
+export async function markNewEntriesSentAction(): Promise<
+  ActionResult & { count?: number }
 > {
   return guarded(async (actor) => {
-    const res = await getAdminData().markRosterSent(actor);
+    const count = await getAdminData().markNewEntriesSent(actor);
     revalidateAll();
-    return { ok: true, ...res };
+    return { ok: true, count };
+  });
+}
+
+/** "I emailed Lynne the corrections." Touches nothing about new entries. */
+export async function markRenamesCommunicatedAction(): Promise<
+  ActionResult & { count?: number }
+> {
+  return guarded(async (actor) => {
+    const count = await getAdminData().markRenamesCommunicated(actor);
+    revalidateAll();
+    return { ok: true, count };
   });
 }
 

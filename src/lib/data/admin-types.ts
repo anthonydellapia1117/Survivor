@@ -185,9 +185,12 @@ export interface AdminBackend {
     note: string;
     actor: string;
   }): Promise<void>;
-  /** Bring Lynne's list into sync: stamp entries she has not seen, and
-   *  re-record the name for entries renamed since she got them. */
-  markRosterSent(actor: string): Promise<{ sent: number; renamed: number }>;
+  /** Stamp entries Lynne has never seen as submitted. Independent of
+   *  renames: sending additions says nothing about corrections. */
+  markNewEntriesSent(actor: string): Promise<number>;
+  /** Re-record the name Lynne holds for entries whose corrections she has
+   *  now been told. Independent of new sends. */
+  markRenamesCommunicated(actor: string): Promise<number>;
   /** Lynne's whole-pool numbers for the public pool-pot card. Either value
    *  may be null (clears back to "pending"). The pot is entered directly —
    *  never derived from an unconfirmed per-entry formula. */
