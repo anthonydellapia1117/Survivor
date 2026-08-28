@@ -23,15 +23,19 @@ remits her share. Players see a public site; Anthony sees an admin site.
 
 ## Who is the authority on what
 
-**Lynne is the authority on results, standings, and elimination.** Her sheet
-decides who is out. The app never overrules her.
+**Lynne is the authority on results, standings, and elimination in HER
+pool.** Her sheet decides who is out of the pool.
+
+**This app computes status locally from game scores.** That is a second,
+independent calculation — not a mirror of hers.
 
 **Anthony is the authority on what was submitted and when** — the roster, the
 entry names, the picks he sent, and their timing.
 
-**Conflicts are reported, never auto-resolved.** When her sheet disagrees with
-our record, surface the variance and let Anthony decide. Never silently
-"correct" either side.
+**When the two disagree, report the variance. Never auto-resolve, and never
+assume either side is wrong.** Her sheet can carry a transcription slip; our
+scores can be stale or misapplied. Surface the difference with both values
+and let Anthony decide. Never silently "correct" either side.
 
 Two consequences that have bitten before:
 
@@ -65,8 +69,9 @@ unless Anthony asks.
 
 **A participant's name on a non-matching amount is not a signal.** People in
 this pool also send Anthony money for entirely unrelated reasons. Matching on
-name instead of amount is exactly what produced the false positives that had
-to be chased down and cleared. Amount first, always.
+name instead of amount is exactly what produced the **Tropea and Flaherty
+false positives** that had to be chased down and cleared. Amount first,
+always.
 
 Resolved exclusions are recorded in `audit_log` under the action
 `payment_sweep_exclude`, each naming the transaction IDs it clears. **Check
@@ -81,18 +86,27 @@ those rows — via /admin/audit — before re-raising anything.**
 - **Nobody else ever gets one.**
 - They **never count toward earning more** — the ratio is computed from
   recruited entries only.
-- They do get Lynne numbers and do appear on the roster sent to her.
+- They **still get Lynne numbers and appear in the roster export** — they
+  just do not bill.
 
 ### Remittance to Lynne
 
-**Recruited entries × $25.** Free entries are excluded entirely.
+**Recruited entries × $25 — regardless of whether that recruit has paid
+Anthony.** What a player owes and what Lynne is owed are separate ledgers;
+an unpaid recruit still costs $25. Free entries are excluded entirely.
+
+(`lynneRemittanceCents` takes the recruited count, never the paid count.)
 
 ### Margin — admin-only
 
-Anthony's margin (the spread between what he collects and what he remits) is
-**admin-only**. It never appears on any public route, and never in any export
-a player can reach. If a change would surface it publicly, do not build it —
-say so instead.
+The margin is **the $5 spread on every 1–3 tier entry** ($30 collected less
+the $25 owed) **plus the notional value of the free entries** (free count ×
+$25). That is exactly what `computeMargin` returns as
+`netCents = spreadCents + freeNotionalCents`.
+
+It is **admin-only**. It never appears on any public route, and never in any
+export a player can reach. If a change would surface it publicly, do not
+build it — say so instead.
 
 ## Public surfaces
 
@@ -136,9 +150,16 @@ payments the previews missed.
 ## Separate systems
 
 The **TNF block pool** is a completely separate system with its own repo and
-its own database. **Never reference it, link it, or pull its data into this
-project.** Its payments legitimately appear in the same Venmo inbox — that is
-why the amount-first sweep rule exists.
+its own database.
+
+**Never reference it, link it, or produce content for it here — not code, not
+rules, not drafts.** If Anthony asks for something TNF-related in this
+project, **refuse and tell him it belongs in the other chat.** This is not a
+matter of tidiness: two projects sharing an assistant context is how rules
+and data from one leak into the other.
+
+Its payments legitimately appear in the same Venmo inbox — that is why the
+amount-first sweep rule exists.
 
 ---
 
@@ -169,6 +190,8 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
   calculation.
 - Bye weeks and Thursday/Saturday/Monday games are normal — never assume all
   games are on Sunday.
+- `localStorage` is for view preferences only (e.g. the show/hide toggle).
+  No pool data, no participant data, no money ever goes in it.
 
 ## Where things live
 
