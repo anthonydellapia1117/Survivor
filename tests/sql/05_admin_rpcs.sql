@@ -346,3 +346,95 @@ begin
 end $$;
 
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- ENTRY NUMBERING CONVENTION: "Name N" -> "Name #N" for multi-entry owners.
+-- Only the separator moves. Single-entry owners, unnumbered names, and names
+-- already in #-form are untouched, and the flags that drive other workflows
+-- (name_is_default, submitted_as_name) must survive.
+-- ---------------------------------------------------------------------------
+begin;
+
+do $$
+declare
+  v_multi uuid;
+  v_solo uuid;
+  v_words uuid;
+  r record;
+  res jsonb;
+  n int;
+begin
+  -- Multi-entry owner, default-named and already sent to Lynne.
+  v_multi := admin_create_owner('Numb', 'Ering', 'numbering@example.com', null,
+                                'email', null,
+                                array['Numb Ering 1','Numb Ering 2'], true, 'test');
+  -- Single-entry owner: keeps its bare name.
+  v_solo := admin_create_owner('Solo', 'Player', 'solo@example.com', null,
+                               'email', null, array['Solo Player'], true, 'test');
+  -- Multi-entry owner whose names carry no trailing number.
+  v_words := admin_create_owner('Word', 'Names', 'words@example.com', null,
+                                'email', null,
+                                array['Philly Poultry','E.A.T.'], false, 'test');
+  perform admin_mark_new_entries_sent('test');
+
+  res := admin_normalize_entry_numbering('test', 'Anthony normalization');
+  -- The RPC is roster-wide, so the seeded entries are renamed too; assert on
+  -- this fixture's own rows rather than a global count.
+  n := (res->>'renamed')::int;
+  if n < 2 then raise exception 'expected at least this owner''s 2 renames, got %', n; end if;
+  if (select count(*) from jsonb_array_elements(res->'mapping') m
+       where m->>'from' like 'Numb Ering%') <> 2 then
+    raise exception 'the fixture owner''s 2 renames are missing from the mapping';
+  end if;
+
+  -- The separator changed and NOTHING else did.
+  select entry_name, name_is_default, submitted_as_name into r
+    from entries where id in (select id from entries where entry_name = 'Numb Ering #1');
+  if r.entry_name <> 'Numb Ering #1' then
+    raise exception 'separator not applied, got %', r.entry_name;
+  end if;
+  if not r.name_is_default then
+    raise exception 'name_is_default must survive a separator change';
+  end if;
+  if r.submitted_as_name <> 'Numb Ering 1' then
+    raise exception 'the name Lynne holds must be preserved, got %', r.submitted_as_name;
+  end if;
+
+  -- ...which puts it in the rename-pending state on its own.
+  select count(*) into n from entries
+   where submitted_to_lynne_at is not null and voided_at is null
+     and submitted_as_name is distinct from entry_name
+     and entry_name like 'Numb Ering%';
+  if n <> 2 then raise exception 'expected 2 rename-pending, got %', n; end if;
+
+  -- Untouched: single-entry owner, and multi-entry names with no number.
+  if not exists (select 1 from entries where entry_name = 'Solo Player') then
+    raise exception 'a single-entry owner must keep its bare name';
+  end if;
+  if not exists (select 1 from entries where entry_name = 'Philly Poultry')
+     or not exists (select 1 from entries where entry_name = 'E.A.T.') then
+    raise exception 'names without a trailing number must be left alone';
+  end if;
+
+  -- Idempotent: a second run finds nothing and writes no audit row.
+  select count(*) into n from audit_log where action = 'normalize_entry_numbering';
+  res := admin_normalize_entry_numbering('test', 'again');
+  if (res->>'renamed')::int <> 0 then
+    raise exception 'second run renamed % rows', (res->>'renamed')::int;
+  end if;
+  if (select count(*) from audit_log where action = 'normalize_entry_numbering') <> n then
+    raise exception 'no-op run wrote an audit row';
+  end if;
+
+  -- The audit row carries the full old -> new mapping Lynne has to be sent.
+  select after into res from audit_log
+   where action = 'normalize_entry_numbering' order by id desc limit 1;
+  if jsonb_array_length(res->'mapping') < 2 then
+    raise exception 'mapping not recorded in the audit row';
+  end if;
+  if res->'mapping'->0->>'from' is null or res->'mapping'->0->>'to' is null then
+    raise exception 'mapping rows must carry both names';
+  end if;
+end $$;
+
+rollback;

@@ -43,9 +43,9 @@ describe("collisionKind", () => {
     // Same number, different spacing = likely typo duplicate — flagged.
     expect(collisionKind("Waggs1", "Waggs 1")).toBe("edit1");
     // A cross-owner numbered pair is suspicious again.
-    expect(
-      collisionKind("Waggs1", "Waggs2", { sameOwner: false }),
-    ).toBe("edit1");
+    expect(collisionKind("Waggs1", "Waggs2", { sameOwner: false })).toBe(
+      "edit1",
+    );
   });
 
   it("null for safely distinct names", () => {
@@ -66,6 +66,34 @@ describe("findCollisions", () => {
       { name: "tommybrads2", kind: "exact" },
       { name: "Tommybrads1", kind: "edit1" },
     ]);
+  });
+});
+
+describe("the '#' numbering convention", () => {
+  it("treats 'Name #1'/'Name #2' as a deliberate set, not a collision", () => {
+    expect(
+      collisionGroups(["Waggs #1", "Waggs #2", "Waggs #3", "Waggs #4"]),
+    ).toEqual([]);
+    expect(collisionGroups(["Nick&Kels #1", "Nick&Kels #2"])).toEqual([]);
+  });
+
+  it("still flags Tommybrads #1 / tommybrads #2 — the bases differ by case", () => {
+    expect(collisionKind("Tommybrads #1", "tommybrads #2")).toBe("edit1");
+    const groups = collisionGroups(["Tommybrads #1", "tommybrads #2"]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].names).toEqual(["Tommybrads #1", "tommybrads #2"]);
+  });
+
+  it("flags the same number written two ways — a likely duplicate", () => {
+    expect(collisionKind("Waggs #1", "Waggs 1")).not.toBeNull();
+  });
+
+  it("does not confuse the old and new separators across different owners", () => {
+    const cross = collisionGroups(
+      ["Mike Penna #1", "Mike Penna #2"],
+      ["Mike Penna", "Mike Penna"],
+    );
+    expect(cross).toEqual([]);
   });
 });
 

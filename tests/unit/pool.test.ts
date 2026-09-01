@@ -53,17 +53,40 @@ describe("free entries (locked)", () => {
 });
 
 describe("default entry naming (locked)", () => {
-  it("uses the plain name for a single entry", () => {
+  it("uses the plain name for a single entry — no hash, no number", () => {
     expect(defaultEntryNames("Tim Flaherty", 1)).toEqual(["Tim Flaherty"]);
   });
 
-  it("numbers multiple entries", () => {
+  it("numbers multiple entries as 'Name #N' — space, hash, digit", () => {
     expect(defaultEntryNames("John Vassallo", 4)).toEqual([
-      "John Vassallo 1",
-      "John Vassallo 2",
-      "John Vassallo 3",
-      "John Vassallo 4",
+      "John Vassallo #1",
+      "John Vassallo #2",
+      "John Vassallo #3",
+      "John Vassallo #4",
     ]);
+  });
+
+  it("never puts a space between the hash and the digit", () => {
+    for (const n of defaultEntryNames("Waggs", 4)) {
+      expect(n).toMatch(/ #\d+$/);
+      expect(n).not.toMatch(/# /);
+    }
+  });
+
+  it("continues the numbering when an owner already has entries", () => {
+    expect(defaultEntryNames("Brian Yost", 2, 3)).toEqual([
+      "Brian Yost #3",
+      "Brian Yost #4",
+    ]);
+  });
+
+  it("a single entry added to an existing owner still gets its number", () => {
+    expect(defaultEntryNames("Nicco Esgro", 1, 2)).toEqual(["Nicco Esgro #2"]);
+  });
+
+  it("returns nothing for a non-positive count", () => {
+    expect(defaultEntryNames("Nobody", 0)).toEqual([]);
+    expect(defaultEntryNames("Nobody", -3)).toEqual([]);
   });
 });
 
@@ -102,9 +125,14 @@ describe("free-entry rule (the runner's words)", () => {
     // 3 owners x 2 entries + 1 owner x 3 + 1 x 4 = 13 spread-tier of 69.
     const live: { ownerId: string; isFreeEntry: boolean }[] = [];
     const add = (owner: string, n: number, free = false) => {
-      for (let i = 0; i < n; i++) live.push({ ownerId: owner, isFreeEntry: free });
+      for (let i = 0; i < n; i++)
+        live.push({ ownerId: owner, isFreeEntry: free });
     };
-    add("a", 2); add("b", 2); add("c", 2); add("d", 3); add("e", 4);
+    add("a", 2);
+    add("b", 2);
+    add("c", 2);
+    add("d", 3);
+    add("e", 4);
     add("big", 56); // 4+ tier
     add("me", 6, true);
     const m = computeMargin(live, 65000);
