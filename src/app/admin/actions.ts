@@ -361,6 +361,17 @@ export async function markRenamesCommunicatedAction(): Promise<
   });
 }
 
+/** "I told Lynne to pull these." Touches nothing about sends or renames. */
+export async function markRemovalsCommunicatedAction(): Promise<
+  ActionResult & { count?: number }
+> {
+  return guarded(async (actor) => {
+    const count = await getAdminData().markRemovalsCommunicated(actor);
+    revalidateAll();
+    return { ok: true, count };
+  });
+}
+
 /**
  * The pool-wide numbers behind the public "Pool pot" card. Both are entered
  * by hand from what Lynne sends — the pot is stored as given, never computed

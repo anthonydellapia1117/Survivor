@@ -10,8 +10,13 @@
 //     as "her name -> our name" so the correction can be pasted straight
 //     into an email. Until she is told, her numbers come back keyed to the
 //     old name; the number import matches those on the recorded name.
+//   • Removed — entries she HAS that we have since voided (someone asked out
+//     after the roster went over). Shown under the name SHE holds, because
+//     that is what she has to find on her sheet. Without this view a void
+//     simply vanished from every screen and her sheet kept carrying a live
+//     entry nobody was picking for.
 //   • Full roster — everything, for a fresh send.
-// The two stamps are INDEPENDENT, because the two emails are: telling her
+// The three stamps are INDEPENDENT, because the three emails are: telling her
 // about a rename says nothing about whether late joiners have gone out, and
 // stamping them together would have quietly marked unsent entries as sent.
 // Each view carries its own button.
@@ -20,7 +25,14 @@ import { useMemo, useState, useTransition } from "react";
 import type { AdminEntry } from "@/lib/data/admin-types";
 import { adminFirst } from "@/lib/free-entries";
 import {
+  isRemovedSinceSubmission,
+  isRenamedSinceSubmission,
+  isUnsentToLynne,
+  nameOnLynnesSheet,
+} from "@/lib/lynne/roster-drift";
+import {
   markNewEntriesSentAction,
+  markRemovalsCommunicatedAction,
   markRenamesCommunicatedAction,
 } from "@/app/admin/actions";
 import { Button } from "@/components/ui/button";
@@ -45,44 +57,49 @@ function rosterOrder(a: AdminEntry, b: AdminEntry): number {
   );
 }
 
-/** Renamed after she got it: she holds submittedAsName, we hold entryName. */
-export function isRenamedSinceSubmission(e: AdminEntry): boolean {
-  return (
-    e.submittedAsName !== null &&
-    e.submittedToLynneAt !== null &&
-    e.submittedAsName !== e.entryName
-  );
-}
-
-type View = "delta" | "renamed" | "full";
+type View = "delta" | "renamed" | "removed" | "full";
 
 export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
   const [view, setView] = useState<View>("delta");
   const [copied, setCopied] = useState(false);
   const [sentDone, setSentDone] = useState<number | null>(null);
   const [renamedDone, setRenamedDone] = useState<number | null>(null);
+  const [removedDone, setRemovedDone] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
 
   const active = useMemo(
     () => entries.filter((e) => !e.voidedAt).sort(rosterOrder),
     [entries],
   );
-  const delta = useMemo(
-    () => active.filter((e) => !e.submittedToLynneAt),
-    [active],
-  );
+  const delta = useMemo(() => active.filter(isUnsentToLynne), [active]);
   const renamed = useMemo(
     () => active.filter(isRenamedSinceSubmission),
     [active],
   );
+  // Drawn from ALL entries, not `active` — the whole point is that these are
+  // voided, and `active` has already dropped them.
+  const removed = useMemo(
+    () => entries.filter(isRemovedSinceSubmission).sort(rosterOrder),
+    [entries],
+  );
 
-  const shown = view === "full" ? active : view === "delta" ? delta : renamed;
+  const shown =
+    view === "full"
+      ? active
+      : view === "delta"
+        ? delta
+        : view === "renamed"
+          ? renamed
+          : removed;
   const lines =
     view === "renamed"
       ? shown.map((e) => `${e.submittedAsName}  ->  ${e.entryName}`)
-      : shown.map((e) => e.entryName);
+      : view === "removed"
+        ? // The name on HER sheet, which is what she has to strike.
+          shown.map(nameOnLynnesSheet)
+        : shown.map((e) => e.entryName);
   const block = lines.join("\n");
-  const pendingWork = delta.length + renamed.length;
+  const pendingWork = delta.length + renamed.length + removed.length;
 
   async function copy() {
     await navigator.clipboard.writeText(block);
@@ -92,16 +109,18 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
 
   function download() {
     const csv =
-      view === "renamed"
-        ? [
-            "HER NAME,OUR NAME",
-            ...shown.map((e) =>
-              [csvField(e.submittedAsName ?? ""), csvField(e.entryName)].join(
-                ",",
+      view === "removed"
+        ? ["NAME TO REMOVE", ...lines.map(csvField)].join("\n") + "\n"
+        : view === "renamed"
+          ? [
+              "HER NAME,OUR NAME",
+              ...shown.map((e) =>
+                [csvField(e.submittedAsName ?? ""), csvField(e.entryName)].join(
+                  ",",
+                ),
               ),
-            ),
-          ].join("\n") + "\n"
-        : ["NAMES", ...lines.map(csvField)].join("\n") + "\n";
+            ].join("\n") + "\n"
+          : ["NAMES", ...lines.map(csvField)].join("\n") + "\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -111,7 +130,9 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
         ? "DellaPia_Roster.csv"
         : view === "delta"
           ? "DellaPia_Roster_Additions.csv"
-          : "DellaPia_Roster_Renames.csv";
+          : view === "renamed"
+            ? "DellaPia_Roster_Renames.csv"
+            : "DellaPia_Roster_Removals.csv";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -130,6 +151,13 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
     });
   }
 
+  function markRemovalsTold() {
+    startTransition(async () => {
+      const res = await markRemovalsCommunicatedAction();
+      if (res.ok) setRemovedDone(res.count ?? 0);
+    });
+  }
+
   const description =
     view === "full"
       ? `Full roster — ${active.length} entry names in numbering order.`
@@ -137,9 +165,13 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
         ? delta.length > 0
           ? `${delta.length} ${delta.length === 1 ? "entry" : "entries"} Lynne has not seen yet.`
           : "Lynne has seen every current entry — nothing new to send."
-        : renamed.length > 0
-          ? `${renamed.length} ${renamed.length === 1 ? "entry was" : "entries were"} renamed after she got the list. Send her the corrections below.`
-          : "No entry has been renamed since Lynne's list.";
+        : view === "renamed"
+          ? renamed.length > 0
+            ? `${renamed.length} ${renamed.length === 1 ? "entry was" : "entries were"} renamed after she got the list. Send her the corrections below.`
+            : "No entry has been renamed since Lynne's list."
+          : removed.length > 0
+            ? `${removed.length} ${removed.length === 1 ? "entry is" : "entries are"} still on her sheet after being voided here. Ask her to remove ${removed.length === 1 ? "it" : "them"}.`
+            : "Nothing she holds has been voided since her list.";
 
   return (
     <Dialog>
@@ -151,6 +183,10 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
               {delta.length > 0 ? `+${delta.length}` : null}
               {delta.length > 0 && renamed.length > 0 ? " " : null}
               {renamed.length > 0 ? `✎${renamed.length}` : null}
+              {(delta.length > 0 || renamed.length > 0) && removed.length > 0
+                ? " "
+                : null}
+              {removed.length > 0 ? `−${removed.length}` : null}
             </span>
           ) : null}
         </Button>
@@ -177,6 +213,13 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
             onClick={() => setView("renamed")}
           >
             Renamed ({renamed.length})
+          </Button>
+          <Button
+            size="sm"
+            variant={view === "removed" ? "default" : "outline"}
+            onClick={() => setView("removed")}
+          >
+            Removed ({removed.length})
           </Button>
           <Button
             size="sm"
@@ -251,6 +294,34 @@ export function RosterExportDialog({ entries }: { entries: AdminEntry[] }) {
                   {pending
                     ? "Marking…"
                     : `Mark ${renamed.length} ${renamed.length === 1 ? "rename" : "renames"} as communicated`}
+                </Button>
+              </>
+            )}
+          </div>
+        ) : null}
+        {view === "removed" && removed.length > 0 ? (
+          <div className="rounded-md border border-border bg-surface p-3 text-sm">
+            {removedDone !== null ? (
+              <p>
+                Marked {removedDone}{" "}
+                {removedDone === 1 ? "removal" : "removals"} as communicated.
+                New entries and renames were not touched.
+              </p>
+            ) : (
+              <>
+                <p className="mb-2 text-muted-foreground">
+                  After Lynne has confirmed she pulled{" "}
+                  {removed.length === 1 ? "it" : "them"} from her sheet:
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={markRemovalsTold}
+                >
+                  {pending
+                    ? "Marking…"
+                    : `Mark ${removed.length} ${removed.length === 1 ? "removal" : "removals"} as communicated`}
                 </Button>
               </>
             )}
