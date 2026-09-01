@@ -124,6 +124,35 @@ Entry names are stored **verbatim** — never normalized, cased, or trimmed by
 the app. When Anthony standardizes a name himself, the override is recorded
 in the owner's notes so it is clear the app did not do it silently.
 
+### The numbering convention
+
+Set by Anthony on 2026-09-01 and applied to the whole roster.
+
+- An owner with **more than one entry**: `Name #1`, `Name #2`, … — a space,
+  a hash, then the digit, **nothing between the hash and the digit**.
+- An owner with **exactly one entry**: the plain name, **no hash and no
+  number** (`Pumpy321`, `Nicco E`, `black and blue attack`).
+- **Only the separator is the convention.** Case, spelling and internal
+  spacing are the owner's — `Tommybrads #1` and `tommybrads #2` keep their
+  differing case and therefore stay a flagged near-collision, which is the
+  point of the collision detector.
+- A name with **no trailing number** (`Philadelphia Poultry`, `E.A.T.`,
+  `TNat`) is left alone. There is no separator to change, and inventing a
+  number would be the app deciding.
+
+`defaultEntryNames` in `src/lib/pool.ts` produces this shape and is the
+**only** place the string is built — quick add, bulk add, the owner drawer
+and every preview route through it, including the `startAt` offset used when
+topping up an owner who already has entries. Building the name inline is how
+the separator drifts.
+
+The one-time roster conversion is `admin_normalize_entry_numbering`, which
+records the complete old→new mapping in its audit row because **Lynne holds
+the old names**. It preserves `name_is_default`, `submitted_as_name`,
+`lynne_number` and `lynne_label` — a separator change is not the owner
+supplying a real name, and the generic `admin_update_entry` would have
+cleared the still-need-to-ask flag.
+
 ## Working rules
 
 - **Never invent data.** No placeholder owners, no guessed amounts, no

@@ -136,7 +136,11 @@ export function QuickAdd({
                 <span
                   className={cn(
                     "text-sm font-semibold tabular-nums",
-                    bal <= 0 ? "text-win" : o.paidCents > 0 ? "text-tie" : "text-loss",
+                    bal <= 0
+                      ? "text-win"
+                      : o.paidCents > 0
+                        ? "text-tie"
+                        : "text-loss",
                   )}
                 >
                   {bal <= 0 ? "PAID" : `${formatCents(bal)} due`}
@@ -155,14 +159,18 @@ export function QuickAdd({
                     <Button
                       variant={panel === "entries" ? "secondary" : "outline"}
                       className="h-11"
-                      onClick={() => setPanel(panel === "entries" ? null : "entries")}
+                      onClick={() =>
+                        setPanel(panel === "entries" ? null : "entries")
+                      }
                     >
                       Add entries
                     </Button>
                     <Button
                       variant={panel === "payment" ? "secondary" : "outline"}
                       className="h-11"
-                      onClick={() => setPanel(panel === "payment" ? null : "payment")}
+                      onClick={() =>
+                        setPanel(panel === "payment" ? null : "payment")
+                      }
                     >
                       Record payment
                     </Button>
@@ -299,10 +307,18 @@ function NewOwnerForm({
     <div className="space-y-3 rounded-lg border border-primary/40 bg-surface p-3">
       <div className="grid grid-cols-2 gap-2">
         <Field label="First name">
-          <Input value={first} onChange={(e) => setFirst(e.target.value)} className="h-11" />
+          <Input
+            value={first}
+            onChange={(e) => setFirst(e.target.value)}
+            className="h-11"
+          />
         </Field>
         <Field label="Last name">
-          <Input value={last} onChange={(e) => setLast(e.target.value)} className="h-11" />
+          <Input
+            value={last}
+            onChange={(e) => setLast(e.target.value)}
+            className="h-11"
+          />
         </Field>
       </div>
       <Field label="Email — the primary contact">
@@ -316,8 +332,8 @@ function NewOwnerForm({
       </Field>
       {email.trim() === "" ? (
         <p className="rounded-md border border-tie/40 bg-tie/10 px-3 py-1.5 text-xs text-tie">
-          No email — this owner will miss every group send. Saving is
-          allowed, but grab it if you can.
+          No email — this owner will miss every group send. Saving is allowed,
+          but grab it if you can.
         </p>
       ) : null}
       <Field label="Phone (optional)">
@@ -338,7 +354,9 @@ function NewOwnerForm({
             className="text-xs font-medium text-primary"
             onClick={() => setUseDefault((v) => !v)}
           >
-            {useDefault ? "Type custom entry names instead" : "Use default names"}
+            {useDefault
+              ? "Type custom entry names instead"
+              : "Use default names"}
           </button>
           {useDefault ? (
             <p className="text-xs text-muted-foreground">
@@ -393,18 +411,12 @@ function AddEntriesForm({
     count === 0
       ? []
       : useDefault
-        ? Array.from(
-            { length: count },
-            (_, i) => `${fullName} ${owner.entryCount + i + 1}`,
-          )
+        ? defaultEntryNames(fullName, count, owner.entryCount + 1)
         : customNames.split("\n").filter((l) => l.trim().length > 0);
 
   async function submit() {
     const names = useDefault
-      ? Array.from(
-          { length: count },
-          (_, i) => `${fullName} ${owner.entryCount + i + 1}`,
-        )
+      ? defaultEntryNames(fullName, count, owner.entryCount + 1)
       : customNames.split("\n").filter((l) => l.trim().length > 0);
     if (names.length === 0) {
       setError("Add at least one entry name");
@@ -448,19 +460,22 @@ function AddEntriesForm({
         />
       ) : (
         <p className="text-xs text-muted-foreground">
-          {Array.from(
-            { length: count },
-            (_, i) => `${fullName} ${owner.entryCount + i + 1}`,
-          ).join(" · ")}
+          {defaultEntryNames(fullName, count, owner.entryCount + 1).join(" · ")}
         </p>
       )}
       <NameCollisionWarning proposed={proposed} existing={existingNames} />
       <p className="text-xs text-muted-foreground">
         New total: {newTotal} entries · owner due{" "}
-        <span className="tabular-nums">{formatCents(amountDueCents(newTotal))}</span>
+        <span className="tabular-nums">
+          {formatCents(amountDueCents(newTotal))}
+        </span>
       </p>
       {error ? <p className="text-sm text-loss">{error}</p> : null}
-      <Button className="h-11 w-full" onClick={submit} disabled={busy || count === 0}>
+      <Button
+        className="h-11 w-full"
+        onClick={submit}
+        disabled={busy || count === 0}
+      >
         {busy ? "Adding…" : `Add ${count} ${count === 1 ? "entry" : "entries"}`}
       </Button>
     </div>
@@ -557,7 +572,8 @@ function PaymentForm({
       </Field>
       {outstanding > 0 ? (
         <p className="text-xs text-muted-foreground">
-          Outstanding: <span className="tabular-nums">{formatCents(outstanding)}</span>{" "}
+          Outstanding:{" "}
+          <span className="tabular-nums">{formatCents(outstanding)}</span>{" "}
           (prefilled)
         </p>
       ) : (

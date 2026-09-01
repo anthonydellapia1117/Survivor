@@ -23,8 +23,7 @@ export function amountDueCents(
   config: PricingConfig = DEFAULT_PRICING,
 ): number {
   if (paidEntryCount <= 0) return 0;
-  const rate =
-    paidEntryCount >= 4 ? config.tier4PlusCents : config.tier13Cents;
+  const rate = paidEntryCount >= 4 ? config.tier4PlusCents : config.tier13Cents;
   return paidEntryCount * rate;
 }
 
@@ -64,11 +63,22 @@ export function formatCents(cents: number): string {
 }
 
 /**
- * Default entry naming when an owner supplies no names: the plain full name
- * for a single entry, "Full Name N" for several. Always marked default.
+ * Default entry naming when an owner supplies no names. Anthony's convention:
+ * a single entry is the plain full name, several are "Full Name #1", "#2", …
+ * — a space, a hash, then the digit with nothing between. One entry carries
+ * no hash and no number at all.
+ *
+ * `startAt` numbers a batch added to an owner who already has entries, so
+ * topping up from 2 to 4 yields "#3" and "#4" rather than restarting at #1.
+ * Every default-naming surface routes through here; building the string
+ * inline is how the separator drifts.
  */
-export function defaultEntryNames(fullName: string, count: number): string[] {
+export function defaultEntryNames(
+  fullName: string,
+  count: number,
+  startAt = 1,
+): string[] {
   if (count <= 0) return [];
-  if (count === 1) return [fullName];
-  return Array.from({ length: count }, (_, i) => `${fullName} ${i + 1}`);
+  if (count === 1 && startAt === 1) return [fullName];
+  return Array.from({ length: count }, (_, i) => `${fullName} #${startAt + i}`);
 }
