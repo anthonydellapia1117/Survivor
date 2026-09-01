@@ -104,6 +104,7 @@ export const adminSupabaseBackend: AdminBackend = {
         isAdminEntry: adminOwners.has(r.owner_id),
         submittedToLynneAt: r.submitted_to_lynne_at,
         submittedAsName: r.submitted_as_name,
+        removalCommunicatedAt: r.removal_communicated_at,
       }))
       .sort(
         (a: AdminEntry, b: AdminEntry) =>
@@ -263,6 +264,15 @@ export const adminSupabaseBackend: AdminBackend = {
   async markRenamesCommunicated(actor) {
     const c = await createSupabaseServerClient();
     const { data, error } = await c.rpc("admin_mark_renames_communicated", {
+      p_actor: actor,
+    });
+    if (error) throw error;
+    return Number(data);
+  },
+
+  async markRemovalsCommunicated(actor) {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c.rpc("admin_mark_removals_communicated", {
       p_actor: actor,
     });
     if (error) throw error;

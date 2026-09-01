@@ -110,7 +110,11 @@ export function EntriesAdmin({
     return [...filtered].sort((a, b) => {
       switch (sortKey) {
         case "owner":
-          return dir * (a.ownerName.localeCompare(b.ownerName) || a.entryIndex - b.entryIndex);
+          return (
+            dir *
+            (a.ownerName.localeCompare(b.ownerName) ||
+              a.entryIndex - b.entryIndex)
+          );
         case "entry":
           return dir * a.entryName.localeCompare(b.entryName);
         case "no":
@@ -158,12 +162,15 @@ export function EntriesAdmin({
           <p className="font-semibold">
             {nearCollisions.length} name{" "}
             {nearCollisions.length === 1 ? "group sits" : "groups sit"} within
-            one edit of each other — Lynne matches picks by name, so know
-            these are close:
+            one edit of each other — Lynne matches picks by name, so know these
+            are close:
           </p>
           <ul className="mt-1.5 space-y-1 text-xs">
             {nearCollisions.map((g, i) => (
-              <li key={i} className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <li
+                key={i}
+                className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
+              >
                 <span className="font-medium">({KIND_LABEL[g.kind]})</span>
                 {g.names.map((n, j) => (
                   <span key={j}>
@@ -176,15 +183,15 @@ export function EntriesAdmin({
             ))}
           </ul>
           <p className="mt-1 text-xs opacity-80">
-            Numbered sets with an identical base (Nick&Kels 1–4) are the
-            naming convention and are excluded — anything listed here is a
-            genuine hazard.
+            Numbered sets with an identical base (Nick&Kels 1–4) are the naming
+            convention and are excluded — anything listed here is a genuine
+            hazard.
           </p>
         </div>
       ) : (
         <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
-          No name near-collisions. Deliberate numbered sets (Waggs1–4,
-          ReRe #1–4) are excluded by convention; case-inconsistent sets and
+          No name near-collisions. Deliberate numbered sets (Waggs1–4, ReRe
+          #1–4) are excluded by convention; case-inconsistent sets and
           cross-owner lookalikes would be flagged here.
         </p>
       )}
@@ -212,7 +219,11 @@ export function EntriesAdmin({
                       title="Click to sort; third click restores the default (admin entries first)"
                     >
                       {h.label}
-                      {sortKey === h.key ? (sortDir === "asc" ? " ▲" : " ▼") : null}
+                      {sortKey === h.key
+                        ? sortDir === "asc"
+                          ? " ▲"
+                          : " ▼"
+                        : null}
                     </button>
                   ) : (
                     h.label
@@ -266,7 +277,11 @@ function EntryRow({
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const voided = entry.voidedAt !== null;
-  const removable = entry.pickCount === 0;
+  // A hard delete is only safe while the entry exists nowhere but here. Picks
+  // are one reason to keep the row; being on LYNNE'S SHEET is the other —
+  // deleting it erases the only record that she still holds it, so the
+  // "removed since submission" list could never tell her to pull it.
+  const removable = entry.pickCount === 0 && entry.submittedToLynneAt === null;
 
   return (
     <tr
@@ -282,7 +297,10 @@ function EntryRow({
       <td className="whitespace-nowrap px-3 font-medium">{entry.entryName}</td>
       <td className="whitespace-nowrap px-3 text-right tabular-nums">
         {entry.lynneNumber ?? (
-          <span className="font-semibold text-tie" title="No Lynne number — cannot be submitted">
+          <span
+            className="font-semibold text-tie"
+            title="No Lynne number — cannot be submitted"
+          >
             —
           </span>
         )}
@@ -405,9 +423,13 @@ function DestructiveDialog({
                 <span className="font-medium text-foreground">
                   {entry.entryName}
                 </span>{" "}
-                has {entry.pickCount}{" "}
-                {entry.pickCount === 1 ? "pick" : "picks"}, so it keeps its
-                history but leaves the pool and billing.
+                {entry.pickCount > 0
+                  ? `has ${entry.pickCount} ${entry.pickCount === 1 ? "pick" : "picks"}, so it`
+                  : "is on Lynne's sheet, so it"}{" "}
+                keeps its history but leaves the pool and billing.
+                {entry.submittedToLynneAt !== null
+                  ? " It will appear under Roster for Lynne → Removed until you tell her to pull it."
+                  : null}
               </>
             )}
           </DialogDescription>

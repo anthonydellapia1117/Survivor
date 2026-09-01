@@ -92,6 +92,7 @@ export const adminLocalPgBackend: AdminBackend = {
       pickCount: Number(r.pick_count),
       submittedToLynneAt: iso(r.submitted_to_lynne_at),
       submittedAsName: r.submitted_as_name ?? null,
+      removalCommunicatedAt: iso(r.removal_communicated_at),
     }));
   },
 
@@ -192,6 +193,14 @@ export const adminLocalPgBackend: AdminBackend = {
   async markRenamesCommunicated(actor) {
     const { rows } = await db().query(
       "select admin_mark_renames_communicated($1) as n",
+      [actor],
+    );
+    return Number(rows[0].n);
+  },
+
+  async markRemovalsCommunicated(actor) {
+    const { rows } = await db().query(
+      "select admin_mark_removals_communicated($1) as n",
       [actor],
     );
     return Number(rows[0].n);

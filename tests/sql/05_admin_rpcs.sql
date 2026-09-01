@@ -260,3 +260,89 @@ begin
 end $$;
 
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- REMOVED AFTER SUBMISSION: an entry Lynne has that we have voided. She keeps
+-- carrying it until she is told, so the pending set is derived from voided +
+-- submitted + never-communicated, and the stamp is independent of the other
+-- two — the same rule the send/rename split established.
+-- ---------------------------------------------------------------------------
+begin;
+
+do $$
+declare
+  v_owner uuid;
+  v_gone uuid;
+  v_kept uuid;
+  v_unsent uuid;
+  n int;
+  audits_before int;
+begin
+  select count(*) into audits_before
+    from audit_log where action = 'mark_removals_communicated';
+
+  v_owner := admin_create_owner('Removal', 'Case', 'removal@example.com', null,
+                                'email', null,
+                                array['Removal Case 1','Removal Case 2'], true, 'test');
+  perform admin_mark_new_entries_sent('test');
+
+  select id into v_gone from entries where entry_name = 'Removal Case 1';
+  select id into v_kept from entries where entry_name = 'Removal Case 2';
+
+  -- An entry she has NOT been sent, voided later: nothing to tell her.
+  perform admin_add_entries(v_owner, array['Never Sent 1'], true, false, 'test');
+  select id into v_unsent from entries where entry_name = 'Never Sent 1';
+  perform admin_void_entry(v_unsent, 'test');
+
+  -- Voiding a submitted entry leaves the removal pending.
+  perform admin_void_entry(v_gone, 'test');
+  select count(*) into n from entries
+   where voided_at is not null and submitted_to_lynne_at is not null
+     and removal_communicated_at is null;
+  if n <> 1 then raise exception 'expected exactly 1 pending removal, got %', n; end if;
+
+  -- The never-sent void must NOT be pending — she never had it.
+  if exists (select 1 from entries
+              where id = v_unsent and submitted_to_lynne_at is not null) then
+    raise exception 'a voided-but-unsent entry must stay unsubmitted';
+  end if;
+
+  -- Telling her stamps it, counts it, and audits it.
+  select admin_mark_removals_communicated('test') into n;
+  if n <> 1 then raise exception 'expected 1 removal communicated, got %', n; end if;
+  if exists (select 1 from entries
+              where id = v_gone and removal_communicated_at is null) then
+    raise exception 'removal stamp not recorded';
+  end if;
+  select count(*) into n from audit_log where action = 'mark_removals_communicated';
+  if n <> audits_before + 1 then raise exception 'removal not audited'; end if;
+
+  -- Idempotent: a second call stamps nothing and writes no audit row.
+  select admin_mark_removals_communicated('test') into n;
+  if n <> 0 then raise exception 'second call stamped % rows', n; end if;
+  select count(*) into n from audit_log where action = 'mark_removals_communicated';
+  if n <> audits_before + 1 then raise exception 'no-op call wrote an audit row'; end if;
+
+  -- INDEPENDENCE: communicating a removal must not touch the live entry's
+  -- submission or name stamps.
+  select count(*) into n from entries
+   where id = v_kept and submitted_to_lynne_at is not null
+     and submitted_as_name = 'Removal Case 2'
+     and removal_communicated_at is null;
+  if n <> 1 then raise exception 'a live sent entry was disturbed by the removal stamp'; end if;
+
+  -- And the reverse: a pending removal is invisible to the other two stamps.
+  perform admin_void_entry(v_kept, 'test');
+  if admin_mark_new_entries_sent('test') <> 0 then
+    raise exception 'mark_new_entries_sent swept in a voided entry';
+  end if;
+  if admin_mark_renames_communicated('test') <> 0 then
+    raise exception 'mark_renames_communicated swept in a voided entry';
+  end if;
+  if exists (select 1 from entries
+              where id = v_kept and removal_communicated_at is not null) then
+    raise exception 'another action cleared a pending removal';
+  end if;
+end $$;
+
+rollback;

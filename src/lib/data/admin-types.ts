@@ -33,6 +33,10 @@ export interface AdminEntry {
   /** The name Lynne's list carries for this entry. Differs from entryName
    *  exactly when the entry was renamed after it was submitted. */
   submittedAsName: string | null;
+  /** When Lynne was told to drop this entry. Only meaningful once the entry
+   *  is voided AND had been submitted — she holds it, we do not. Null there
+   *  means the removal still owes to be sent. */
+  removalCommunicatedAt: string | null;
 }
 
 export interface AdminPayment {
@@ -196,6 +200,9 @@ export interface AdminBackend {
   /** Re-record the name Lynne holds for entries whose corrections she has
    *  now been told. Independent of new sends. */
   markRenamesCommunicated(actor: string): Promise<number>;
+  /** Stamp voided-but-already-submitted entries as pulled from Lynne's
+   *  sheet. Independent of both sends and renames. */
+  markRemovalsCommunicated(actor: string): Promise<number>;
   /** Lynne's whole-pool numbers for the public pool-pot card. Either value
    *  may be null (clears back to "pending"). The pot is entered directly —
    *  never derived from an unconfirmed per-entry formula. */
