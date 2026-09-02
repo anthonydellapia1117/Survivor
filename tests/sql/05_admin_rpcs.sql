@@ -438,3 +438,65 @@ begin
 end $$;
 
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- SINGLE -> MULTI: a solo owner's bare default name becomes "#1" once they
+-- hold more than one entry, WITHOUT clearing name_is_default (the name is
+-- still app-generated) and without touching owner-supplied bare names.
+-- ---------------------------------------------------------------------------
+begin;
+
+do $$
+declare
+  v_solo uuid;
+  v_words uuid;
+  r record;
+  res jsonb;
+begin
+  -- Solo owner, app-default name = exactly the owner's full name.
+  v_solo := admin_create_owner('Solo', 'Grower', 'grower@example.com', null,
+                               'email', null, array['Solo Grower'], true, 'test');
+  -- Multi-entry owner whose bare names are HIS, not the app's.
+  v_words := admin_create_owner('Word', 'Owner', 'wordowner@example.com', null,
+                                'email', null, array['Philly Poultry','E.A.T.'], false, 'test');
+
+  -- While solo, the bare name is correct and must not be numbered.
+  res := admin_normalize_entry_numbering('test', 'while solo');
+  if exists (select 1 from entries where entry_name = 'Solo Grower #1') then
+    raise exception 'a single-entry owner must keep its bare name';
+  end if;
+
+  -- He buys three more; the top-up is numbered from #2 by the app.
+  perform admin_add_entries(v_solo,
+    array['Solo Grower #2','Solo Grower #3','Solo Grower #4'], true, false, 'test');
+
+  res := admin_normalize_entry_numbering('test', 'after growing');
+  select entry_name, name_is_default into r
+    from entries where id in (select id from entries where entry_name = 'Solo Grower #1');
+  if r.entry_name <> 'Solo Grower #1' then
+    raise exception 'bare default name was not numbered on growing past one';
+  end if;
+  if not r.name_is_default then
+    raise exception 'numbering a default name must NOT clear name_is_default';
+  end if;
+  if exists (select 1 from entries where entry_name = 'Solo Grower') then
+    raise exception 'the un-numbered duplicate survived';
+  end if;
+
+  -- Owner-supplied bare names on a multi-entry owner stay untouched forever.
+  if not exists (select 1 from entries where entry_name = 'Philly Poultry')
+     or not exists (select 1 from entries where entry_name = 'E.A.T.') then
+    raise exception 'owner-supplied bare names must never be numbered';
+  end if;
+  if exists (select 1 from entries where entry_name like 'Philly Poultry #%') then
+    raise exception 'the app invented a number for an owner-supplied name';
+  end if;
+
+  -- Idempotent across both cases.
+  res := admin_normalize_entry_numbering('test', 'again');
+  if (res->>'renamed')::int <> 0 then
+    raise exception 'second run renamed % rows', (res->>'renamed')::int;
+  end if;
+end $$;
+
+rollback;
