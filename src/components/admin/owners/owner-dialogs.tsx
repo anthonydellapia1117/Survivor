@@ -50,10 +50,7 @@ const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
 ] as const;
 
-function Textarea({
-  className,
-  ...props
-}: React.ComponentProps<"textarea">) {
+function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea
       className={cn(
@@ -99,6 +96,10 @@ function parseTypedNames(text: string): string[] {
 function resolveEntryNames(
   fullName: string,
   value: EntryNamesValue,
+  /** First number to use. Topping up an owner who already has entries
+   *  continues their numbering instead of restarting at #1 and colliding
+   *  with what they already hold. */
+  startAt = 1,
 ):
   | { ok: true; names: string[]; nameIsDefault: boolean }
   | { ok: false; error: string } {
@@ -109,7 +110,7 @@ function resolveEntryNames(
     }
     return {
       ok: true,
-      names: defaultEntryNames(fullName, count),
+      names: defaultEntryNames(fullName, count, startAt),
       nameIsDefault: true,
     };
   }
@@ -121,16 +122,20 @@ function EntryNamesFields({
   fullName,
   value,
   onChange,
+  startAt = 1,
 }: {
   idPrefix: string;
   fullName: string;
   value: EntryNamesValue;
   onChange: (v: EntryNamesValue) => void;
+  /** Matches the startAt handed to resolveEntryNames, so the preview shows
+   *  the numbers that will actually be saved. */
+  startAt?: number;
 }) {
   const count = Number(value.countText);
   const preview =
     value.useDefault && Number.isInteger(count) && count >= 1 && count <= 8
-      ? defaultEntryNames(fullName, count)
+      ? defaultEntryNames(fullName, count, startAt)
       : [];
   return (
     <div className="space-y-2">
@@ -501,7 +506,7 @@ export function AddEntriesDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const resolved = resolveEntryNames(fullName, names);
+    const resolved = resolveEntryNames(fullName, names, owner.entryCount + 1);
     if (!resolved.ok) {
       setError(resolved.error);
       return;
@@ -542,6 +547,7 @@ export function AddEntriesDialog({
             fullName={fullName}
             value={names}
             onChange={setNames}
+            startAt={owner.entryCount + 1}
           />
           <div className="flex items-center gap-2">
             <Checkbox
