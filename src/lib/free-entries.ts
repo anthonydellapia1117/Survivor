@@ -8,7 +8,7 @@
 //
 // If the runner ever buys an entry and pays for it, it counts as
 // recruited for both the earning math and the remittance — only entries
-// flagged is_free_entry are excluded. Free entries are named "AAA n" and
+// flagged is_free_entry are excluded. Free entries are named "AAA #n" and
 // belong to the runner's participant owner row.
 //
 // MARGIN MATH LIVES HERE AND ON /admin ONLY — never in a public view,
@@ -17,9 +17,13 @@
 import { DEFAULT_PRICING, type PricingConfig } from "@/lib/pool";
 
 export const FREE_ENTRY_OWNER_EMAIL = "anthonydellapia@gmail.com";
-export const FREE_ENTRY_NAME_PREFIX = "AAA ";
+export const FREE_ENTRY_NAME_PREFIX = "AAA #";
 
-const AAA = /^AAA (\d+)$/;
+// Parses BOTH separators on purpose. New free entries are minted as "AAA #n"
+// under the numbering convention, but the seven that predate it went out to
+// Lynne as "AAA 1".."AAA 7" and were converted in place; a reader that only
+// understood one form would parse maxN as 0 and mint a duplicate "AAA 1".
+const AAA = /^AAA #?(\d+)$/;
 
 /** FLOOR(recruited / ratio). Free entries never earn more free entries. */
 export function freeEntitlement(
@@ -30,8 +34,8 @@ export function freeEntitlement(
 }
 
 /**
- * Names for the free entries still owed: continues past the highest
- * existing "AAA n" (never reuses a number, even after a void).
+ * Names for the free entries still owed: continues past the highest existing
+ * number in EITHER separator form (never reuses one, even after a void).
  */
 export function nextFreeNames(
   existingFreeNames: string[],
