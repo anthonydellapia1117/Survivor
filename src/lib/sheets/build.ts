@@ -770,7 +770,11 @@ export function buildLynne(input: SheetsInput): TabSpec {
 
 export function buildConfig(input: SheetsInput): TabSpec {
   const { now, weeks, config } = input;
-  const cols = 3;
+  // Four columns: the deadline table carries a tier name alongside the time.
+  // syncSpreadsheet clamps its updateCells range to columnCount and only pads
+  // rows UP, so a row wider than this is rejected by the Sheets API and the
+  // whole export fails -- widen here, never just in a row.
+  const cols = 4;
   const rows: CellSpec[][] = [
     banner(now, cols),
     header(["Rule", "Value", ""], cols),
@@ -867,7 +871,7 @@ export function buildConfig(input: SheetsInput): TabSpec {
     columnCount: cols,
     frozenRows: 2,
     frozenCols: 0,
-    columnWidths: [240, 260, 70],
+    columnWidths: [240, 260, 230, 70],
     rowHeights: { banner: 24, header: 32, body: 24 },
     filterHeaderRow: null,
     dataRowCount: rows.length - 2,

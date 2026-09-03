@@ -36,13 +36,15 @@
 -- fall on Sundays, so Tue/Wed/Thu never straddle one and each tier stays at
 -- noon ET.
 --
--- FRIDAY is not one of the three tiers Anthony stated, and 2026 has six
--- Friday games (Week 12 Black Friday, Week 16 Christmas Day). They take
--- Thursday noon ET here, by the same day-before principle the stated tiers
--- follow. That is a change from the old behaviour (Wednesday noon) in the
--- generous direction while still landing a full day before kickoff. Flagged
--- to Anthony as the one tier he did not specify; it affects no game before
--- 2026-11-27, so it is safe to revise later.
+-- FRIDAY was not one of the three tiers Anthony stated in the original
+-- report, and 2026 has six Friday games (Week 12 Black Friday, Week 16
+-- Christmas Day). They take Thursday noon ET, by the same day-before
+-- principle the stated tiers follow -- a change from the old behaviour
+-- (Wednesday noon) in the generous direction, still a full day clear of
+-- kickoff. Anthony confirmed it on 2026-09-03 on that reasoning: it gives a
+-- clean escalation through Thanksgiving week, Thursday games due Wednesday
+-- noon, the Black Friday game due Thursday noon, the weekend due Friday
+-- noon. It is a decided rule now, not a provisional choice.
 
 -- Week 1 loses its override and takes the standard shape.
 --   early = Wednesday 2026-09-09 12:00 ET  (Thursday-game picks)

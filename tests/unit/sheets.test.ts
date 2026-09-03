@@ -331,3 +331,32 @@ describe("public deadline tables are tiered, not the full lock", () => {
     expect(lines[0]).toMatch(/picks/);
   });
 });
+
+describe("every tab's rows fit its declared width", () => {
+  // syncSpreadsheet constrains updateCells to columnCount and pads rows only
+  // upward, so one row wider than the declared width makes the Sheets API
+  // reject the request and the entire export fails -- not just that tab.
+  // Widening a table without widening its tab is the easy way to break it.
+  it("no row is wider than its tab's columnCount", () => {
+    const wb = buildAllTabs(baseInput());
+    const offenders: string[] = [];
+    for (const tab of [...wb.public, ...wb.private]) {
+      for (const [i, row] of tab.rows.entries()) {
+        if (row.length > tab.columnCount) {
+          offenders.push(
+            `${tab.title} row ${i}: ${row.length} cells > columnCount ${tab.columnCount}`,
+          );
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("declares a width for every column it says it has", () => {
+    const wb = buildAllTabs(baseInput());
+    for (const tab of [...wb.public, ...wb.private]) {
+      if (!tab.columnWidths) continue;
+      expect(tab.columnWidths).toHaveLength(tab.columnCount);
+    }
+  });
+});
