@@ -23,14 +23,25 @@
 -- `is not distinct from`. An unmatched transaction can appear once, a matched
 -- one once per owner, and the split that 37 exists for still works.
 
-drop index if exists payments_venmo_txn_id_owner_key;
+-- AMENDED after this migration had already been applied. As first written it
+-- created a unique index keyed on coalesce(owner_id, nil-uuid). Two schema-legal
+-- states make that index refuse to build, and a CREATE INDEX that fails aborts
+-- the migration before the RPC below is installed, which in turn stops
+-- 20260903000040 from ever running - the repair becomes undeployable in exactly
+-- the databases that need it:
+--
+--   * duplicate unmatched rows left behind by the 37-era regression, and
+--   * an owners row holding the nil uuid, whose payments the sentinel folds
+--     into the quarantine bucket.
+--
+-- So no index is created here. 20260903000040 installs the two partial indexes
+-- that supersede the sentinel anyway, with a pre-check that reports offending
+-- rows in terms an operator can act on. Production ran the original form
+-- cleanly (it had neither condition) and then ran 40, so the live end state is
+-- unchanged by this amendment; only a fresh replay behaves differently, and
+-- better.
 
-create unique index payments_venmo_txn_id_owner_key
-  on payments (
-    venmo_txn_id,
-    coalesce(owner_id, '00000000-0000-0000-0000-000000000000'::uuid)
-  )
-  where corrects_payment_id is null and venmo_txn_id is not null;
+drop index if exists payments_venmo_txn_id_owner_key;
 
 create or replace function public.admin_record_payment(
   p_owner_id uuid, p_amount_cents integer, p_method text, p_paid_on date,
