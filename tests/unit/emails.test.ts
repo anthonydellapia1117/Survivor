@@ -98,6 +98,19 @@ describe("a pick request carries what the owner needs to reply", () => {
     expect(one.html).toContain("Your entry");
     expect(one.html).not.toContain("Your entries");
   });
+
+  // The singular body used to say "for Week 1" literally, so from week 2 on a
+  // one-entry owner got a subject naming the right week above a body naming
+  // the wrong one.
+  it("names the selected week in the body, not just the subject", () => {
+    const w5 = { ...WEEK1, week: 5 };
+    for (const names of [["Solo"], ["A #1", "A #2"]]) {
+      const b = buildPickRequest(owner(names), w5, [g(5, "Sunday")]);
+      expect(b.subject).toContain("Week 5");
+      expect(b.html).not.toContain("Week 1");
+      expect(b.text).not.toContain("Week 1");
+    }
+  });
 });
 
 describe("the HTML survives Gmail", () => {

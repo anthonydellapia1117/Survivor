@@ -127,7 +127,7 @@ export function buildPickRequest(
         kind: "lead",
         text:
           n === 1
-            ? "Reply to this email with your team for Week 1. One team, and you cannot use it again all season."
+            ? `Reply to this email with your team for Week ${week.week}. One team, and you cannot use it again all season.`
             : `Reply to this email with a team for each of your ${n} entries. Each entry is separate — same team on more than one is fine, but no entry can reuse a team it has already played.`,
       },
       {
