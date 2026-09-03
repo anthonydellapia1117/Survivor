@@ -56,6 +56,7 @@ Week 1 included.** There is no special Week 1 rule.
 | ---------------------- | --------------------- |
 | Wednesday              | Tuesday 12:00 PM ET   |
 | Thursday               | Wednesday 12:00 PM ET |
+| Friday                 | Thursday 12:00 PM ET  |
 | Saturday/Sunday/Monday | Friday 12:00 PM ET    |
 
 Saturday, Sunday and Monday share **one** window deliberately: that is where
@@ -68,10 +69,11 @@ everything from Saturday 09-12 on closes Friday 09-11 noon. The week is fully
 locked at the **late** deadline — Friday noon — which is also the sweep
 boundary.
 
-**Friday games take Thursday noon ET.** That tier was not part of the rule as
-stated; it follows the same day-before principle as the others, and it governs
-six games (Week 12 Black Friday, Week 16 Christmas Day). Change it if that is
-wrong — nothing before 2026-11-27 depends on it.
+Every tier is noon ET on the day before its window opens. Anthony confirmed
+the Friday tier on 2026-09-03, on that reasoning: it gives a clean escalation
+through Thanksgiving week — **Thursday games due Wednesday noon, the Black
+Friday game due Thursday noon, the weekend due Friday noon.** It governs six
+games (Week 12 Black Friday, Week 16 Christmas Day).
 
 The derivation is `pick_deadline(week, team)` in SQL, mirrored for display by
 `pickDeadlineIso` in `src/lib/deadlines.ts`. Only two boundaries are stored per
