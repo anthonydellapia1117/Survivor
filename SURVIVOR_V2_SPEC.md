@@ -291,6 +291,8 @@ His words, Aug 23: *"I am in for 1 entry name it Nicco E"*
 
 **I7. Audit every email.** List every owner with no email on file. Alec Hess has none. Do not write an address you are not certain of — report the gap instead.
 
+> **Resolved 2026-09-03 — and the missing address was the symptom, not the problem.** There was never an owner called Alec Hess: the wrong person had been recorded when those four entries were taken, which is exactly why no address could be found. The owner is **Jim Teti, `jamesteti@comcast.net`** — same owner row, corrected identity, no owner created and no entry added, removed or repriced. Every owner now has an email on file. Lynne received those four in August as `Alec Hess 1`–`4`, so she is owed that correction as a person substitution, not a formatting fix.
+
 ---
 
 ## CONSTRAINTS
