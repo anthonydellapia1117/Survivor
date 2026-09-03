@@ -24,24 +24,27 @@
 -- one once per owner, and the split that 37 exists for still works.
 
 -- AMENDED after this migration had already been applied. As first written it
--- created a unique index keyed on coalesce(owner_id, nil-uuid). Two schema-legal
--- states make that index refuse to build, and a CREATE INDEX that fails aborts
--- the migration before the RPC below is installed, which in turn stops
--- 20260903000040 from ever running - the repair becomes undeployable in exactly
--- the databases that need it:
+-- dropped the index from 37 and created one keyed on coalesce(owner_id,
+-- nil-uuid). Two problems, both on schema-legal data:
 --
---   * duplicate unmatched rows left behind by the 37-era regression, and
---   * an owners row holding the nil uuid, whose payments the sentinel folds
---     into the quarantine bucket.
+--   * that index refuses to build against duplicate unmatched rows left by the
+--     37-era regression, or against an owners row holding the nil uuid, and a
+--     failed CREATE INDEX aborts this migration before the RPC below installs,
+--     which stops 20260903000040 from running at all;
+--   * dropping the old index here and creating the replacement in a LATER
+--     migration leaves the database with no payment dedupe whatsoever if that
+--     later migration stops - concurrent admin_record_payment calls can both
+--     clear the pre-check, and direct inserts can duplicate matched receipts
+--     freely.
 --
--- So no index is created here. 20260903000040 installs the two partial indexes
--- that supersede the sentinel anyway, with a pre-check that reports offending
--- rows in terms an operator can act on. Production ran the original form
--- cleanly (it had neither condition) and then ran 40, so the live end state is
--- unchanged by this amendment; only a fresh replay behaves differently, and
--- better.
-
-drop index if exists payments_venmo_txn_id_owner_key;
+-- So this migration no longer touches indexes at all. The index from 37 stays
+-- in force, still protecting matched payments, until 20260903000040 swaps it
+-- gaplessly for the two partial indexes. Only the RPC is corrected here, which
+-- is safe to do on any database.
+--
+-- Production ran the original form cleanly, having neither hazard condition,
+-- and then ran 40, so the live end state is unchanged by this amendment; only
+-- a fresh replay behaves differently, and better.
 
 create or replace function public.admin_record_payment(
   p_owner_id uuid, p_amount_cents integer, p_method text, p_paid_on date,
