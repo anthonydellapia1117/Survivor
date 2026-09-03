@@ -134,6 +134,71 @@ begin
   delete from payments where venmo_txn_id = txn;
 end $$;
 
+-- MATCHING a quarantined row to its owner absorbs at most ONE copy per owner.
+-- Migration 40's preflight tells an operator to drain a duplicate pile this
+-- way, and that instruction is only followable up to this ceiling: the
+-- (venmo_txn_id, owner_id) index refuses the second assignment, so three copies
+-- owed to a single owner strand two rows. Pinned here because the guidance
+-- depends on it -- if the ceiling ever moved, the message would be wrong again.
+do $$
+declare
+  yost uuid;
+  txn text := 'triple-quarantine-0005';
+  ids uuid[];
+  rejected boolean := false;
+begin
+  select id into yost from owners where last_name = 'Yost';
+
+  -- Reproduce the regression window itself: between migrations 37 and 40 the
+  -- unmatched pile had no dedupe at all, which is the only way this state can
+  -- have arisen. Dropping the index is transactional and the enclosing rollback
+  -- puts it back; the (venmo_txn_id, owner_id) index under test stays live.
+  drop index payments_venmo_txn_id_unmatched_key;
+
+  -- the 37-era regression allowed the same receipt to be quarantined N times
+  insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+  select null, 10000, 'venmo', current_date, txn, 'quarantined copy ' || g
+    from generate_series(1, 3) g;
+
+  select array_agg(id order by created_at) into ids
+    from payments where venmo_txn_id = txn;
+
+  -- the first assignment is the designed quarantine-to-matched step
+  update payments set owner_id = yost where id = ids[1];
+
+  -- the second is refused: one row per (transaction, owner)
+  begin
+    update payments set owner_id = yost where id = ids[2];
+  exception when unique_violation then
+    rejected := true;
+  end;
+  if not rejected then
+    raise exception 'a second copy was matched to the same owner';
+  end if;
+
+  -- so a residue is left that the preflight still counts, and a correction row
+  -- does not reduce it -- corrects_payment_id is set on the correction, while
+  -- the original it reverses stays a non-correction row inside the predicate
+  insert into payments (owner_id, amount_cents, method, paid_on, corrects_payment_id, note)
+  values (null, -10000, 'correction', current_date, ids[2], 'not real money');
+
+  if (select count(*) from payments
+       where venmo_txn_id = txn and owner_id is null
+         and corrects_payment_id is null) <> 2 then
+    raise exception 'expected two stranded unmatched rows after the ceiling is hit';
+  end if;
+
+  delete from payments where corrects_payment_id = any(ids);
+  delete from payments where venmo_txn_id = txn;
+
+  -- close the regression window again so later blocks see the real schema
+  create unique index payments_venmo_txn_id_unmatched_key
+    on payments (venmo_txn_id)
+    where corrects_payment_id is null
+      and venmo_txn_id is not null
+      and owner_id is null;
+end $$;
+
 -- An owner whose id happens to be the nil uuid must not share a dedupe bucket
 -- with the unmatched pile. The earlier coalesce sentinel folded the two
 -- together; two partial indexes keep them apart by construction.

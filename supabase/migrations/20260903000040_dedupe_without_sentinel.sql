@@ -18,6 +18,13 @@
 -- An earlier draft dropped the old index in 39 and rebuilt here; that left a
 -- window with no protection at all whenever this migration stopped.
 
+-- AMENDED after this migration had already been applied, and only in the text
+-- of the preflight's error message - no statement, index or predicate changed,
+-- so a database that has run either form ends in the same state. The message
+-- as first written told an operator to drain a duplicate pile by matching the
+-- extras to their owners, which silently assumed the pile never held more
+-- copies than it had owners. See the ceiling described below.
+
 -- Preflight: report duplicates in terms an operator can act on, rather than
 -- failing with an opaque violation naming an index they have never seen.
 --
@@ -30,8 +37,16 @@
 -- originals remain non-correction rows and keep counting here. What the index
 -- needs is at most ONE non-correction row per bucket, which is reached by
 -- MATCHING the extras to their owners - the normal quarantine-to-matched step,
--- which moves a row out of the unmatched bucket - and reversing any that are
--- not real money with a correction row against whichever copy survives.
+-- which moves a row out of the unmatched bucket.
+--
+-- That path has a ceiling, and an earlier draft of the message below missed it.
+-- Matching can absorb only ONE copy per owner, because the (venmo_txn_id,
+-- owner_id) index from 37 is still in force and refuses the second. So a pile
+-- of N copies drains only if it belongs to N distinct owners. Three copies
+-- owed to one owner strand two rows that can be neither matched nor cleared
+-- by a correction - and for that residue there is no append-only remedy, the
+-- same dead end the matched branch below reaches. The message says so rather
+-- than prescribing a drain that would stop halfway.
 do $$
 declare
   v_bad text;
@@ -46,7 +61,7 @@ begin
            group by venmo_txn_id having count(*) > 1) d;
   if v_bad is not null then
     raise exception
-      'the unmatched pile holds a transaction more than once: %. Assign the extra rows to their owners (which moves them out of the unmatched bucket), and reverse any that are not real money with a correction row against the copy that remains, until at most one non-correction unmatched row per transaction is left. A correction row alone does NOT satisfy this - the original it corrects still counts.',
+      'the unmatched pile holds a transaction more than once: %. Match each copy that is genuinely owed to an owner (the normal quarantine-to-matched step, which moves it out of the unmatched bucket), until at most one non-correction unmatched row per transaction is left. Note the ceiling: only ONE copy per owner can be matched, because the (venmo_txn_id, owner_id) index from migration 37 refuses the second - so this clears only when the copies belong to that many distinct owners. Any residue beyond that has no append-only remedy: a correction row leaves the original it corrects inside this predicate, and altering an original is barred by the ledger invariant. For that residue, decide deliberately which row is real money, record the decision in audit_log, and apply it as an explicit one-off before re-running this migration.',
       v_bad;
   end if;
 
