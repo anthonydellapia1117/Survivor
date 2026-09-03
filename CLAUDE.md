@@ -139,6 +139,12 @@ Set by Anthony on 2026-09-01 and applied to the whole roster.
 - A name with **no trailing number** (`Philadelphia Poultry`, `E.A.T.`,
   `TNat`) is left alone. There is no separator to change, and inventing a
   number would be the app deciding.
+- **Edge whitespace on the owner's name is trimmed out of the generated
+  entry name** — internal spacing is still the owner's. `Ernie DellaPia Jr. `
+  (trailing space, as stored) must generate `Ernie DellaPia Jr. #1`, never
+  `Ernie DellaPia Jr.  #1`, because Lynne matches the string exactly. An
+  owner name with nothing left after trimming is refused rather than minting
+  a bare ` #1`. The owners row itself is never rewritten by this.
 
 `defaultEntryNames` in `src/lib/pool.ts` produces this shape and is the
 **only** place the string is built — quick add, bulk add, the owner drawer

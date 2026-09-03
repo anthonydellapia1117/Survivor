@@ -79,6 +79,13 @@ export function defaultEntryNames(
   startAt = 1,
 ): string[] {
   if (count <= 0) return [];
-  if (count === 1 && startAt === 1) return [fullName];
-  return Array.from({ length: count }, (_, i) => `${fullName} #${startAt + i}`);
+  // Edge whitespace on an owner's stored name must never reach the entry name.
+  // Lynne matches these strings exactly, so "Ernie DellaPia Jr.  #1" with the
+  // doubled space is a different entry to her than "Ernie DellaPia Jr. #1", and
+  // an owner whose name is all whitespace would mint a bare " #1". Internal
+  // spacing is the owner's and is left exactly as stored.
+  const base = fullName.trim();
+  if (base === "") return [];
+  if (count === 1 && startAt === 1) return [base];
+  return Array.from({ length: count }, (_, i) => `${base} #${startAt + i}`);
 }

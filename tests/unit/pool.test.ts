@@ -88,6 +88,36 @@ describe("default entry naming (locked)", () => {
     expect(defaultEntryNames("Nobody", 0)).toEqual([]);
     expect(defaultEntryNames("Nobody", -3)).toEqual([]);
   });
+
+  // Lynne matches entry names exactly, so a stray space in the owner's stored
+  // name must not become a stray space in what she is asked to match.
+  it("trims edge whitespace off the owner name before numbering", () => {
+    expect(defaultEntryNames("Ernie DellaPia Jr. ", 2)).toEqual([
+      "Ernie DellaPia Jr. #1",
+      "Ernie DellaPia Jr. #2",
+    ]);
+    expect(defaultEntryNames("  Mike Penna  ", 1)).toEqual(["Mike Penna"]);
+  });
+
+  it("never emits a doubled space before the hash", () => {
+    for (const n of defaultEntryNames("Ernie DellaPia Jr. ", 4)) {
+      expect(n).not.toMatch(/ {2}/);
+      expect(n).toMatch(/ #\d+$/);
+    }
+  });
+
+  it("keeps internal spacing exactly as the owner has it", () => {
+    expect(defaultEntryNames(" Rob  &  Alanna ", 2)).toEqual([
+      "Rob  &  Alanna #1",
+      "Rob  &  Alanna #2",
+    ]);
+  });
+
+  it("returns nothing for a name that is blank or only whitespace", () => {
+    expect(defaultEntryNames("", 4)).toEqual([]);
+    expect(defaultEntryNames("   ", 4)).toEqual([]);
+    expect(defaultEntryNames(" ", 1)).toEqual([]);
+  });
 });
 
 describe("money formatting", () => {
