@@ -854,3 +854,65 @@ begin
 end $$;
 
 rollback;
+
+
+-- ---------------------------------------------------------------------------
+-- The app and the RPC must agree on what "whitespace" means
+--
+-- JS trim() strips the whole Unicode whitespace set; one-arg btrim() strips only
+-- the ASCII space. A name pasted from an email with a trailing U+00A0 therefore
+-- generated "Ernie DellaPia" in the app and "Ernie DellaPia\u00A0 #1" in the RPC
+-- - the same drift on the string Lynne matches, one character class further out.
+-- ---------------------------------------------------------------------------
+begin;
+select set_config('request.jwt.claims', '{"role":"admin","email":"test"}', true);
+
+do $$
+declare
+  v_owner uuid;
+  res jsonb;
+  v_name text;
+  nbsp text := E'\u00A0';
+begin
+  -- The helper strips every character JS trim() does, and nothing inside.
+  if trim_name_ws('DellaPia' || nbsp) <> 'DellaPia' then
+    raise exception 'trim_name_ws left a non-breaking space attached';
+  end if;
+  if trim_name_ws(E'\uFEFF x ' || nbsp) <> 'x' then
+    raise exception 'trim_name_ws missed a BOM or a mixed whitespace run';
+  end if;
+  if trim_name_ws('Rob &' || nbsp || 'Alanna') <> 'Rob &' || nbsp || 'Alanna' then
+    raise exception 'trim_name_ws altered spacing INSIDE the name';
+  end if;
+  if trim_name_ws(nbsp || nbsp) <> '' then
+    raise exception 'an all-whitespace name did not reduce to empty';
+  end if;
+
+  -- End to end: an owner whose stored name carries a trailing U+00A0 must still
+  -- generate the entry name the app would generate.
+  v_owner := admin_create_owner('Ernie', 'DellaPia', 'nbsp@example.com', null,
+                                'email', null, array['a #1', 'a #2'], false, 'test');
+  update entries set name_is_default = true where owner_id = v_owner;
+  update owners set last_name = 'DellaPia' || nbsp where id = v_owner;
+
+  res := admin_resync_default_entry_names(v_owner, 'test', 'nbsp owner');
+  select entry_name into v_name
+    from entries where owner_id = v_owner order by entry_index limit 1;
+
+  if v_name <> 'Ernie DellaPia #1' then
+    raise exception 'RPC generated %, but the app generates %',
+      quote_literal(v_name), quote_literal('Ernie DellaPia #1');
+  end if;
+  if position(nbsp in v_name) > 0 then
+    raise exception 'a non-breaking space survived into the entry name: %',
+      quote_literal(v_name);
+  end if;
+
+  -- The owners row keeps the character: names are stored verbatim.
+  select last_name into v_name from owners where id = v_owner;
+  if v_name <> 'DellaPia' || nbsp then
+    raise exception 'the resync rewrote the stored owner name';
+  end if;
+end $$;
+
+rollback;

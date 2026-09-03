@@ -131,6 +131,21 @@ describe("default entry naming (locked)", () => {
     expect(ownerFullName("  ", "  ")).toBe("");
   });
 
+  // The RPC trims with trim_name_ws, whose character set mirrors this one.
+  // JS trim() already strips these; the test pins that it must keep doing so,
+  // since the SQL side spells the same set out explicitly.
+  it("strips non-ASCII edge whitespace, matching trim_name_ws", () => {
+    expect(ownerFullName("Ernie", "DellaPia\u00A0")).toBe("Ernie DellaPia");
+    expect(ownerFullName("\uFEFFErnie", "DellaPia\u2003")).toBe(
+      "Ernie DellaPia",
+    );
+    expect(ownerFullName("\u00A0\u00A0", "\u00A0")).toBe("");
+  });
+
+  it("keeps a non-breaking space inside a component", () => {
+    expect(ownerFullName("Rob", "&\u00A0Alanna")).toBe("Rob &\u00A0Alanna");
+  });
+
   it("keeps spacing inside a component", () => {
     expect(ownerFullName(" Rob ", " &  Alanna ")).toBe("Rob &  Alanna");
   });
