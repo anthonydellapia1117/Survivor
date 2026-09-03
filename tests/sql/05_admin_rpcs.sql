@@ -689,6 +689,7 @@ declare
   n int;
   v_num int;
   v_label text;
+  v_before_ts timestamptz;
   v_old_sent timestamptz;
 begin
   v_owner := admin_create_owner('Wrong', 'Person', 'sub@example.com', null,
@@ -800,6 +801,41 @@ begin
      and before->'entries' @> '[{"lynne_label": "old label"}]'::jsonb;
   if n <> 1 then
     raise exception 'the lynne number/label in force before the re-send was not recorded';
+  end if;
+
+  -- A null element in the id list fails the WHOLE call. string_agg drops nulls,
+  -- so the not-exists guard alone reads a mixed array as "all ids found" and
+  -- half-applies it.
+  select count(*) into n from audit_log where action = 'mark_resent_as_new';
+  select submitted_to_lynne_at into v_before_ts from entries where id = v_ids[2];
+
+  begin
+    res := admin_mark_resent_as_new(array[v_ids[2], null]::uuid[], 'test', 'mixed');
+    raise exception 'a null element was accepted alongside a valid id';
+  exception when others then
+    if sqlerrm not like '%contains a null%' then raise; end if;
+  end;
+
+  -- The valid id in that array must NOT have been touched: a re-send stamps
+  -- submitted_to_lynne_at with now(), so an unchanged timestamp proves the
+  -- call failed whole rather than half-applying.
+  if (select submitted_to_lynne_at from entries where id = v_ids[2])
+       is distinct from v_before_ts then
+    raise exception 'the refused call still updated the valid entry';
+  end if;
+  if (select count(*) from audit_log where action = 'mark_resent_as_new') <> n then
+    raise exception 'the refused call still wrote an audit row';
+  end if;
+
+  -- An all-null array is refused too, rather than writing a resent:0 audit row.
+  begin
+    res := admin_mark_resent_as_new(array[null]::uuid[], 'test', 'all null');
+    raise exception 'an all-null id list was accepted';
+  exception when others then
+    if sqlerrm not like '%contains a null%' then raise; end if;
+  end;
+  if (select count(*) from audit_log where action = 'mark_resent_as_new') <> n then
+    raise exception 'the all-null call still wrote an audit row';
   end if;
 
   -- A voided entry is a removal, not a re-send.
