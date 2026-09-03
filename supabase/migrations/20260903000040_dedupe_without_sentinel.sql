@@ -21,7 +21,50 @@
 --
 -- Suggested by Copilot on PR #6.
 
+-- Fail legibly, not with a bare index violation. Either unique index below
+-- refuses to build if the 37-era regression left duplicate rows behind, and a
+-- failed CREATE INDEX aborts the migration with an opaque message about a
+-- constraint the operator has never seen.
+--
+-- Reconciling automatically is not an option: the payments ledger is
+-- append-only, corrections are new rows and never edits or deletes, so a
+-- migration must not resolve duplicate money on its own. It reports them
+-- instead, precisely enough to act on.
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(format('%s (%s rows, unmatched)', venmo_txn_id, n), '; ')
+    into v_bad
+    from (select venmo_txn_id, count(*) as n
+            from payments
+           where corrects_payment_id is null
+             and venmo_txn_id is not null
+             and owner_id is null
+           group by venmo_txn_id having count(*) > 1) d;
+  if v_bad is not null then
+    raise exception
+      'duplicate unmatched receipts must be reconciled before this index can be built: %. Resolve them with correction rows (the ledger is append-only), then re-run.',
+      v_bad;
+  end if;
+
+  select string_agg(format('%s / owner %s (%s rows)', venmo_txn_id, owner_id, n), '; ')
+    into v_bad
+    from (select venmo_txn_id, owner_id, count(*) as n
+            from payments
+           where corrects_payment_id is null
+             and venmo_txn_id is not null
+             and owner_id is not null
+           group by venmo_txn_id, owner_id having count(*) > 1) d;
+  if v_bad is not null then
+    raise exception
+      'the same receipt is recorded more than once against one owner: %. Resolve with correction rows, then re-run.',
+      v_bad;
+  end if;
+end $$;
+
 drop index if exists payments_venmo_txn_id_owner_key;
+drop index if exists payments_venmo_txn_id_unmatched_key;
 
 create unique index payments_venmo_txn_id_owner_key
   on payments (venmo_txn_id, owner_id)
