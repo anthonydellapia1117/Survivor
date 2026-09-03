@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAllTabs,
+  buildConfig,
   buildOwners,
   buildPayments,
   buildSummary,
@@ -279,5 +280,54 @@ describe("empty tabs never freeze every row", () => {
     for (const t of [...wb.public, ...wb.private]) {
       expect(t.rows.length, t.title).toBeGreaterThan(t.frozenRows);
     }
+  });
+});
+
+describe("public deadline tables are tiered, not the full lock", () => {
+  // The workbook is link-viewable, so a deadline shown here is a deadline a
+  // player acts on. Listing only the week's full lock told every Week 1 team
+  // Friday when a Wednesday-game pick closed on the Tuesday.
+  const withWed: SheetsInput = (() => {
+    const base = baseInput();
+    return {
+      ...base,
+      games: [
+        {
+          id: "g-wed",
+          week: 1,
+          kickoffAt: "2026-09-10T00:20:00Z",
+          dayOfWeek: "Wednesday" as const,
+          awayTeam: "NE",
+          homeTeam: "SEA",
+          homeScore: null,
+          awayScore: null,
+          status: "scheduled" as const,
+          revealOverride: null,
+          network: null,
+        },
+        ...base.games.filter((g) => g.week !== 1),
+      ],
+    };
+  })();
+
+  const text = (tab: { rows: { v?: unknown }[][] }) =>
+    tab.rows.map((r) => r.map((c) => String(c.v ?? "")).join(" | "));
+
+  it("names every tier a week has in the Config deadline table", () => {
+    const lines = text(buildConfig(withWed)).filter((l) =>
+      l.startsWith("Week 1 |"),
+    );
+    expect(lines.some((l) => l.includes("Wednesday games"))).toBe(true);
+    expect(lines.some((l) => l.includes("full lock"))).toBe(true);
+    // more than one row for the week, which the old single-row table never had
+    expect(lines.length).toBeGreaterThan(1);
+  });
+
+  it("summary's next deadline names the tier, not just a time", () => {
+    const lines = text(buildSummary(withWed)).filter((l) =>
+      l.startsWith("Next deadline"),
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/picks/);
   });
 });

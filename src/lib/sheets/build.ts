@@ -7,6 +7,7 @@
 
 import type {
   EntrySummary,
+  GameDay,
   GameRow,
   GridCell,
   LynneImportRow,
@@ -20,6 +21,11 @@ import {
   nextLockBoundary,
   LOCK_KIND_LABEL,
 } from "@/lib/dashboard";
+import {
+  deadlineTier,
+  pickDeadlineIso,
+  type DeadlineTier,
+} from "@/lib/deadlines";
 import { COLORS, type CellSpec, type TabSpec, type RgbColor } from "./types";
 
 export interface PoolConfig {
@@ -58,6 +64,22 @@ export interface SheetsInput {
 }
 
 const MONEY = "$#,##0";
+
+/** A representative game day per tier, to drive the shared derivation. */
+const TIER_GAME_DAY: Record<DeadlineTier, GameDay> = {
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  late: "Sunday",
+};
+
+/** What each tier covers, in the workbook's own words. */
+const TIER_SHEET_LABEL: Record<DeadlineTier, string> = {
+  wed: "Wednesday games",
+  thu: "Thursday games",
+  fri: "Friday games",
+  late: "Sat/Sun/Mon games — full lock",
+};
 const DATE_FMT = "ddd, mmm d";
 const DATETIME_FMT = "ddd, mmm d h:mm am/pm";
 
@@ -783,19 +805,60 @@ export function buildConfig(input: SheetsInput): TabSpec {
   push("", "");
   const bg2 = COLORS.bandB;
   rows.push(pad([{ v: "PICK DEADLINES", bold: true, bg: bg2 }], cols, bg2));
-  for (const w of weeks) {
+  {
     const bg = band(rows.length);
     rows.push(
       pad(
         [
-          { v: `Week ${w.week}`, color: COLORS.muted, bg },
-          { v: etString(w.deadlineAt), bg },
-          { v: w.resultsFinal ? "final" : "", bg, color: COLORS.paidGreen },
+          {
+            v: "Your deadline is the one for the day YOUR team plays.",
+            color: COLORS.muted,
+            bg,
+          },
         ],
         cols,
         bg,
       ),
     );
+  }
+  // One row per tier the week actually has. Listing only the full lock said
+  // Friday for every Week 1 team, when a Seahawks pick closed on the Tuesday.
+  for (const w of weeks) {
+    const tiers = new Set(
+      input.games
+        .filter((g) => g.week === w.week)
+        .map((g) => deadlineTier(g.dayOfWeek)),
+    );
+    tiers.add("late");
+    for (const tier of ["wed", "thu", "fri", "late"] as const) {
+      if (!tiers.has(tier)) continue;
+      const bg = band(rows.length);
+      rows.push(
+        pad(
+          [
+            { v: `Week ${w.week}`, color: COLORS.muted, bg },
+            {
+              v: etString(
+                pickDeadlineIso(
+                  TIER_GAME_DAY[tier],
+                  w.earlyDeadlineAt,
+                  w.lateDeadlineAt,
+                ),
+              ),
+              bg,
+            },
+            { v: TIER_SHEET_LABEL[tier], bg, color: COLORS.muted },
+            {
+              v: tier === "late" && w.resultsFinal ? "final" : "",
+              bg,
+              color: COLORS.paidGreen,
+            },
+          ],
+          cols,
+          bg,
+        ),
+      );
+    }
   }
   return {
     title: "Config",

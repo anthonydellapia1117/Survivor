@@ -95,7 +95,7 @@ export function WeeksEditor({ weeks }: { weeks: WeekRow[] }) {
     <div className="space-y-2">
       <div className="hidden items-center gap-x-3 px-3 text-xs font-medium text-muted-foreground lg:flex">
         <span className="w-10" />
-        <span className="w-64">Wed/Thu/Fri picks lock (ET)</span>
+        <span className="w-64">Thursday-game picks lock (ET)</span>
         <span className="w-64">Sat–Mon picks lock (ET)</span>
       </div>
       {weeks.map((w) => {
@@ -118,14 +118,14 @@ export function WeeksEditor({ weeks }: { weeks: WeekRow[] }) {
                 value={s.earlyDate}
                 onChange={(e) => patch(w.week, { earlyDate: e.target.value })}
                 className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
-                aria-label={`Week ${w.week} early (Thu/Fri) deadline date`}
+                aria-label={`Week ${w.week} Thursday-game deadline date — Wednesday and Friday games derive a day either side`}
               />
               <input
                 type="time"
                 value={s.earlyTime}
                 onChange={(e) => patch(w.week, { earlyTime: e.target.value })}
                 className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
-                aria-label={`Week ${w.week} early deadline time (ET)`}
+                aria-label={`Week ${w.week} Thursday-game deadline time (ET)`}
               />
               <span className="w-9 text-xs text-muted-foreground">
                 {weekdayOf(s.earlyDate)}
