@@ -61,6 +61,54 @@ describe("buildBackupSql", () => {
     expect(sql.trimEnd().endsWith("commit;")).toBe(true);
     expect(sql).toContain("generated 2026-08-25T12:00:00.000Z");
   });
+
+  // The free-entry trigger tops the count up to FLOOR(recruited / ratio) after
+  // every write to `entries`. A restore is only consistent at the END: the
+  // rows arrive in 50-row batches ordered by created_at, which puts every
+  // recruited entry BEFORE the AAA row it earned, so a batch boundary falling
+  // between them mints a duplicate — which then collides with the backed-up
+  // row on (owner_id, entry_index) and takes the whole restore down. Verified
+  // against a real database: without this the restore dies on
+  // entries_owner_id_entry_index_key. tests/sql/12_free_entries.sql replays
+  // the same shape end to end.
+  it("holds the free-entry trigger off until the whole roster has landed", () => {
+    const sql = buildBackupSql(
+      [
+        { table: "owners", rows: [{ id: "o1", first_name: "A" }] },
+        { table: "entries", rows: [{ id: "e1", owner_id: "o1" }] },
+      ],
+      new Date("2026-09-04T12:00:00Z"),
+    );
+    const at = (needle: string) => {
+      const i = sql.indexOf(needle);
+      expect(i, `missing from the restore script: ${needle}`).toBeGreaterThan(-1);
+      return i;
+    };
+    // USER only — the foreign keys are internal triggers and must stay on.
+    const off = at("alter table entries disable trigger user;");
+    const rows = at("insert into entries");
+    const on = at("alter table entries enable trigger user;");
+    const settle = at("update entries set entry_name = entry_name where false;");
+    const commit = at("commit;");
+    expect(off).toBeLessThan(rows);
+    expect(rows).toBeLessThan(on);
+    // Re-enabled and settled BEFORE commit, so a backup taken from a database
+    // that was itself short comes back at the rule rather than short again.
+    expect(on).toBeLessThan(settle);
+    expect(settle).toBeLessThan(commit);
+    expect(sql).not.toContain("session_replication_role");
+  });
+
+  it("re-enables the trigger even when the dump carries no entries", () => {
+    // An empty entries dump emits no insert at all; the enable must not be
+    // tied to there being rows, or the restore leaves the rule switched off.
+    const sql = buildBackupSql(
+      [{ table: "entries", rows: [] }],
+      new Date("2026-09-04T12:00:00Z"),
+    );
+    expect(sql).toContain("alter table entries disable trigger user;");
+    expect(sql).toContain("alter table entries enable trigger user;");
+  });
 });
 
 describe("backup coverage and filename", () => {

@@ -100,8 +100,12 @@ export default async function AdminOverviewPage() {
   }));
 
   // Free-entry rule: FLOOR(recruited / ratio) free entries, mine only,
-  // auto-created by the sync after every entry change. Here we surface
-  // discrepancies and new AAA entries still needing Lynne numbers.
+  // minted by the database trigger on `entries` in the same transaction as
+  // the write that earned them. What is left for this screen is what the
+  // trigger deliberately will not do: surface a SURPLUS after a downward
+  // crossing (voided recruits), which is Anthony's to resolve because Lynne
+  // may already hold a number against it, and flag new AAA entries still
+  // needing a Lynne number.
   const liveAll = entries.filter((e) => !e.voidedAt);
   const recruitedCount = liveAll.filter((e) => !e.isFreeEntry).length;
   const entitlement = freeEntitlement(recruitedCount, config.freeEntryRatio);

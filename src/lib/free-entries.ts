@@ -11,6 +11,10 @@
 // flagged is_free_entry are excluded. Free entries are named "AAA #n" and
 // belong to the runner's participant owner row.
 //
+// THE MINT ITSELF IS ENFORCED IN THE DATABASE, not here — see freeEntitlement
+// below. Do not reintroduce an app-layer mint; that split is what silently
+// under-minted AAA #9 on 2026-09-03.
+//
 // MARGIN MATH LIVES HERE AND ON /admin ONLY — never in a public view,
 // public component, or player-reachable export.
 
@@ -19,39 +23,21 @@ import { DEFAULT_PRICING, type PricingConfig } from "@/lib/pool";
 export const FREE_ENTRY_OWNER_EMAIL = "anthonydellapia@gmail.com";
 export const FREE_ENTRY_NAME_PREFIX = "AAA #";
 
-// Parses BOTH separators on purpose. New free entries are minted as "AAA #n"
-// under the numbering convention, but the seven that predate it went out to
-// Lynne as "AAA 1".."AAA 7" and were converted in place; a reader that only
-// understood one form would parse maxN as 0 and mint a duplicate "AAA 1".
-const AAA = /^AAA #?(\d+)$/;
-
-/** FLOOR(recruited / ratio). Free entries never earn more free entries. */
+/**
+ * FLOOR(recruited / ratio). Free entries never earn more free entries.
+ *
+ * READ-ONLY here. Minting is the database's job — a statement trigger on
+ * `entries` (supabase/migrations/20260904000043_free_entries_enforced_in_db.sql)
+ * owns the mint and the numbering, so it holds for RPC calls, imports and
+ * hand-applied SQL, not only for writes that happen to pass through the app.
+ * This function exists so /admin can SHOW the entitlement and flag a surplus
+ * left by a downward crossing; nothing here creates an entry.
+ */
 export function freeEntitlement(
   recruited: number,
   ratio: number = DEFAULT_PRICING.freeEntryRatio,
 ): number {
   return Math.floor(Math.max(0, recruited) / Math.max(1, ratio));
-}
-
-/**
- * Names for the free entries still owed: continues past the highest existing
- * number in EITHER separator form (never reuses one, even after a void).
- */
-export function nextFreeNames(
-  existingFreeNames: string[],
-  entitlement: number,
-): string[] {
-  const count = existingFreeNames.length;
-  if (count >= entitlement) return [];
-  let maxN = 0;
-  for (const name of existingFreeNames) {
-    const m = AAA.exec(name);
-    if (m) maxN = Math.max(maxN, Number(m[1]));
-  }
-  return Array.from(
-    { length: entitlement - count },
-    (_, i) => `${FREE_ENTRY_NAME_PREFIX}${maxN + i + 1}`,
-  );
 }
 
 export interface MarginReport {

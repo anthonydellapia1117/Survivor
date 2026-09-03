@@ -94,6 +94,16 @@ export function buildBackupSql(dumps: TableDump[], generatedAt: Date): string {
     ``,
     `truncate table ${tables} restart identity cascade;`,
     ``,
+    `-- The free-entry rule is a trigger on \`entries\` that tops the count up to`,
+    `-- FLOOR(recruited / ratio) after every write. A restore is only consistent`,
+    `-- at the END: the rows below arrive in batches, so a batch boundary that`,
+    `-- falls between a recruited entry and the AAA row it earned would mint a`,
+    `-- duplicate — which then collides with the backed-up row on`,
+    `-- (owner_id, entry_index) and fails the whole restore. So it is off while`,
+    `-- the data lands and settled once at the end, against the complete roster.`,
+    `-- USER only: the foreign keys are internal triggers and stay enforced.`,
+    `alter table entries disable trigger user;`,
+    ``,
   ];
   for (const d of dumps) {
     parts.push(`-- ---- ${d.table} (${d.rows.length}) ----`);
@@ -101,6 +111,12 @@ export function buildBackupSql(dumps: TableDump[], generatedAt: Date): string {
     parts.push("");
   }
   parts.push(
+    `alter table entries enable trigger user;`,
+    `-- Touches no row; a statement trigger fires on a zero-row UPDATE, which`,
+    `-- is exactly the recompute we want. A no-op unless the backup was taken`,
+    `-- from a database that was itself short of its entitlement.`,
+    `update entries set entry_name = entry_name where false;`,
+    ``,
     `select setval(pg_get_serial_sequence('audit_log', 'id'),`,
     `              greatest((select coalesce(max(id), 1) from audit_log), 1));`,
     ``,
