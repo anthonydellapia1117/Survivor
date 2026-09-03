@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   amountDueCents,
   defaultEntryNames,
+  ownerFullName,
   formatCents,
   freeEntriesEarned,
   lynneRemittanceCents,
@@ -111,6 +112,39 @@ describe("default entry naming (locked)", () => {
       "Rob  &  Alanna #1",
       "Rob  &  Alanna #2",
     ]);
+  });
+
+  // The RPC builds the name as btrim(btrim(first) || ' ' || btrim(last)).
+  // Trimming only the joined string leaves a doubled space when the whitespace
+  // sits at the join, so the app and a later resync would disagree for the same
+  // owner. ownerFullName has to match the SQL exactly.
+  it("trims each component, matching how the RPC joins them", () => {
+    expect(ownerFullName("Ernie ", "DellaPia")).toBe("Ernie DellaPia");
+    expect(ownerFullName("Ernie", " DellaPia")).toBe("Ernie DellaPia");
+    expect(ownerFullName("Ernie", "DellaPia Jr. ")).toBe("Ernie DellaPia Jr.");
+    expect(ownerFullName("  Mike  ", "  Penna  ")).toBe("Mike Penna");
+  });
+
+  it("drops a blank component instead of leaving a gap", () => {
+    expect(ownerFullName("", "Teti")).toBe("Teti");
+    expect(ownerFullName("Pumpy321", "")).toBe("Pumpy321");
+    expect(ownerFullName("  ", "  ")).toBe("");
+  });
+
+  it("keeps spacing inside a component", () => {
+    expect(ownerFullName(" Rob ", " &  Alanna ")).toBe("Rob &  Alanna");
+  });
+
+  it("never produces a doubled space at the join", () => {
+    for (const [f, l] of [
+      ["Ernie ", "DellaPia"],
+      ["Ernie", " DellaPia"],
+      ["Ernie ", " DellaPia"],
+    ]) {
+      for (const n of defaultEntryNames(ownerFullName(f, l), 2)) {
+        expect(n).not.toMatch(/ {2}/);
+      }
+    }
   });
 
   it("returns nothing for a name that is blank or only whitespace", () => {

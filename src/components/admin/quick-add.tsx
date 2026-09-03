@@ -12,7 +12,12 @@ import {
   createOwnerAction,
   recordPaymentAction,
 } from "@/app/admin/actions";
-import { amountDueCents, defaultEntryNames, formatCents } from "@/lib/pool";
+import {
+  amountDueCents,
+  defaultEntryNames,
+  formatCents,
+  ownerFullName,
+} from "@/lib/pool";
 import {
   NameCollisionWarning,
   type ExistingName,
@@ -262,7 +267,7 @@ function NewOwnerForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fullName = `${first.trim()} ${last.trim()}`.trim();
+  const fullName = ownerFullName(first, last);
   const preview = useDefault ? defaultEntryNames(fullName || "…", count) : [];
   const proposed =
     count === 0
@@ -405,7 +410,7 @@ function AddEntriesForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fullName = `${owner.firstName} ${owner.lastName}`;
+  const fullName = ownerFullName(owner.firstName, owner.lastName);
   const newTotal = owner.entryCount + count;
   const proposed =
     count === 0
