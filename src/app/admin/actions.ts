@@ -34,13 +34,14 @@ function revalidateAll() {
 }
 
 // The free-entry rule used to be applied here, after every action that
-// changed the entry population. It is now a statement trigger on `entries`
-// (supabase/migrations/20260904000043_free_entries_enforced_in_db.sql), so it
-// holds for RPC calls, imports and hand-applied SQL as well — every one of
-// which this file could only ever miss. Removing the copy here is the point:
-// two implementations of one entitlement is the drift that under-minted AAA #9
-// on 2026-09-03. The mint commits inside the same transaction as the write
-// that earned it, so it is already visible by the time revalidateAll runs.
+// changed the entry population. It is now the `mint_free_entries` trigger,
+// running on every table the entitlement reads from — `entries`, `owners` and
+// `config` — so it holds for RPC calls, imports and hand-applied SQL as well,
+// every one of which this file could only ever miss. Removing the copy here is
+// the point: two implementations of one entitlement is the drift that
+// under-minted AAA #9 on 2026-09-03. The mint commits inside the same
+// transaction as the write that earned it, so it is already visible by the
+// time revalidateAll runs.
 
 export async function createOwnerAction(input: {
   firstName: string;

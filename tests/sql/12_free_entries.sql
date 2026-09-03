@@ -58,7 +58,6 @@ begin
                                '','email','', null, false, 'test');
   -- Settle the standing backlog first, so this block starts at the rule and
   -- measures the crossing rather than the catch-up.
-  update entries set entry_name = entry_name where false;
 
   select free_entry_ratio into ratio from config limit 1;
   select count(*) into recruited from entries e join owners o on o.id = e.owner_id
@@ -123,7 +122,6 @@ declare
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  update entries set entry_name = entry_name where false;
 
   select free_entry_ratio into ratio from config limit 1;
   select count(*) into recruited from entries e join owners o on o.id = e.owner_id
@@ -168,7 +166,6 @@ declare
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  update entries set entry_name = entry_name where false;
 
   select free_entry_ratio into ratio from config limit 1;
   select count(*) into recruited from entries e join owners o on o.id = e.owner_id
@@ -207,7 +204,6 @@ declare
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  update entries set entry_name = entry_name where false;
 
   select free_entry_ratio into ratio from config limit 1;
   select count(*) into recruited from entries e join owners o on o.id = e.owner_id
@@ -247,7 +243,6 @@ declare
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  update entries set entry_name = entry_name where false;
 
   select free_entry_ratio into ratio from config limit 1;
   select count(*) into recruited from entries e join owners o on o.id = e.owner_id
@@ -293,7 +288,6 @@ begin
 
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  update entries set entry_name = entry_name where false;
 
   if (select count(*) from entries
        where owner_id = runner and is_free_entry and voided_at is null)
@@ -327,7 +321,6 @@ declare
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  update entries set entry_name = entry_name where false;
 
   select free_entry_ratio into ratio from config limit 1;
   select count(*) into recruited from entries e join owners o on o.id = e.owner_id
@@ -373,7 +366,6 @@ declare
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  update entries set entry_name = entry_name where false;
 
   select free_entry_ratio into ratio from config limit 1;
   select coalesce(max((regexp_match(entry_name,'^AAA #?(\d+)$'))[1]::int),0)
@@ -426,9 +418,16 @@ declare
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  -- Hand-place the legacy names, then let the trigger continue from them.
-  insert into entries (owner_id, entry_index, entry_name, is_free_entry)
-  select runner, n, format('AAA %s', n), true from generate_series(1, 4) as n;
+  -- Put the held rows back into the pre-convention form, which is what those
+  -- names actually looked like before 2026-09-01 -- renamed in place, exactly
+  -- as the real conversion went. A rename is not a mint, so nothing new
+  -- appears here; the point is what the NEXT crossing continues from.
+  update entries set entry_name = 'AAA ' || entry_index
+   where owner_id = runner and is_free_entry;
+  if not exists (select 1 from entries
+                  where owner_id = runner and entry_name = 'AAA 4') then
+    raise exception 'setup: expected the runner to hold AAA 1..4 in legacy form';
+  end if;
 
   select free_entry_ratio into ratio from config limit 1;
   select count(*) into recruited from entries e join owners o on o.id = e.owner_id
@@ -467,7 +466,6 @@ declare
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  update entries set entry_name = entry_name where false;
   select count(*) into free_before from entries
    where owner_id = runner and is_free_entry and voided_at is null;
 
@@ -577,7 +575,6 @@ begin
     from _dump where is_free_entry;
 
   alter table entries enable trigger user;
-  update entries set entry_name = entry_name where false;
   -- ---- end of the restore ----
 
   select o.id into runner from owners o
@@ -629,7 +626,6 @@ begin
                                '','email','', null, false, 'test');
 
   -- The settle mints the standing backlog, so it goes through the mint path.
-  update entries set entry_name = entry_name where false;
   select count(*) into locks_after from pg_locks
    where locktype = 'advisory' and pid = pg_backend_pid();
   if locks_after < 1 then
@@ -638,40 +634,123 @@ begin
 end $$;
 rollback;
 
--- ...and the fast path takes no lock at all: a transaction whose writes never
--- cross a threshold must finish holding none. This is what keeps ordinary
--- roster edits -- every write except the handful that actually earn something
--- -- from serialising against each other.
+-- `entries` is not the only input to the entitlement. It reads from exactly
+-- three tables -- entries (the recruited count), owners (who the runner is,
+-- and whose entries count) and config (the ratio) -- and a trigger on only the
+-- first lets the other two drift silently until an unrelated entry write
+-- happens along. Both of these were reproduced before 20260904000045 attached
+-- the same trigger to the other two.
+
+-- Importing the roster and creating the runner afterwards writes only
+-- `owners`. Observed before the fix: 47 recruited, 0 free, entitlement 4.
 begin;
 do $$
 declare
   runner uuid;
   ratio int;
   recruited int;
-  need int;
+begin
+  select free_entry_ratio into ratio from config limit 1;
+  select count(*) into recruited from entries e join owners o on o.id = e.owner_id
+   where e.voided_at is null and not e.is_free_entry and o.deleted_at is null;
+  if floor(recruited / ratio) < 1 then
+    raise exception 'fixture too small to owe a backlog (% recruited)', recruited;
+  end if;
+
+  -- No write to `entries` anywhere in this block.
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+
+  if (select count(*) from entries
+       where owner_id = runner and is_free_entry and voided_at is null)
+     <> floor(recruited / ratio) then
+    raise exception
+      'creating the runner must settle the backlog at once, expected % held, got %',
+      floor(recruited / ratio),
+      (select count(*) from entries
+        where owner_id = runner and is_free_entry and voided_at is null);
+  end if;
+end $$;
+rollback;
+
+-- Lowering the ratio raises the entitlement and must settle immediately.
+-- Observed before the fix: ratio 10 -> 5 against 47 recruited left 4 held
+-- against an entitlement of 9.
+begin;
+do $$
+declare
+  runner uuid;
+  recruited int;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  select count(*) into recruited from entries e join owners o on o.id = e.owner_id
+   where e.voided_at is null and not e.is_free_entry and o.deleted_at is null;
+
+  update config set free_entry_ratio = 5;
+
+  if (select count(*) from entries
+       where owner_id = runner and is_free_entry and voided_at is null)
+     <> floor(recruited / 5) then
+    raise exception 'a ratio change must settle, expected % held, got %',
+      floor(recruited / 5),
+      (select count(*) from entries
+        where owner_id = runner and is_free_entry and voided_at is null);
+  end if;
+  -- ...and raising it back takes nothing away: still mint-only.
+  update config set free_entry_ratio = 10;
+  if (select count(*) from entries
+       where owner_id = runner and is_free_entry and voided_at is null)
+     <> floor(recruited / 5) then
+    raise exception 'raising the ratio must not un-mint';
+  end if;
+end $$;
+rollback;
+
+-- The lock is taken UNCONDITIONALLY, before anything is read. There is no
+-- longer a fast path that decides "nothing is owed" from an unlocked count --
+-- that decision was itself the silent under-mint: two transactions each adding
+-- one recruit to a roster of 8 both saw 9, both owed nothing, and committed 10
+-- recruits with no free entry.
+begin;
+do $$
+declare
+  runner uuid;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  if not exists (select 1 from pg_locks
+                  where locktype = 'advisory' and pid = pg_backend_pid()) then
+    raise exception 'the rule must hold its advisory lock before reading counts';
+  end if;
+end $$;
+rollback;
+
+-- ...including a write that plainly owes nothing, which is the case the old
+-- fast path let through unlocked.
+begin;
+do $$
+declare
+  ratio int;
   names text[];
   i int;
 begin
-  -- Clear the fixture roster so nothing is owed from the start: this
-  -- transaction must never reach the critical section at all.
   update entries set voided_at = now() where voided_at is null;
-  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
-                               '','email','', null, false, 'test');
+  perform admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                             '','email','', null, false, 'test');
   select free_entry_ratio into ratio from config limit 1;
-
-  -- One short of the first threshold: nothing owed, ever, in this transaction.
   names := array[]::text[];
   for i in 1..(ratio - 1) loop names := names || format('Under %s', i); end loop;
   perform admin_create_owner('Under','Ratio','ur@example.com','','email','',
                              names, true, 'test');
 
   if (select count(*) from entries where is_free_entry and voided_at is null) <> 0 then
-    raise exception 'setup: nothing should have been minted below the ratio';
+    raise exception 'nothing should be minted below the ratio';
   end if;
-  if exists (select 1 from pg_locks
-              where locktype = 'advisory' and pid = pg_backend_pid()) then
+  if not exists (select 1 from pg_locks
+                  where locktype = 'advisory' and pid = pg_backend_pid()) then
     raise exception
-      'the fast path must take no advisory lock -- ordinary roster edits would contend';
+      'a write that owes nothing must STILL lock -- deciding that from an unlocked read is the bug';
   end if;
 end $$;
 rollback;

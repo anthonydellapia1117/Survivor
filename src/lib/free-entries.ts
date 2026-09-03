@@ -26,12 +26,12 @@ export const FREE_ENTRY_NAME_PREFIX = "AAA #";
 /**
  * FLOOR(recruited / ratio). Free entries never earn more free entries.
  *
- * READ-ONLY here. Minting is the database's job — a statement trigger on
- * `entries` (supabase/migrations/20260904000043_free_entries_enforced_in_db.sql)
- * owns the mint and the numbering, so it holds for RPC calls, imports and
- * hand-applied SQL, not only for writes that happen to pass through the app.
- * This function exists so /admin can SHOW the entitlement and flag a surplus
- * left by a downward crossing; nothing here creates an entry.
+ * READ-ONLY here. Minting is the database's job — the `mint_free_entries`
+ * trigger owns the mint and the numbering, and runs on every table the
+ * entitlement reads from (`entries`, `owners`, `config`), so it holds for RPC
+ * calls, imports and hand-applied SQL, not only for writes that happen to pass
+ * through the app. This function exists so /admin can SHOW the entitlement and
+ * flag a surplus left by a downward crossing; nothing here creates an entry.
  */
 export function freeEntitlement(
   recruited: number,

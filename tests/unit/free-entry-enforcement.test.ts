@@ -47,15 +47,24 @@ function liveMigration(): { file: string; sql: string; body: string } {
   ).toBeGreaterThan(0);
   const last = defining[defining.length - 1];
   // Just the function, so an assertion cannot be satisfied by prose in the
-  // file's header comments.
+  // file's header comments...
   const from = last.sql.indexOf(DEFINES);
   const end = last.sql.indexOf("end $$;", from);
   expect(end, "could not find the end of the function body").toBeGreaterThan(from);
-  return { ...last, body: last.sql.slice(from, end + "end $$;".length) };
+  const body = last.sql.slice(from, end + "end $$;".length);
+  // ...and with the function's OWN comments stripped, because the assertions
+  // below are positional. The comment explaining the advisory lock names it
+  // several lines above the `perform` that takes it, so an unstripped body
+  // anchors "where is the lock" on the prose and every ordering check passes
+  // no matter where the real call sits. Caught by deliberately moving the lock
+  // after the reads and watching this file stay green while the SQL suite
+  // failed.
+  return { ...last, body, code: body.replace(/--[^\n]*/g, "") };
 }
 
 const LIVE = liveMigration();
-const MIGRATION = LIVE.body;
+/** The function body with comments stripped — what actually executes. */
+const MIGRATION = LIVE.code;
 
 describe("the trigger and the app agree on the free-entry constants", () => {
   it("keys on the same owner address the app flags as the runner", () => {
@@ -94,32 +103,71 @@ describe("the trigger and the app agree on the free-entry constants", () => {
     expect(MIGRATION).not.toMatch(/set\s+voided_at/i);
   });
 
-  it("serializes the mint, and leaves the fast path unlocked", () => {
-    // Two concurrent roster writes crossing the same threshold both read
-    // "held N, owed N+1" and both tried to insert the same AAA number at the
-    // same entry_index; the second died on the (owner_id, entry_index) unique
-    // constraint, losing a legitimate owner. Reproduced against a real
-    // database before 20260904000044 added the lock.
+  it("locks before it reads, with no unlocked fast path", () => {
+    // Two failures, both reproduced against a real database:
+    //
+    //  - Two transactions crossing the same threshold both read "held N, owed
+    //    N+1" and both inserted the same AAA number at the same entry_index;
+    //    the second died on (owner_id, entry_index), losing a legitimate owner.
+    //  - Worse: two transactions each adding one recruit to a roster of 8 both
+    //    read 9 under READ COMMITTED, both concluded nothing was owed, and
+    //    committed 10 recruits with ZERO free entries -- a SILENT under-mint,
+    //    which is the exact failure this rule was moved into the database to
+    //    eliminate.
+    //
+    // The second is why there is no fast path: deciding "nothing is owed" from
+    // an unlocked read is itself the bug. So the lock comes first, and EVERY
+    // count is taken under it.
     expect(MIGRATION).toContain("pg_advisory_xact_lock");
     // Transaction-scoped specifically: a session-level pg_advisory_lock has an
     // unlock path to forget and leaks straight through PgBouncer's transaction
     // pooling, which is how Supabase serves the pooled port.
     expect(MIGRATION).not.toMatch(/pg_advisory_lock\s*\(/);
 
-    // The counts must be re-read INSIDE the lock. Taking it and then trusting
-    // the pre-lock read would serialize the mint without fixing anything: the
-    // waiting transaction would still act on numbers the one it waited for has
-    // already invalidated.
     const lockAt = MIGRATION.indexOf("pg_advisory_xact_lock");
-    const after = MIGRATION.slice(lockAt);
-    expect(after).toMatch(/into v_target/);
-    expect(after).toMatch(/into v_have/);
-    expect(after).toMatch(/into v_idx/);
-
-    // ...and an early return BEFORE the lock, so writes that owe nothing --
-    // which is nearly all of them — never contend.
     const before = MIGRATION.slice(0, lockAt);
-    expect(before).toMatch(/if v_have >= v_target then\s*\n\s*return null;/);
+    const after = MIGRATION.slice(lockAt);
+
+    // Nothing is read before the lock -- not the counts, not the runner, not
+    // the ratio. Only the re-entrancy guard may precede it.
+    expect(before).not.toMatch(/\binto v_target\b/);
+    expect(before).not.toMatch(/\binto v_have\b/);
+    expect(before).not.toMatch(/\binto v_owner\b/);
+    expect(before).not.toMatch(/\binto v_ratio\b/);
+    expect(before).not.toMatch(/\binto v_idx\b/);
+    // ...and no early return that would skip the lock on a "nothing owed" read.
+    expect(before).not.toMatch(/return null;[\s\S]*return null;/);
+
+    for (const read of ["v_owner", "v_ratio", "v_target", "v_have", "v_idx", "v_max"]) {
+      expect(after, `${read} must be read under the lock`).toMatch(
+        new RegExp(`into\\s+${read}\\b`),
+      );
+    }
+  });
+
+  it("watches every input to the entitlement, not just entries", () => {
+    // FLOOR(recruited / ratio) held against the runner's row reads from
+    // exactly three tables. A trigger on only `entries` let the other two
+    // drift, both reproduced: creating the runner AFTER importing the roster
+    // left 47 recruited with 0 free (only `owners` was written), and lowering
+    // config.free_entry_ratio from 10 to 5 left 4 held against an entitlement
+    // of 9. These three are the complete set of inputs, so there is no fourth
+    // gap of this shape -- which is why this asserts on the whole set.
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => readFileSync(join(MIGRATIONS_DIR, f), "utf8"))
+      .join("\n");
+    for (const table of ["entries", "owners", "config"]) {
+      expect(
+        files,
+        `no statement trigger on ${table} runs mint_free_entries`,
+      ).toMatch(
+        new RegExp(
+          `create trigger \\w+[\\s\\S]{0,200}?on ${table}\\b[\\s\\S]{0,120}?for each statement[\\s\\S]{0,120}?mint_free_entries`,
+        ),
+      );
+    }
   });
 
   it("guards against re-entry, since its own insert re-fires it", () => {

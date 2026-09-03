@@ -158,12 +158,24 @@ those rows — via /admin/audit — before re-raising anything.**
 - They **still get Lynne numbers and appear in the roster export** — they
   just do not bill.
 
-**The mint is enforced in the DATABASE, not in the app.** A statement trigger
-on `entries` (`mint_free_entries`, migration
-`20260904000043_free_entries_enforced_in_db.sql`) tops the count up to
-FLOOR(recruited / ratio) in the **same transaction** as whatever write earned
-it — so it holds for an RPC call, a bulk import, or SQL applied by hand, not
-only for a change that happened to go through the admin UI.
+**The mint is enforced in the DATABASE, not in the app.** The
+`mint_free_entries` trigger tops the count up to FLOOR(recruited / ratio) in the
+**same transaction** as whatever write earned it — so it holds for an RPC call,
+a bulk import, or SQL applied by hand, not only for a change that happened to go
+through the admin UI.
+
+It runs on **all three tables the entitlement reads from** — `entries` (the
+recruited count), `owners` (who the runner is, and whose entries count) and
+`config` (the ratio). Those are the complete set of inputs. A trigger on
+`entries` alone let the other two drift silently: creating the runner *after*
+importing the roster writes only `owners`, so the whole backlog stayed unminted
+until some unrelated entry write happened along.
+
+It takes an advisory lock **before reading anything**. There is deliberately no
+"nothing is owed, skip the lock" shortcut, because that decision is itself made
+from an unlocked read: two transactions each adding one recruit to a roster of
+8 both saw 9, both concluded nothing was owed, and committed 10 recruits with no
+free entry.
 
 That is why it moved. The rule used to live in `syncFreeEntries` in
 `src/app/admin/actions.ts`, which enforced it **only where the UI happened to
@@ -389,7 +401,7 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
 | What                                | Path                                         |
 | ----------------------------------- | -------------------------------------------- |
 | Pricing, free-entry and margin math | `src/lib/free-entries.ts`, `src/lib/pool.ts` |
-| Free-entry mint (DB-enforced)       | `mint_free_entries` trigger on `entries`     |
+| Free-entry mint (DB-enforced)       | `mint_free_entries` trigger                  |
 | Lynne import / roster / numbers     | `src/lib/lynne/`                             |
 | Entry-name collision detection      | `src/lib/names.ts`                           |
 | Audit rendering                     | `src/lib/audit-format.ts`, `/admin/audit`    |
