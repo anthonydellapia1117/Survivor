@@ -687,6 +687,8 @@ declare
   res jsonb;
   r record;
   n int;
+  v_num int;
+  v_label text;
   v_old_sent timestamptz;
 begin
   v_owner := admin_create_owner('Wrong', 'Person', 'sub@example.com', null,
@@ -770,6 +772,34 @@ begin
   if exists (select 1 from entries where owner_id = v_other
                and submitted_as_name = entry_name) then
     raise exception 'an entry outside the given ids was updated';
+  end if;
+
+  -- Lynne's identifiers for the DELETED row must not survive onto the new one.
+  -- plan-grid matches a number before a name, so a stale number would make her
+  -- new row report number_name_disagree instead of matching by name.
+  update entries set lynne_number = 4242, lynne_label = 'old label'
+   where id = v_ids[1];
+  update entries set submitted_as_name = 'Stale Holder'
+   where id = v_ids[1];
+
+  res := admin_mark_resent_as_new(array[v_ids[1]], 'test', 'second re-send');
+
+  select lynne_number, lynne_label into v_num, v_label
+    from entries where id = v_ids[1];
+  if v_num is not null then
+    raise exception 'a stale lynne_number survived a re-send: %', v_num;
+  end if;
+  if v_label is not null then
+    raise exception 'a stale lynne_label survived a re-send: %', v_label;
+  end if;
+
+  -- and the number she had is preserved in the audit before payload.
+  select count(*) into n from audit_log
+   where action = 'mark_resent_as_new'
+     and before->'entries' @> '[{"lynne_number": 4242}]'::jsonb
+     and before->'entries' @> '[{"lynne_label": "old label"}]'::jsonb;
+  if n <> 1 then
+    raise exception 'the lynne number/label in force before the re-send was not recorded';
   end if;
 
   -- A voided entry is a removal, not a re-send.
