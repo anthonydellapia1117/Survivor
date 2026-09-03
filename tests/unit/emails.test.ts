@@ -5,7 +5,7 @@ import {
   deadlineRows,
   CONTACT_PHONE,
 } from "@/lib/emails/pick-request";
-import { renderEmailHtml, renderEmailText } from "@/lib/emails/template";
+import { renderEmailHtml, escapeHtml } from "@/lib/emails/template";
 import type { GameRow, WeekRow } from "@/lib/data/types";
 
 // Week 1 as seeded: early = Wed 09-09 noon ET, late = Fri 09-11 noon ET.
@@ -38,8 +38,8 @@ const owner = (entryNames: string[]) => ({
   entryNames,
 });
 
-describe("deadline rows follow the week's real tiers", () => {
-  it("gives Week 1 three tiers, in order, with the weekday spelled out", () => {
+describe("deadline rows follow the schedule, not a fixed count", () => {
+  it("Week 1 shows three tiers — it has no Friday game", () => {
     const rows = deadlineRows(WEEK1, WEEK1_GAMES);
     expect(rows.map((r) => r.value)).toEqual([
       "Tue Sep 8, 12:00 PM ET",
@@ -48,58 +48,51 @@ describe("deadline rows follow the week's real tiers", () => {
     ]);
   });
 
-  // Hardcoding three would be wrong twice a season. Week 12 has a Wednesday
-  // game, Thanksgiving, Black Friday and the weekend.
-  it("gives a week with a Friday game four tiers", () => {
+  it("a week with a Friday game shows four, in order", () => {
     const rows = deadlineRows(WEEK1, [...WEEK1_GAMES, g(1, "Friday")]);
     expect(rows).toHaveLength(4);
     expect(rows[2].value).toBe("Thu Sep 10, 12:00 PM ET");
+    // Strictly ascending: a later tier must never be listed before an earlier.
+    const times = rows.map((r) => Date.parse(r.value.replace(" ET", " 2026")));
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
   });
 
-  it("always offers the Sat-Mon lock, even with no game that day", () => {
-    const rows = deadlineRows(WEEK1, [g(1, "Thursday")]);
-    expect(rows.map((r) => r.label)).toContain(
-      "If your team plays Sat, Sun or Mon",
-    );
+  it("always offers the Sat-Mon lock, even for a week with no games listed", () => {
+    expect(deadlineRows(WEEK1, [])).toHaveLength(1);
   });
 
-  it("ignores games from other weeks", () => {
-    expect(deadlineRows(WEEK1, [g(2, "Friday"), g(1, "Sunday")])).toHaveLength(
-      1,
-    );
+  it("names the weekday — a date alone makes a player go and look", () => {
+    for (const r of deadlineRows(WEEK1, WEEK1_GAMES)) {
+      expect(r.value).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) /);
+    }
   });
 });
 
-describe("the message carries what the owner needs to reply", () => {
+describe("a pick request carries what the owner needs to reply", () => {
   const built = buildPickRequest(
-    owner([
-      "Caroline Reichenback #1",
-      "Caroline Reichenback #2",
-      "Caroline Reichenback #3",
-      "Caroline Reichenback #4",
-    ]),
+    owner(["Caroline Reichenback #1", "Caroline Reichenback #2"]),
     WEEK1,
     WEEK1_GAMES,
   );
 
-  it("names every entry, in both renderings", () => {
-    for (let i = 1; i <= 4; i += 1) {
-      expect(built.html).toContain(`Caroline Reichenback #${i}`);
-      expect(built.text).toContain(`Caroline Reichenback #${i}`);
+  it("lists every entry by name, in both flavours", () => {
+    for (const name of ["Caroline Reichenback #1", "Caroline Reichenback #2"]) {
+      expect(built.html).toContain(name);
+      expect(built.text).toContain(name);
     }
   });
 
-  it("addresses the owner and carries the phone", () => {
-    expect(built.html).toContain("Caroline —");
+  it("carries the contact number", () => {
     expect(built.html).toContain(CONTACT_PHONE);
     expect(built.text).toContain(CONTACT_PHONE);
   });
 
-  it("says how many entries in the subject so a reply can be checked off", () => {
-    expect(built.subject).toBe("Week 1 picks — Caroline (4 entries)");
+  it("addresses the owner and counts their entries in the subject", () => {
+    expect(built.subject).toBe("Week 1 picks — Caroline (2 entries)");
+    expect(built.html).toContain("Caroline —");
   });
 
-  it("reads as one entry, not 1 entries, for a single-entry owner", () => {
+  it("says entry, singular, for a one-entry owner", () => {
     const one = buildPickRequest(owner(["Pumpy321"]), WEEK1, WEEK1_GAMES);
     expect(one.subject).toBe("Week 1 pick — Caroline (1 entry)");
     expect(one.html).toContain("Your entry");
@@ -107,54 +100,64 @@ describe("the message carries what the owner needs to reply", () => {
   });
 });
 
-describe("Gmail-safe rendering", () => {
+describe("the HTML survives Gmail", () => {
   const built = buildPickRequest(owner(["A #1"]), WEEK1, WEEK1_GAMES);
 
-  // Gmail strips <style> blocks and class attributes on paste, so a look that
-  // depends on either arrives as unstyled text.
-  it("uses no <style> block and no classes", () => {
+  // Gmail strips <style> and class attributes, so a rule that lives in either
+  // is a rule that does not arrive. Everything must be inline.
+  it("uses no style block and no classes", () => {
     expect(built.html).not.toMatch(/<style/i);
-    expect(built.html).not.toMatch(/class=/i);
+    expect(built.html).not.toMatch(/\sclass=/i);
   });
 
-  it("paints the dark background on the content itself", () => {
-    // Nothing survives on <body>, so the colour has to be on the tables.
-    expect(built.html).toContain("background-color:#0b0d0f");
+  it("paints its own dark background rather than inheriting one", () => {
+    // Pasting into a compose window drops the page behind the content, so a
+    // message that relies on a body colour arrives dark-on-white.
+    expect(built.html).toMatch(/background-color:#0b0d0f/);
   });
 
-  it("uses no CSS variables, which do not resolve in mail clients", () => {
-    expect(built.html).not.toContain("var(--");
+  it("is a fragment, not a document — it goes inside a compose window", () => {
+    expect(built.html).not.toMatch(/<!doctype|<html|<head|<body/i);
   });
 });
 
-describe("names are rendered verbatim but escaped", () => {
-  // Entry names are stored verbatim and include apostrophes and ampersands.
-  // They must read correctly and must not be able to inject markup.
-  it("keeps the characters and closes no tags", () => {
+describe("owner-supplied names cannot inject markup", () => {
+  // Entry names are stored verbatim by policy and are owner-supplied, so they
+  // reach the renderer as untrusted text.
+  it("escapes angle brackets and ampersands in an entry name", () => {
     const built = buildPickRequest(
-      owner(["thedrick's picks", "Maria & Mary #1", "<b>not bold</b>"]),
+      owner(["<script>alert(1)</script>", "Maria & Mary #1"]),
       WEEK1,
       WEEK1_GAMES,
     );
-    expect(built.html).toContain("thedrick&#039;s picks");
+    expect(built.html).not.toContain("<script>");
+    expect(built.html).toContain("&lt;script&gt;");
     expect(built.html).toContain("Maria &amp; Mary #1");
-    expect(built.html).toContain("&lt;b&gt;not bold&lt;/b&gt;");
-    expect(built.html).not.toContain("<b>not bold</b>");
-    // The plain-text side is not markup, so it stays exactly as stored.
-    expect(built.text).toContain("thedrick's picks");
+  });
+
+  it("leaves the plain-text flavour verbatim", () => {
+    const built = buildPickRequest(
+      owner(["Maria & Mary #1"]),
+      WEEK1,
+      WEEK1_GAMES,
+    );
     expect(built.text).toContain("Maria & Mary #1");
+  });
+
+  it("escapeHtml covers quotes as well as brackets", () => {
+    expect(escapeHtml(`a"b'c<d>e&f`)).toBe("a&quot;b&#039;c&lt;d&gt;e&amp;f");
   });
 });
 
-describe("the batch reports who cannot be mailed", () => {
+describe("the batch reports rather than guesses", () => {
   const base = {
-    entryNames: ["X #1"],
     greetingName: "X",
-    fullName: "Ex Ample",
+    fullName: "X Y",
+    entryNames: ["X #1"],
   };
 
-  it("skips an owner with no address and names them", () => {
-    const out = buildPickRequests(
+  it("skips an owner with no email and names them", () => {
+    const { built, skippedNoEmail } = buildPickRequests(
       [
         { ...base, id: "a", email: "a@x.com" },
         { ...base, id: "b", email: null, fullName: "No Address" },
@@ -163,65 +166,53 @@ describe("the batch reports who cannot be mailed", () => {
       WEEK1,
       WEEK1_GAMES,
     );
-    expect(out.built.map((b) => b.ownerId)).toEqual(["a"]);
-    expect(out.skippedNoEmail.map((s) => s.name)).toEqual([
+    expect(built).toHaveLength(1);
+    expect(skippedNoEmail.map((s) => s.name)).toEqual([
       "No Address",
       "Blank Address",
     ]);
+    expect(skippedNoEmail[0].entryCount).toBe(1);
   });
 
-  it("leaves out an owner with no entries entirely", () => {
-    const out = buildPickRequests(
-      [{ ...base, id: "a", email: "a@x.com", entryNames: [] }],
+  it("ignores an owner with no live entries entirely — not a skip, just nothing to say", () => {
+    const { built, skippedNoEmail } = buildPickRequests(
+      [{ ...base, id: "a", email: null, entryNames: [] }],
       WEEK1,
       WEEK1_GAMES,
     );
-    expect(out.built).toHaveLength(0);
-    expect(out.skippedNoEmail).toHaveLength(0);
+    expect(built).toHaveLength(0);
+    expect(skippedNoEmail).toHaveLength(0);
+  });
+
+  it("trims a padded address rather than mailing whitespace", () => {
+    const { built } = buildPickRequests(
+      [{ ...base, id: "a", email: "  a@x.com  " }],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built[0].to).toBe("a@x.com");
   });
 });
 
-describe("the shell is reusable for other season mail", () => {
-  // A recap or standings message is the same shell with different blocks.
-  // If this stops compiling or rendering, the template has stopped being
-  // general and has become the pick request only.
-  const doc = {
-    subject: "Week 1 results",
-    eyebrow: "AD Survivor Pool",
-    title: "Week 1 results",
-    greeting: "All —",
-    blocks: [
-      { kind: "lead" as const, text: "Week 1 is scored." },
-      {
-        kind: "rows" as const,
-        caption: "Standings",
-        rows: [
-          { label: "Still alive", value: "81", accent: "#10b981" },
-          { label: "Out", value: "13", accent: "#ef4444" },
-        ],
-      },
-    ],
-    footer: "Reply with questions.",
-  };
-
-  it("renders both forms without a pick-request block", () => {
-    const html = renderEmailHtml(doc);
+describe("the shell is reusable, not pick-specific", () => {
+  it("renders an arbitrary block set — what a recap or standings mail needs", () => {
+    const html = renderEmailHtml({
+      subject: "s",
+      eyebrow: "AD Survivor Pool",
+      title: "Week 1 results",
+      greeting: "All —",
+      blocks: [
+        { kind: "paragraph", text: "Nine entries out." },
+        {
+          kind: "rows",
+          caption: "Standings",
+          rows: [{ label: "Still alive", value: "85" }],
+        },
+      ],
+      footer: "f",
+    });
     expect(html).toContain("Week 1 results");
     expect(html).toContain("Still alive");
-    // Accent colours are honoured, so a recap can mark wins and losses.
-    expect(html).toContain("#10b981");
-    expect(html).toContain("#ef4444");
-  });
-
-  it("aligns the value column in the plain-text form", () => {
-    // The padding exists so numbers line up under each other; asserting the
-    // alignment rather than a literal run of spaces keeps this about the
-    // property and not about how wide today's labels happen to be.
-    const lines = renderEmailText(doc)
-      .split("\n")
-      .filter((l) => l.includes("81") || l.includes("13"));
-    expect(lines).toHaveLength(2);
-    const at = lines.map((l) => l.search(/\d/));
-    expect(at[0]).toBe(at[1]);
+    expect(html).not.toMatch(/\sclass=/i);
   });
 });

@@ -10,6 +10,7 @@ const links = [
   { href: "/admin/weeks", label: "Weeks" },
   { href: "/admin/owners", label: "Owners" },
   { href: "/admin/emails", label: "Emails" },
+  { href: "/admin/emails/picks", label: "Pick emails" },
   { href: "/admin/entries", label: "Entries" },
   { href: "/admin/payments", label: "Payments" },
   { href: "/admin/picks", label: "Picks" },
