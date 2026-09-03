@@ -9,7 +9,7 @@
 // enforcing side and this is what the screens display. Keep the two together.
 // It applies to every week including Week 1 — there is no Week 1 special case.
 
-import type { GameDay } from "./data/types";
+import type { GameDay, GameRow } from "./data/types";
 
 /** The tier a game day falls in. `late` is the Sat-Mon window. */
 export type DeadlineTier = "wed" | "thu" | "fri" | "late";
@@ -58,3 +58,25 @@ export const TIER_LABEL: Record<DeadlineTier, string> = {
   fri: "Thursday",
   late: "Friday",
 };
+
+/**
+ * Deadline per team for one week, keyed by abbreviation.
+ *
+ * A screen that only knows the week's boundaries can tell you which tier
+ * closes next, but not whether the team someone just chose is already past
+ * its own. Those are different questions: in Week 1, Seattle is late from
+ * Tuesday noon while Los Angeles is still open until Wednesday.
+ */
+export function teamDeadlines(
+  weekGames: Pick<GameRow, "dayOfWeek" | "homeTeam" | "awayTeam">[],
+  earlyDeadlineAt: string,
+  lateDeadlineAt: string,
+): Map<string, string> {
+  const byTeam = new Map<string, string>();
+  for (const g of weekGames) {
+    const at = pickDeadlineIso(g.dayOfWeek, earlyDeadlineAt, lateDeadlineAt);
+    byTeam.set(g.homeTeam, at);
+    byTeam.set(g.awayTeam, at);
+  }
+  return byTeam;
+}

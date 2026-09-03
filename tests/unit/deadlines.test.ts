@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { deadlineTier, pickDeadlineIso, TIER_LABEL } from "@/lib/deadlines";
+import {
+  deadlineTier,
+  pickDeadlineIso,
+  teamDeadlines,
+  TIER_LABEL,
+} from "@/lib/deadlines";
 
 // The week's two stored boundaries, as seeded for every week including Week 1:
 //   early = Wednesday 2026-09-09 12:00 ET   late = Friday 2026-09-11 12:00 ET
@@ -105,5 +110,41 @@ describe("TIER_LABEL", () => {
     expect(TIER_LABEL.thu).toBe("Wednesday");
     expect(TIER_LABEL.fri).toBe("Thursday");
     expect(TIER_LABEL.late).toBe("Friday");
+  });
+});
+
+describe("teamDeadlines", () => {
+  // Week 1's real openers. Two teams in the same week, days apart.
+  const week1 = [
+    { dayOfWeek: "Wednesday" as const, awayTeam: "NE", homeTeam: "SEA" },
+    { dayOfWeek: "Thursday" as const, awayTeam: "SF", homeTeam: "LAR" },
+    { dayOfWeek: "Sunday" as const, awayTeam: "NO", homeTeam: "DET" },
+  ];
+
+  it("gives both sides of a game the same deadline", () => {
+    const m = teamDeadlines(week1, EARLY, LATE);
+    expect(m.get("NE")).toBe(m.get("SEA"));
+    expect(m.get("SF")).toBe(m.get("LAR"));
+  });
+
+  it("separates teams by the day they play, inside one week", () => {
+    const m = teamDeadlines(week1, EARLY, LATE);
+    expect(ET(m.get("SEA")!)).toBe("Tue 09-08 12:00 PM");
+    expect(ET(m.get("LAR")!)).toBe("Wed 09-09 12:00 PM");
+    expect(ET(m.get("DET")!)).toBe("Fri 09-11 12:00 PM");
+  });
+
+  // The failure this exists to prevent: staging Seattle after Tuesday noon,
+  // while the week's next open tier is still Wednesday, is already late. A
+  // week-level "next deadline" cannot tell you that.
+  it("marks Seattle late while Los Angeles is still open", () => {
+    const m = teamDeadlines(week1, EARLY, LATE);
+    const tuesdayAfternoon = Date.parse("2026-09-08T18:00:00.000Z");
+    expect(Date.parse(m.get("SEA")!) < tuesdayAfternoon).toBe(true);
+    expect(Date.parse(m.get("LAR")!) < tuesdayAfternoon).toBe(false);
+  });
+
+  it("omits a team with no game that week", () => {
+    expect(teamDeadlines(week1, EARLY, LATE).has("KC")).toBe(false);
   });
 });
