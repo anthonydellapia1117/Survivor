@@ -292,14 +292,21 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
   in the public views rather than being filtered out in the UI.
 - **`payments.owner_id` is nullable by design, and NULL means unmatched —
   a receipt sitting in quarantine before anyone has matched it to an owner.
-  It is a meaningful value, not a missing one.** Any index, constraint or
-  check touching that column needs NULL-equal semantics — in SQL that means
-  `is not distinct from` in place of `=`, and a unique index split into
-  partial indexes on `owner_id is null` / `owner_id is not null` rather than
-  one key listing the column. PostgreSQL treats NULLs as **distinct**, so a
-  key of `(venmo_txn_id, owner_id)` silently stops deduplicating the whole
+  It is a meaningful value, not a missing one.** Wherever that column takes
+  part in **deduplication or a uniqueness rule**, it needs NULL-equal
+  semantics: `is not distinct from` in place of `=`, and a unique index split
+  into partial indexes on `owner_id is null` / `owner_id is not null` rather
+  than one key listing the column. PostgreSQL treats NULLs as **distinct**, so
+  a key of `(venmo_txn_id, owner_id)` silently stops deduplicating the whole
   unmatched pile. That is exactly what happened on 2026-09-03 and it will bite
   again.
+
+  This is scoped to dedupe and uniqueness on purpose. Everywhere else, plain
+  NULL semantics are what you want: the foreign key permits NULL precisely so
+  an unmatched receipt can exist, and an owner filter (`owner_id = $1`) is
+  right to exclude quarantined rows rather than sweep them in. Do not spread
+  `is not distinct from` across ordinary owner lookups.
+
 - Tests are required for pick validation, elimination rules, and any money
   calculation.
 - Bye weeks and Thursday/Saturday/Monday games are normal — never assume all
