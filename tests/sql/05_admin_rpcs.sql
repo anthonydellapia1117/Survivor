@@ -739,13 +739,31 @@ begin
   if n <> 0 then raise exception '% entries still flagged as drift', n; end if;
 
   -- The name she was holding is preserved in the audit row, since this write is
-  -- what makes it untrue everywhere else.
+  -- what makes it untrue everywhere else. It has to be in `before` — that is
+  -- where a reader tracing an entry's former name looks, and a null `before`
+  -- renders the row as a create rather than a replacement.
+  select count(*) into n from audit_log
+   where action = 'mark_resent_as_new'
+     and before->'entries' @> '[{"lynne_held": "Wrong Person 1"}]'::jsonb
+     and before->'entries' @> '[{"lynne_held": "Wrong Person 2"}]'::jsonb;
+  if n <> 1 then
+    raise exception 'the outgoing name Lynne held was not recorded in audit before';
+  end if;
+
+  -- and the same pairing stays readable in `after`.
   select count(*) into n from audit_log
    where action = 'mark_resent_as_new'
      and after->'mapping' @> '[{"lynne_held": "Wrong Person 1"}]'::jsonb
-     and after->'mapping' @> '[{"lynne_held": "Wrong Person 2"}]'::jsonb;
+     and after->'mapping' @> '[{"lynne_held": "Wrong Person 2"}]'::jsonb
+     and after->'entries' @> '[{"lynne_held": "Right Person #1"}]'::jsonb;
   if n <> 1 then
-    raise exception 'the outgoing name Lynne held was not recorded in the audit';
+    raise exception 'the audit after payload does not carry the new state';
+  end if;
+
+  -- A null before would make diffPayloads read this as a create.
+  if exists (select 1 from audit_log
+              where action = 'mark_resent_as_new' and before is null) then
+    raise exception 'audit before payload is null on a re-send';
   end if;
 
   -- The other owner was untouched — explicit ids, never a sweep.
