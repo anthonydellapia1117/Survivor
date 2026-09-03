@@ -89,9 +89,12 @@ plausible aggregate or split reading exists** — $500 with a "Thursday block"
 memo has none; $200 from someone with four entries plainly does.
 
 One transaction may therefore appear on **two payment rows, one per owner**.
-That is the correct shape, and the unique index is keyed on
-`(venmo_txn_id, owner_id)` to allow it while still refusing the same receipt
-twice against the same owner.
+That is the correct shape. Two partial unique indexes enforce it: a matched
+receipt is unique on `(venmo_txn_id, owner_id)`, so one Venmo can settle two
+owners while the same receipt is still refused twice against one owner; an
+unmatched receipt (`owner_id is null`) is unique on `venmo_txn_id` alone, so
+it sits in the quarantine pile exactly once. It has to be two indexes rather
+than one key — see [the NULL-equal rule](#conventions).
 
 Resolved exclusions are recorded in `audit_log` under the action
 `payment_sweep_exclude`, each naming the transaction IDs it clears. **Check
@@ -231,6 +234,15 @@ Two standing facts that are NOT snapshots and must survive:
 - **Matching is exact, then case-insensitive. Never fuzzy.** Applies to entry
   names, Lynne-number imports, and weekly result imports. Unmatched rows are
   reported, never guessed.
+- **Wait for the review to finish before merging.** Every review pass on this
+  repo has found something real. Marking a PR ready and merging inside the
+  review window costs nothing to wait for and has already cost one live P1 —
+  #5 was merged five seconds after being marked ready, and the review that was
+  still running caught a regression that reached production. Wait for the
+  review to complete **on the current head**, then merge on the drift
+  argument: a migration live in production but absent from `main` is the worse
+  state, so a clean review is a reason to merge promptly, not to keep
+  iterating.
 
 ## Gmail
 
@@ -278,6 +290,16 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
   never by client clock.
 - Public payloads are minimal by construction: private columns do not exist
   in the public views rather than being filtered out in the UI.
+- **`payments.owner_id` is nullable by design, and NULL means unmatched —
+  a receipt sitting in quarantine before anyone has matched it to an owner.
+  It is a meaningful value, not a missing one.** Any index, constraint or
+  check touching that column needs NULL-equal semantics — in SQL that means
+  `is not distinct from` in place of `=`, and a unique index split into
+  partial indexes on `owner_id is null` / `owner_id is not null` rather than
+  one key listing the column. PostgreSQL treats NULLs as **distinct**, so a
+  key of `(venmo_txn_id, owner_id)` silently stops deduplicating the whole
+  unmatched pile. That is exactly what happened on 2026-09-03 and it will bite
+  again.
 - Tests are required for pick validation, elimination rules, and any money
   calculation.
 - Bye weeks and Thursday/Saturday/Monday games are normal — never assume all
