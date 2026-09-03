@@ -96,6 +96,13 @@ unmatched receipt (`owner_id is null`) is unique on `venmo_txn_id` alone, so
 it sits in the quarantine pile exactly once. It has to be two indexes rather
 than one key — see [the NULL-equal rule](#conventions).
 
+Both indexes are partial in the same two further ways, and both matter. They
+cover only rows with a `venmo_txn_id`, so cash and other non-Venmo payments
+are untouched; and only rows with `corrects_payment_id is null`, so a
+**correction may reuse the transaction id of the row it corrects.** That
+exemption is what makes reversals possible at all — `admin_merge_owner`
+carries the original's txn id onto both its reversal and its repost.
+
 Resolved exclusions are recorded in `audit_log` under the action
 `payment_sweep_exclude`, each naming the transaction IDs it clears. **Check
 those rows — via /admin/audit — before re-raising anything.**
