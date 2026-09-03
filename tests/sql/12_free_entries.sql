@@ -551,6 +551,8 @@ begin
   -- ---- the restore, exactly as buildBackupSql emits it ----
   delete from entries;          -- stands in for TRUNCATE (which never fires it)
   alter table entries disable trigger user;
+  alter table owners disable trigger user;
+  alter table config disable trigger user;
 
   -- Batch 1: the recruited entries only. This is the boundary that bites --
   -- entitlement 2, nothing held. With the trigger live it mints AAA #1 and
@@ -575,6 +577,9 @@ begin
     from _dump where is_free_entry;
 
   alter table entries enable trigger user;
+  alter table owners enable trigger user;
+  alter table config enable trigger user;
+  update entries set entry_name = entry_name where false;
   -- ---- end of the restore ----
 
   select o.id into runner from owners o
@@ -597,19 +602,22 @@ begin
 end $$;
 rollback;
 
--- The mint is SERIALIZED, and the fast path is not.
+-- The mint is SERIALIZED, and unconditionally so.
 --
--- Two concurrent roster writes that each cross the same threshold both used to
--- read "held 4, owed 5" and both tried to insert AAA #5 at the same
--- entry_index; the second died on the (owner_id, entry_index) unique
--- constraint, losing a legitimate owner with an error naming a column nobody
--- touched. 20260904000044 puts the mint behind an advisory lock and re-reads
--- the counts inside it.
+-- Two failures, both reproduced with two concurrent psql sessions:
+--   * Each crossing the same threshold, both read "held 4, owed 5" and both
+--     inserted AAA #5 at the same entry_index; the second died on the
+--     (owner_id, entry_index) constraint, losing a legitimate owner with an
+--     error naming a column nobody touched.
+--   * Worse: from 8 recruited at a ratio of 10, two transactions each adding
+--     one recruit both read 9, both concluded nothing was owed, and committed
+--     10 recruits with ZERO free entries. A lock around only the mint does not
+--     help, because "do I owe anything" is itself an unlocked read.
 --
--- A psql script has one connection, so the interleaving itself cannot be
--- reproduced here. What IS checked is the mechanism: that a minting statement
--- holds the lock, and -- just as important, since it is what keeps ordinary
--- roster edits from contending -- that a non-minting statement does not.
+-- A psql script has one connection, so the interleavings cannot be replayed
+-- here. What IS checked is the mechanism: that the lock is held, including by
+-- a write that plainly owes nothing, which is the case the old fast path let
+-- through.
 begin;
 do $$
 declare
@@ -751,6 +759,160 @@ begin
                   where locktype = 'advisory' and pid = pg_backend_pid()) then
     raise exception
       'a write that owes nothing must STILL lock -- deciding that from an unlocked read is the bug';
+  end if;
+end $$;
+rollback;
+
+-- A restore whose backup was SHORT of its entitlement must settle without
+-- colliding on the audit sequence.
+--
+-- `truncate ... restart identity` puts audit_log's sequence back to 1, and the
+-- restored audit rows carry explicit ids, which do not advance it. The settle
+-- then mints, minting writes an audit row through the sequence, and it takes
+-- id 1 -- which the restore has already used:
+--
+--   ERROR: duplicate key value violates unique constraint "audit_log_pkey"
+--   DETAIL: Key (id)=(1) already exists.
+--
+-- It bites only for a backup taken from a database that was itself short --
+-- which is precisely the backup that most needs to restore cleanly, and was
+-- the real state of this database on 2026-09-03. buildBackupSql now runs the
+-- setval before the triggers come back on.
+begin;
+do $$
+declare
+  runner uuid;
+  other uuid;
+  ratio int;
+  n bigint;
+begin
+  select free_entry_ratio into ratio from config limit 1;
+
+  -- Stand in for the restore: everything cleared, triggers off, rows placed
+  -- with explicit ids, sequence back at 1.
+  -- The real restore uses TRUNCATE ... CASCADE, which fires no trigger at all;
+  -- these deletes stand in for it and must clear the dependants first.
+  delete from picks;
+  delete from payments;
+  delete from lynne_imports;
+  delete from entries;
+  delete from audit_log;
+  delete from owners;
+  alter table entries disable trigger user;
+  alter table owners disable trigger user;
+  alter table config disable trigger user;
+  perform setval(pg_get_serial_sequence('audit_log','id'), 1, false);
+
+  insert into owners (first_name, last_name, email)
+  values ('Anthony', 'DellaPia', 'anthonydellapia@gmail.com')
+  returning id into runner;
+  insert into owners (first_name, last_name) values ('Ten','Recruits')
+  returning id into other;
+  insert into entries (owner_id, entry_index, entry_name)
+  select other, i, format('R %s', i) from generate_series(1, ratio) as i;
+  -- The backup holds no AAA row at all: it was taken while short by one.
+  insert into audit_log (id, actor, action, target_table, target_id)
+  values (1, 'import', 'seed_roster', 'owners', 'x');
+
+  select setval(pg_get_serial_sequence('audit_log','id'),
+                greatest((select coalesce(max(id), 1) from audit_log), 1)) into n;
+
+  alter table entries enable trigger user;
+  alter table owners enable trigger user;
+  alter table config enable trigger user;
+  update entries set entry_name = entry_name where false;
+
+  if (select count(*) from entries where owner_id = runner and is_free_entry) <> 1 then
+    raise exception 'the restore must settle a short backup, got % free',
+      (select count(*) from entries where owner_id = runner and is_free_entry);
+  end if;
+  if not exists (select 1 from audit_log where action = 'mint_free_entries') then
+    raise exception 'the settle must audit its mint';
+  end if;
+end $$;
+rollback;
+
+-- The runner buying entries for himself must not collide with his own mint.
+--
+-- admin_create_owner and admin_add_entries used to read max(entry_index) once
+-- and increment a counter, which assumes nothing else writes between
+-- iterations. Each insert is its own statement, so the mint fires between them
+-- and takes the very index the loop was about to use. Both reproduced:
+--
+--   admin_create_owner(runner, ARRAY['Mine 1','Mine 2']) against a standing
+--   backlog: Key (owner_id, entry_index)=(..., 1) already exists.
+--   admin_add_entries(runner, ARRAY[...]) one short of a threshold:
+--   Key (owner_id, entry_index)=(..., 6) already exists.
+--
+-- Reachable in ordinary use: CLAUDE.md says outright that an entry the runner
+-- buys counts as recruited, and doing it while the roster sits one short of a
+-- multiple of the ratio is all it takes.
+begin;
+do $$
+declare
+  runner uuid;
+begin
+  -- Creating the runner WITH entries, against a backlog the same call settles
+  -- first: the mint takes entry_index 1..4 before the loop reaches its first.
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', array['Mine 1','Mine 2'], false, 'test');
+
+  if (select count(*) from entries
+       where owner_id = runner and not is_free_entry) <> 2 then
+    raise exception 'the runner must hold both of his own entries, got %',
+      (select count(*) from entries where owner_id = runner and not is_free_entry);
+  end if;
+  if (select count(distinct entry_index) from entries where owner_id = runner)
+     <> (select count(*) from entries where owner_id = runner) then
+    raise exception 'entry_index must stay unique within the owner';
+  end if;
+end $$;
+rollback;
+
+begin;
+do $$
+declare
+  runner uuid;
+  ratio int;
+  recruited int;
+  need int;
+  names text[];
+  i int;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  select free_entry_ratio into ratio from config limit 1;
+  select count(*) into recruited from entries e join owners o on o.id = e.owner_id
+   where e.voided_at is null and not e.is_free_entry and o.deleted_at is null;
+
+  -- Leave the roster exactly one short, so the runner's FIRST purchased entry
+  -- crosses the threshold and mints mid-loop.
+  need := ratio - (recruited % ratio) - 1;
+  if need > 0 then
+    names := array[]::text[];
+    for i in 1..need loop names := names || format('Filler %s', i); end loop;
+    perform admin_create_owner('Filler','Owner','fo@example.com','','email','',
+                               names, true, 'test');
+  end if;
+
+  perform admin_add_entries(runner, array['Anthony buy 1','Anthony buy 2'],
+                            false, false, 'test');
+
+  if (select count(*) from entries
+       where owner_id = runner and not is_free_entry and voided_at is null) <> 2 then
+    raise exception 'both of the runner''s purchased entries must survive';
+  end if;
+  if (select count(distinct entry_index) from entries where owner_id = runner)
+     <> (select count(*) from entries where owner_id = runner) then
+    raise exception 'the mint took an index the batch had reserved';
+  end if;
+  -- ...and the runner's own purchases count as recruited, per CLAUDE.md.
+  if (select count(*) from entries
+       where owner_id = runner and is_free_entry and voided_at is null)
+     <> floor((select count(*) from entries e join owners o on o.id = e.owner_id
+                where e.voided_at is null and not e.is_free_entry
+                  and o.deleted_at is null) / ratio) then
+    raise exception 'the runner''s own purchases must count toward the entitlement';
   end if;
 end $$;
 rollback;

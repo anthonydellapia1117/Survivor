@@ -75,6 +75,12 @@ export function rowsToInserts(
   return out;
 }
 
+/**
+ * Tables the free-entry rule reads from, and so triggers on: the recruited
+ * count, who the runner is, and the ratio. Held off for the whole restore.
+ */
+export const MINT_TABLES = ["entries", "owners", "config"] as const;
+
 export function buildBackupSql(dumps: TableDump[], generatedAt: Date): string {
   const counts = dumps
     .map((d) => `--   ${d.table}: ${d.rows.length} rows`)
@@ -94,15 +100,20 @@ export function buildBackupSql(dumps: TableDump[], generatedAt: Date): string {
     ``,
     `truncate table ${tables} restart identity cascade;`,
     ``,
-    `-- The free-entry rule is a trigger on \`entries\` that tops the count up to`,
-    `-- FLOOR(recruited / ratio) after every write. A restore is only consistent`,
-    `-- at the END: the rows below arrive in batches, so a batch boundary that`,
-    `-- falls between a recruited entry and the AAA row it earned would mint a`,
-    `-- duplicate — which then collides with the backed-up row on`,
+    `-- The free-entry rule tops the count up to FLOOR(recruited / ratio) after`,
+    `-- every write to the three tables it reads from. A restore is only`,
+    `-- consistent at the END: the rows below arrive in batches, so a batch`,
+    `-- boundary that falls between a recruited entry and the AAA row it earned`,
+    `-- would mint a duplicate — which then collides with the backed-up row on`,
     `-- (owner_id, entry_index) and fails the whole restore. So it is off while`,
     `-- the data lands and settled once at the end, against the complete roster.`,
+    `--`,
+    `-- All three tables, not just entries: relying on owners and config being`,
+    `-- restored before entries would make correctness depend on the order rows`,
+    `-- happen to be emitted in.`,
+    `--`,
     `-- USER only: the foreign keys are internal triggers and stay enforced.`,
-    `alter table entries disable trigger user;`,
+    ...MINT_TABLES.map((t) => `alter table ${quoteIdent(t)} disable trigger user;`),
     ``,
   ];
   for (const d of dumps) {
@@ -111,14 +122,20 @@ export function buildBackupSql(dumps: TableDump[], generatedAt: Date): string {
     parts.push("");
   }
   parts.push(
-    `alter table entries enable trigger user;`,
+    `-- BEFORE the settle below, which can write an audit row of its own.`,
+    `-- \`truncate ... restart identity\` put this sequence back to 1, and the`,
+    `-- audit rows above carry explicit ids, which do not advance it. A settle`,
+    `-- that mints would then take id 1 and collide with restored id 1, failing`,
+    `-- the whole restore — and only for a backup that was short of its`,
+    `-- entitlement, which is exactly the backup that most needs to restore.`,
+    `select setval(pg_get_serial_sequence('audit_log', 'id'),`,
+    `              greatest((select coalesce(max(id), 1) from audit_log), 1));`,
+    ``,
+    ...MINT_TABLES.map((t) => `alter table ${quoteIdent(t)} enable trigger user;`),
     `-- Touches no row; a statement trigger fires on a zero-row UPDATE, which`,
     `-- is exactly the recompute we want. A no-op unless the backup was taken`,
     `-- from a database that was itself short of its entitlement.`,
     `update entries set entry_name = entry_name where false;`,
-    ``,
-    `select setval(pg_get_serial_sequence('audit_log', 'id'),`,
-    `              greatest((select coalesce(max(id), 1) from audit_log), 1));`,
     ``,
     `commit;`,
     ``,

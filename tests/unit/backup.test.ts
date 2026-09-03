@@ -3,6 +3,7 @@ import {
   BACKUP_TABLES,
   backupFilename,
   buildBackupSql,
+  MINT_TABLES,
   rowsToInserts,
   sqlLiteral,
 } from "@/lib/backup";
@@ -85,18 +86,56 @@ describe("buildBackupSql", () => {
       return i;
     };
     // USER only — the foreign keys are internal triggers and must stay on.
-    const off = at("alter table entries disable trigger user;");
     const rows = at("insert into entries");
-    const on = at("alter table entries enable trigger user;");
     const settle = at("update entries set entry_name = entry_name where false;");
     const commit = at("commit;");
-    expect(off).toBeLessThan(rows);
-    expect(rows).toBeLessThan(on);
-    // Re-enabled and settled BEFORE commit, so a backup taken from a database
-    // that was itself short comes back at the rule rather than short again.
-    expect(on).toBeLessThan(settle);
+
+    // Every table the rule reads from, not just entries: restoring owners or
+    // config with the trigger live fires the mint against a half-loaded
+    // roster, and relying on them being emitted before entries would make
+    // correctness depend on BACKUP_TABLES' order.
+    expect([...MINT_TABLES]).toEqual(["entries", "owners", "config"]);
+    for (const t of MINT_TABLES) {
+      const off = at(`alter table ${t} disable trigger user;`);
+      const on = at(`alter table ${t} enable trigger user;`);
+      expect(off, `${t} must be quiet before any row lands`).toBeLessThan(rows);
+      expect(rows, `${t} must stay quiet until the rows are in`).toBeLessThan(on);
+      // Re-enabled and settled BEFORE commit, so a backup taken from a
+      // database that was itself short comes back at the rule, not short again.
+      expect(on).toBeLessThan(settle);
+    }
     expect(settle).toBeLessThan(commit);
     expect(sql).not.toContain("session_replication_role");
+  });
+
+  // `truncate ... restart identity` puts audit_log's sequence back to 1, and
+  // the restored audit rows carry explicit ids, which do not advance it. The
+  // settle can mint, and minting writes an audit row through the sequence —
+  // taking id 1 and colliding with restored id 1, which rolls back the whole
+  // restore. It bites only for a backup that was short of its entitlement,
+  // which is precisely the backup that most needs to restore cleanly.
+  // Reproduced against a real database:
+  //   ERROR: duplicate key value violates unique constraint "audit_log_pkey"
+  //   DETAIL: Key (id)=(1) already exists.
+  it("resets the audit sequence before anything can write an audit row", () => {
+    const sql = buildBackupSql(
+      [
+        { table: "owners", rows: [{ id: "o1" }] },
+        { table: "entries", rows: [{ id: "e1", owner_id: "o1" }] },
+        { table: "audit_log", rows: [{ id: 1, actor: "import" }] },
+      ],
+      new Date("2026-09-04T12:00:00Z"),
+    );
+    const setval = sql.indexOf("select setval(");
+    const settle = sql.indexOf("update entries set entry_name = entry_name where false;");
+    expect(setval).toBeGreaterThan(-1);
+    expect(settle).toBeGreaterThan(-1);
+    expect(setval, "setval must precede the settle").toBeLessThan(settle);
+    // ...and before the triggers come back on at all, so nothing else can
+    // slip an audit row in first either.
+    for (const t of MINT_TABLES) {
+      expect(setval).toBeLessThan(sql.indexOf(`alter table ${t} enable trigger user;`));
+    }
   });
 
   it("re-enables the trigger even when the dump carries no entries", () => {
