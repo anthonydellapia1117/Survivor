@@ -153,6 +153,28 @@ the old names**. It preserves `name_is_default`, `submitted_as_name`,
 supplying a real name, and the generic `admin_update_entry` would have
 cleared the still-need-to-ask flag.
 
+## Roster state — snapshot, not a rule
+
+These move. The app is authoritative; this is here so a new session starts
+from roughly the right place and can spot a big discrepancy immediately.
+
+**As of 2026-09-03:** 82 recruited + 8 free = **90 entries**, 28 owners.
+$2,120 due, $970 collected, $1,150 outstanding, **$2,050 owed to Lynne**
+(82 × $25). Lynne's copy is stale: she was last sent a roster on
+**2026-08-24** and is owed 61 formatting corrections, 4 person substitutions,
+9 additions and 4 removals.
+
+Two standing facts that are NOT snapshots and must survive:
+
+- **There was never an owner called "Alec Hess."** Anthony recorded the wrong
+  person when he took those four entries; the owner is **Jim Teti,
+  `jamesteti@comcast.net`**. Same owner row, corrected 2026-09-03 — do not
+  "restore" the old name, and do not treat the four as a formatting rename
+  when telling Lynne: she holds them as `Alec Hess 1`–`4`, so to her it is a
+  different person, not a typo.
+- **Every owner has an email on file.** The one historical gap was the symptom
+  of that misrecording, not a missing address.
+
 ## Working rules
 
 - **Never invent data.** No placeholder owners, no guessed amounts, no
