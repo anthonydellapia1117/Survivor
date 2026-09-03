@@ -166,18 +166,23 @@ from roughly the right place and can spot a big discrepancy immediately.
 
 **As of 2026-09-03:** 82 recruited + 8 free = **90 entries**, 28 owners.
 $2,120 due, $970 collected, $1,150 outstanding, **$2,050 owed to Lynne**
-(82 × $25). Lynne's copy is stale: she was last sent a roster on
-**2026-08-24** and is owed 61 formatting corrections, 4 person substitutions,
-9 additions and 4 removals.
+(82 × $25). Lynne is current: the full 90 went to her on **2026-09-03** and
+every drift bucket is clear — **+0 ✎0 −0**. That send was structured as 61
+formatting corrections carried implicitly by a full-roster paste-over, 13
+additions (the 9 pending plus `Jim Teti #1`–`#4`) and 8 removals. The app
+records only 4 removals, which is correct: DiCicco 1–4 are genuinely voided
+rows, while the other 4 are the delete-half of the Jim Teti substitution and
+those entries are still live.
 
 Two standing facts that are NOT snapshots and must survive:
 
 - **There was never an owner called "Alec Hess."** Anthony recorded the wrong
   person when he took those four entries; the owner is **Jim Teti,
   `jamesteti@comcast.net`**. Same owner row, corrected 2026-09-03 — do not
-  "restore" the old name, and do not treat the four as a formatting rename
-  when telling Lynne: she holds them as `Alec Hess 1`–`4`, so to her it is a
-  different person, not a typo.
+  "restore" the old name. Lynne no longer holds `Alec Hess` at all: on
+  2026-09-03 she was told to delete those four rows and add `Jim Teti #1`–`#4`
+  as new ones, so her sheet has them as additions dated that day, not as
+  renames. The old names survive only in the `mark_resent_as_new` audit row.
 - **Every owner has an email on file.** The one historical gap was the symptom
   of that misrecording, not a missing address.
 
