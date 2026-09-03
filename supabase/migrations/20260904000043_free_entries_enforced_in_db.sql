@@ -22,6 +22,13 @@
 -- entitlement drops -- is surfaced on /admin and never auto-corrected, because
 -- taking away an entry that may already sit on Lynne's sheet under a number
 -- she holds is not a decision an INSERT trigger gets to make.
+--
+-- SUPERSEDED IN PART: 20260904000044_mint_free_entries_serialize.sql replaces
+-- the function body below to serialize the mint. As written here it reads the
+-- counts with no lock, so two concurrent roster writes both try to mint the
+-- same AAA number and the second one dies on the (owner_id, entry_index)
+-- unique constraint. The trigger definition and everything else in this file
+-- still stand; read 44 for the live function.
 
 create or replace function mint_free_entries()
 returns trigger

@@ -599,3 +599,79 @@ begin
   end if;
 end $$;
 rollback;
+
+-- The mint is SERIALIZED, and the fast path is not.
+--
+-- Two concurrent roster writes that each cross the same threshold both used to
+-- read "held 4, owed 5" and both tried to insert AAA #5 at the same
+-- entry_index; the second died on the (owner_id, entry_index) unique
+-- constraint, losing a legitimate owner with an error naming a column nobody
+-- touched. 20260904000044 puts the mint behind an advisory lock and re-reads
+-- the counts inside it.
+--
+-- A psql script has one connection, so the interleaving itself cannot be
+-- reproduced here. What IS checked is the mechanism: that a minting statement
+-- holds the lock, and -- just as important, since it is what keeps ordinary
+-- roster edits from contending -- that a non-minting statement does not.
+begin;
+do $$
+declare
+  runner uuid;
+  ratio int;
+  recruited int;
+  need int;
+  names text[];
+  i int;
+  locks_before int;
+  locks_after int;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+
+  -- The settle mints the standing backlog, so it goes through the mint path.
+  update entries set entry_name = entry_name where false;
+  select count(*) into locks_after from pg_locks
+   where locktype = 'advisory' and pid = pg_backend_pid();
+  if locks_after < 1 then
+    raise exception 'a minting statement must hold the advisory lock';
+  end if;
+end $$;
+rollback;
+
+-- ...and the fast path takes no lock at all: a transaction whose writes never
+-- cross a threshold must finish holding none. This is what keeps ordinary
+-- roster edits -- every write except the handful that actually earn something
+-- -- from serialising against each other.
+begin;
+do $$
+declare
+  runner uuid;
+  ratio int;
+  recruited int;
+  need int;
+  names text[];
+  i int;
+begin
+  -- Clear the fixture roster so nothing is owed from the start: this
+  -- transaction must never reach the critical section at all.
+  update entries set voided_at = now() where voided_at is null;
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  select free_entry_ratio into ratio from config limit 1;
+
+  -- One short of the first threshold: nothing owed, ever, in this transaction.
+  names := array[]::text[];
+  for i in 1..(ratio - 1) loop names := names || format('Under %s', i); end loop;
+  perform admin_create_owner('Under','Ratio','ur@example.com','','email','',
+                             names, true, 'test');
+
+  if (select count(*) from entries where is_free_entry and voided_at is null) <> 0 then
+    raise exception 'setup: nothing should have been minted below the ratio';
+  end if;
+  if exists (select 1 from pg_locks
+              where locktype = 'advisory' and pid = pg_backend_pid()) then
+    raise exception
+      'the fast path must take no advisory lock -- ordinary roster edits would contend';
+  end if;
+end $$;
+rollback;
