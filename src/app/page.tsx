@@ -38,11 +38,12 @@ const RESULT_TEXT: Record<string, string> = {
 
 export default async function DashboardPage() {
   const data = getData();
-  const [entries, weeks, cells, pot] = await Promise.all([
+  const [entries, weeks, cells, pot, games] = await Promise.all([
     data.getEntries(),
     data.getWeeks(),
     data.getGridCells(),
     data.getPot(),
+    data.getSchedule(),
   ]);
 
   if (entries.length === 0) {
@@ -63,7 +64,7 @@ export default async function DashboardPage() {
   const curve = survivalCurve(entries, cells);
   const dist = pickDistribution(weeks, cells, now);
   const playWeek = currentPlayWeek(weeks, now);
-  const deadline = nextLockBoundary(weeks, now);
+  const deadline = nextLockBoundary(weeks, games, now);
   const activity = recentActivity(entries, cells, 10);
 
   // Lynne's three buckets, her exact words (C2/F1).

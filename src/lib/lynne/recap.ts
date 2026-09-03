@@ -2,7 +2,12 @@
 // Lynne's three buckets, who lost and to whom, who is alive, the next
 // deadline, and any duplicate-team warnings. Text and HTML variants.
 
-import type { EntrySummary, GridCell, WeekRow } from "@/lib/data/types";
+import type {
+  EntrySummary,
+  GameRow,
+  GridCell,
+  WeekRow,
+} from "@/lib/data/types";
 import { LYNNE_TEAM_NAME, lynneBucket } from "./names";
 import { duplicateTeamRisks } from "@/lib/alive";
 import { nextLockBoundary, LOCK_KIND_LABEL } from "@/lib/dashboard";
@@ -22,6 +27,7 @@ export function buildRecap(
   entries: EntrySummary[],
   cells: GridCell[],
   weeks: WeekRow[],
+  games: Pick<GameRow, "week" | "dayOfWeek">[],
   now: Date,
 ): Recap {
   const buckets = { "No Losses": 0, "Loss/Bye": 0, Out: 0 };
@@ -36,7 +42,9 @@ export function buildRecap(
     .filter(
       (c) =>
         c.week === week &&
-        (c.result === "loss" || c.result === "tie_loss" || c.result === "missed"),
+        (c.result === "loss" ||
+          c.result === "tie_loss" ||
+          c.result === "missed"),
     )
     .map((c) => ({
       name: nameById.get(c.entryId) ?? "?",
@@ -53,7 +61,7 @@ export function buildRecap(
     .map((c) => nameById.get(c.entryId) ?? "?")
     .sort();
 
-  const boundary = nextLockBoundary(weeks, now);
+  const boundary = nextLockBoundary(weeks, games, now);
   const deadlineLine = boundary
     ? `Next deadline: Week ${boundary.week} ${LOCK_KIND_LABEL[boundary.kind]} lock ${new Date(
         boundary.deadlineAt,
@@ -81,14 +89,21 @@ export function buildRecap(
     "",
     losers.length > 0
       ? `Losses this week (${losers.length}):\n` +
-        losers.map((l) => `  ${l.name} — ${l.team}${l.tie ? " (tie counts as a loss)" : ""}`).join("\n")
+        losers
+          .map(
+            (l) =>
+              `  ${l.name} — ${l.team}${l.tie ? " (tie counts as a loss)" : ""}`,
+          )
+          .join("\n")
       : "No losses in our group this week.",
     byes.length > 0 ? `\nByes used: ${byes.join(", ")}` : "",
     "",
     `Still alive (${aliveList.length}): ${aliveList.join(", ")}`,
     "",
     deadlineLine,
-    dupes.length > 0 ? `\n⚠ WARNINGS:\n` + dupes.map((d) => `  ${d}`).join("\n") : "",
+    dupes.length > 0
+      ? `\n⚠ WARNINGS:\n` + dupes.map((d) => `  ${d}`).join("\n")
+      : "",
   ].filter((p) => p !== "");
 
   const htmlParts = [

@@ -2,7 +2,13 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EntrySummary, GridCell, WeekRow } from "@/lib/data/types";
+import type {
+  EntrySummary,
+  GameDay,
+  GameRow,
+  GridCell,
+  WeekRow,
+} from "@/lib/data/types";
 import { submitPicksBatchAction } from "@/app/admin/actions";
 import { formatDeadline } from "@/lib/format";
 import { NFL_TEAMS, SKIP_WEEK, STATUS_ORDER } from "@/lib/standing";
@@ -18,6 +24,20 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { BulkPasteDialog } from "@/components/admin/picks/bulk-paste-dialog";
+import {
+  deadlineTier,
+  pickDeadlineIso,
+  TIER_LABEL,
+  type DeadlineTier,
+} from "@/lib/deadlines";
+
+/** A representative game day per tier, to drive the shared derivation. */
+const TIER_DAY: Record<DeadlineTier, GameDay> = {
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  late: "Sunday",
+};
 
 function teamDisplay(team: string): string {
   return team === SKIP_WEEK ? "BYE" : team;
@@ -43,10 +63,12 @@ export function PicksEntry({
   entries,
   weeks,
   cells,
+  games,
 }: {
   entries: EntrySummary[];
   weeks: WeekRow[];
   cells: GridCell[];
+  games: GameRow[];
 }) {
   const router = useRouter();
 
@@ -104,7 +126,49 @@ export function PicksEntry({
   }, [cells]);
 
   const selectedWeek = weeks.find((w) => w.week === week) ?? null;
-  const rel = selectedWeek ? relDeadline(selectedWeek.deadlineAt, Date.now()) : null;
+
+  // Deadlines are per game day, so this week has several. Show the SOONEST one
+  // still open rather than the week's full lock: showing the Friday boundary
+  // alone told the operator a Wed/Thu/Fri pick was still in time when the
+  // database was about to flag it late.
+  const nextTier = useMemo(() => {
+    if (!selectedWeek) return null;
+    const now = Date.now();
+    const tiers = new Set(
+      games
+        .filter((g) => g.week === selectedWeek.week)
+        .map((g) => deadlineTier(g.dayOfWeek)),
+    );
+    tiers.add("late");
+    const options = (["wed", "thu", "fri", "late"] as const)
+      .filter((t) => tiers.has(t))
+      .map((t) => ({
+        tier: t,
+        at: pickDeadlineIso(
+          TIER_DAY[t],
+          selectedWeek.earlyDeadlineAt,
+          selectedWeek.lateDeadlineAt,
+        ),
+      }));
+    return (
+      options.find((o) => new Date(o.at).getTime() > now) ??
+      options[options.length - 1] ??
+      null
+    );
+  }, [selectedWeek, games]);
+
+  const rel = nextTier ? relDeadline(nextTier.at, Date.now()) : null;
+  const multiTier = useMemo(
+    () =>
+      selectedWeek
+        ? new Set(
+            games
+              .filter((g) => g.week === selectedWeek.week)
+              .map((g) => deadlineTier(g.dayOfWeek)),
+          ).size > 1
+        : false,
+    [selectedWeek, games],
+  );
 
   const stagedCount = Object.keys(staged).length;
   const dupes = useMemo(
@@ -216,9 +280,7 @@ export function PicksEntry({
 
     // Keep only the failed rows staged so a retry is one click.
     setStaged((prev) =>
-      Object.fromEntries(
-        Object.entries(prev).filter(([id]) => id in failMap),
-      ),
+      Object.fromEntries(Object.entries(prev).filter(([id]) => id in failMap)),
     );
     if (applied > 0) router.refresh();
   }
@@ -226,7 +288,10 @@ export function PicksEntry({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={String(week)} onValueChange={(v) => changeWeek(Number(v))}>
+        <Select
+          value={String(week)}
+          onValueChange={(v) => changeWeek(Number(v))}
+        >
           <SelectTrigger size="sm" className="w-56">
             <SelectValue />
           </SelectTrigger>
@@ -244,11 +309,19 @@ export function PicksEntry({
             className="text-xs text-muted-foreground"
             suppressHydrationWarning
           >
-            Deadline {formatDeadline(selectedWeek.deadlineAt)} ·{" "}
-            <span className={rel.locked ? "text-tie" : undefined}>
-              {rel.label}
-              {rel.locked ? " — new picks will be flagged late" : ""}
-            </span>
+            {nextTier ? (
+              <>
+                Next: {TIER_LABEL[nextTier.tier]} noon —{" "}
+                {formatDeadline(nextTier.at)} ·{" "}
+                <span className={rel.locked ? "text-tie" : undefined}>
+                  {rel.label}
+                  {rel.locked ? " — new picks will be flagged late" : ""}
+                </span>
+                {multiTier ? (
+                  <> · deadlines differ by the day each team plays</>
+                ) : null}
+              </>
+            ) : null}
           </span>
         ) : null}
       </div>
@@ -263,7 +336,8 @@ export function PicksEntry({
             {dupes.map((d) => (
               <li key={d.id}>
                 <span className="font-semibold">{d.entryName}</span> — {d.team}{" "}
-                was already picked in <span className="font-semibold">week {d.usedInWeek}</span>
+                was already picked in{" "}
+                <span className="font-semibold">week {d.usedInWeek}</span>
               </li>
             ))}
           </ul>
@@ -337,9 +411,7 @@ export function PicksEntry({
                       <Badge
                         variant="outline"
                         className="tabular-nums"
-                        title={
-                          savedCell.late ? "Submitted late" : undefined
-                        }
+                        title={savedCell.late ? "Submitted late" : undefined}
                       >
                         {teamDisplay(savedCell.team)}
                         {savedCell.late ? (

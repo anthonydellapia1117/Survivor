@@ -7,10 +7,11 @@ export const metadata: Metadata = { title: "Picks" };
 
 export default async function PicksPage() {
   const data = getData();
-  const [entries, weeks, cells] = await Promise.all([
+  const [entries, weeks, cells, games] = await Promise.all([
     getAdminData().listEntrySummaries(),
     data.getWeeks(),
     getAdminData().listGridCells(),
+    data.getSchedule(),
   ]);
 
   return (
@@ -24,7 +25,7 @@ export default async function PicksPage() {
           never a block.
         </p>
       </div>
-      <PicksEntry entries={entries} weeks={weeks} cells={cells} />
+      <PicksEntry entries={entries} weeks={weeks} cells={cells} games={games} />
     </div>
   );
 }
