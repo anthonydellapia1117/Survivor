@@ -241,6 +241,48 @@ begin
 end $$;
 rollback;
 
+-- The week editor must keep every tier inside the full lock. A Friday game
+-- closes a day after the early boundary, and the late boundary is both the
+-- full lock and the sweep boundary -- so squeezing them together would let the
+-- sweep record a missed loss against a pick that was still open.
+begin;
+do $$
+declare
+  early timestamptz := '2026-11-25T17:00:00+00';
+  ok boolean := false;
+begin
+  -- week 12 has a Black Friday game
+  begin
+    perform admin_update_week(12, early, early, true, 'test');
+  exception when others then
+    if sqlerrm like '%Friday game%' then ok := true; else raise; end if;
+  end;
+  if not ok then
+    raise exception 'a week with a Friday game accepted late = early';
+  end if;
+
+  -- less than a day apart is refused for the same reason
+  ok := false;
+  begin
+    perform admin_update_week(12, early, early + interval '23 hours', true, 'test');
+  exception when others then
+    if sqlerrm like '%Friday game%' then ok := true; else raise; end if;
+  end;
+  if not ok then
+    raise exception 'a Friday-game week accepted a sub-day window';
+  end if;
+
+  -- exactly a day is fine, and the Friday tier then lands ON the lock
+  perform admin_update_week(12, early, early + interval '1 day', true, 'test');
+  if pick_deadline(12, 'PIT') > (select late_deadline_at from weeks where week = 12) then
+    raise exception 'Friday tier still past the sweep boundary after a legal edit';
+  end if;
+
+  -- a week with NO Friday game is unaffected: it may be squeezed freely
+  perform admin_update_week(6, early, early, true, 'test');
+end $$;
+rollback;
+
 -- The sweep boundary is the LATE deadline: between the windows it refuses
 -- to commit (a pickless entry could still submit a Sat-Mon team); after the
 -- late deadline it commits.
