@@ -98,6 +98,42 @@ begin
   delete from payments where venmo_txn_id = txn;
 end $$;
 
+-- An UNMATCHED receipt (owner_id null = quarantined) must still dedupe. NULLs
+-- are distinct in a unique index, so putting owner_id in the key silently
+-- exempts the quarantine pile unless NULL-equal semantics are used.
+do $$
+declare
+  txn text := 'unmatched-quarantine-0003';
+  rejected boolean := false;
+begin
+  insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+  values (null, 3000, 'venmo', current_date, txn, 'quarantined, unmatched');
+
+  begin
+    insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+    values (null, 3000, 'venmo', current_date, txn, 'same receipt again');
+  exception when unique_violation then
+    rejected := true;
+  end;
+  if not rejected then
+    raise exception 'the same unmatched receipt was quarantined twice';
+  end if;
+
+  -- and through the RPC, where `owner_id = p_owner_id` would never match on nulls
+  rejected := false;
+  begin
+    perform admin_record_payment(null, 3000, 'venmo', current_date, txn,
+                                 'same receipt via RPC', null, 'test');
+  exception when unique_violation then
+    rejected := true;
+  end;
+  if not rejected then
+    raise exception 'the RPC re-quarantined the same unmatched receipt';
+  end if;
+
+  delete from payments where venmo_txn_id = txn;
+end $$;
+
 -- Corrections: new negative rows referencing the row they correct. The computed
 -- balance follows the ledger with no edit or delete.
 do $$
