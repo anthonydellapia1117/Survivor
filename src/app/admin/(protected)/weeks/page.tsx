@@ -12,11 +12,16 @@ export default async function WeeksPage() {
       <div>
         <h1 className="text-2xl">Week deadlines</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Each week carries two windows derived from the verified 2026
-          schedule: picks for Wed/Thu/Fri games lock at the early deadline,
-          Sat–Mon games at the late one. Week 1 is Tuesday noon for every
-          pick. The missed-pick sweep waits for the late deadline and refuses
-          unconfirmed weeks. Times are Eastern.
+          A pick&apos;s deadline follows the day its team plays, in every week
+          including Week 1. Two boundaries are stored per week and the rest
+          derive from them: a Wednesday game closes a day before the early
+          deadline, a Thursday game at it, a Friday game a day after, and
+          Sat–Mon games at the late deadline. So moving the early deadline moves
+          the Wednesday and Friday cutoffs with it. A week holding a Friday game
+          will refuse a late deadline less than a day after the early one,
+          because the late boundary is also the full lock. The missed-pick sweep
+          waits for the late deadline and refuses unconfirmed weeks. Times are
+          Eastern.
         </p>
       </div>
       {unconfirmed > 0 ? (

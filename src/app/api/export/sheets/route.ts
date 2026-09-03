@@ -17,17 +17,27 @@ import {
 async function gatherInput(): Promise<SheetsInput> {
   const pub = getData();
   const admin = getAdminData();
-  const [entries, weeks, cells, owners, payments, imports, config, allPicks] =
-    await Promise.all([
-      admin.listEntrySummaries(),
-      pub.getWeeks(),
-      admin.listGridCells(), // real picks — the sheet is Lynne's copy
-      admin.listOwners(),
-      admin.listPayments(),
-      pub.getLynneImports(),
-      admin.getConfig(),
-      admin.listAllPicks(),
-    ]);
+  const [
+    entries,
+    weeks,
+    games,
+    cells,
+    owners,
+    payments,
+    imports,
+    config,
+    allPicks,
+  ] = await Promise.all([
+    admin.listEntrySummaries(),
+    pub.getWeeks(),
+    pub.getSchedule(),
+    admin.listGridCells(), // real picks — the sheet is Lynne's copy
+    admin.listOwners(),
+    admin.listPayments(),
+    pub.getLynneImports(),
+    admin.getConfig(),
+    admin.listAllPicks(),
+  ]);
   const names = new Map(entries.map((e) => [e.id, e.entryName]));
   const pickLog = allPicks
     .filter((p) => names.has(p.entryId))
@@ -45,6 +55,7 @@ async function gatherInput(): Promise<SheetsInput> {
     now: new Date(),
     entries,
     weeks,
+    games,
     cells,
     owners,
     payments,
@@ -86,7 +97,9 @@ export async function POST() {
       action: "sheets_export",
       note: `exported ${Object.entries(counts)
         .map(([k, v]) => `${k}:${v}`)
-        .join(" ")}${priv ? "" : " (private sheet skipped — no GOOGLE_PRIVATE_SHEET_ID)"}`,
+        .join(
+          " ",
+        )}${priv ? "" : " (private sheet skipped — no GOOGLE_PRIVATE_SHEET_ID)"}`,
       actor: session.actor,
     });
 
@@ -123,14 +136,18 @@ export async function GET() {
         `https://sheets.googleapis.com/v4/spreadsheets/${process.env.GOOGLE_SHEET_ID}?fields=spreadsheetUrl`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      status.publicSheetAccess = res.ok ? "ok" : `${res.status} — share the sheet with the service account as editor`;
+      status.publicSheetAccess = res.ok
+        ? "ok"
+        : `${res.status} — share the sheet with the service account as editor`;
     }
     if (process.env.GOOGLE_PRIVATE_SHEET_ID) {
       const res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${process.env.GOOGLE_PRIVATE_SHEET_ID}?fields=spreadsheetUrl`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      status.privateSheetAccess = res.ok ? "ok" : `${res.status} — share the sheet with the service account as editor`;
+      status.privateSheetAccess = res.ok
+        ? "ok"
+        : `${res.status} — share the sheet with the service account as editor`;
     }
   } catch (e) {
     status.error = e instanceof Error ? e.message : String(e);
