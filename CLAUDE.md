@@ -62,16 +62,36 @@ Priced per owner: 4+ entries drops the whole owner to the $25/entry tier.
 
 ### Payment sweeps — match on AMOUNT first
 
-When reconciling Venmo receipts against the ledger, **only flag incoming
-receipts whose amount is $30, $60, $90, or $100.** Anything else is almost
-certainly the separate block pool or personal money — do not surface it
-unless Anthony asks.
+When reconciling Venmo receipts against the ledger, **start from the tier
+prices: $30, $60, $90, $100.** A receipt at one of those amounts is a
+candidate.
 
 **A participant's name on a non-matching amount is not a signal.** People in
 this pool also send Anthony money for entirely unrelated reasons. Matching on
 name instead of amount is exactly what produced the **Tropea and Flaherty
 false positives** that had to be chased down and cleared. Amount first,
 always.
+
+**But the amount filter is the first pass, not the only one.** A receipt that
+is not a tier price can still be pool money in two shapes:
+
+- **Aggregated across owners** — one payment settling more than one owner.
+  Nicholas Teti's **$200** on 2026-09-03 covered eight entries across two
+  owner records, his own four and his father Jim Teti's four.
+- **Split across deposits** — one owner paying in instalments. Charles
+  Raudenbush paid his **$100** as two **$50** deposits the same day, memoed
+  "1 of 2" and "2 of 2".
+
+A strict amount-first sweep misses every one of those. So surface a non-tier
+amount as **"possible aggregate or split, needs review"** rather than
+discarding it. **Reject only when the amount is not a tier price AND no
+plausible aggregate or split reading exists** — $500 with a "Thursday block"
+memo has none; $200 from someone with four entries plainly does.
+
+One transaction may therefore appear on **two payment rows, one per owner**.
+That is the correct shape, and the unique index is keyed on
+`(venmo_txn_id, owner_id)` to allow it while still refusing the same receipt
+twice against the same owner.
 
 Resolved exclusions are recorded in `audit_log` under the action
 `payment_sweep_exclude`, each naming the transaction IDs it clears. **Check
@@ -169,8 +189,8 @@ These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
 
 **As of 2026-09-03:** 82 recruited + 8 free = **90 entries**, 28 owners.
-$2,120 due, $970 collected, $1,150 outstanding, **$2,050 owed to Lynne**
-(82 × $25). Lynne is current: the full 90 went to her on **2026-09-03** and
+$2,120 due, $1,270 collected, $850 outstanding, **$2,050 owed to Lynne**
+(82 × $25). 17 owners settled, 10 still owing. Lynne is current: the full 90 went to her on **2026-09-03** and
 every drift bucket is clear — **+0 ✎0 −0**. That send was structured as 61
 formatting corrections carried implicitly by a full-roster paste-over, 13
 additions (the 9 pending plus `Jim Teti #1`–`#4`) and 8 removals. The app
@@ -187,6 +207,12 @@ Two standing facts that are NOT snapshots and must survive:
   2026-09-03 she was told to delete those four rows and add `Jim Teti #1`–`#4`
   as new ones, so her sheet has them as additions dated that day, not as
   renames. The old names survive only in the `mark_resent_as_new` audit row.
+- **The owner at `njt2848@gmail.com` is Nicholas TETI, not "Nicholas James."**
+  Same class of intake error as Alec Hess, corrected 2026-09-03 — do not
+  restore the old surname. His Venmo shows "Nicholas Teti", he signs "- Nick
+  T", and he is Jim Teti's son; he paid one $200 Venmo covering both their
+  owner records. His entry names `Nick&Kels #1`–`#4` are his own wording and
+  are NOT part of the correction.
 - **Every owner has an email on file.** The one historical gap was the symptom
   of that misrecording, not a missing address.
 
