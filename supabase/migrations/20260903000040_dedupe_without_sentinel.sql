@@ -47,6 +47,18 @@
 -- by a correction - and for that residue there is no append-only remedy, the
 -- same dead end the matched branch below reaches. The message says so rather
 -- than prescribing a drain that would stop halfway.
+--
+-- What the preflight deliberately does NOT do is judge the LAST unmatched row.
+-- Clearing the duplicate leaves one row in quarantine, and that row may be a
+-- spurious copy or may be a receipt legitimately waiting for its owner - by
+-- shape they are the same thing, because one matched row plus one unmatched
+-- row for a single transaction is exactly the un-matched half of a cross-owner
+-- split, the case 37 exists to allow. No index can separate them and neither
+-- can this migration: deciding which is a judgment about money, and the rule
+-- here is to surface a variance and let Anthony resolve it, never to
+-- auto-resolve. So the message asks for that judgment and names the
+-- append-only way to record it - a correction row against the spurious copy -
+-- rather than making it.
 do $$
 declare
   v_bad text;
@@ -61,7 +73,7 @@ begin
            group by venmo_txn_id having count(*) > 1) d;
   if v_bad is not null then
     raise exception
-      'the unmatched pile holds a transaction more than once: %. Match each copy that is genuinely owed to an owner (the normal quarantine-to-matched step, which moves it out of the unmatched bucket), until at most one non-correction unmatched row per transaction is left. Note the ceiling: only ONE copy per owner can be matched, because the (venmo_txn_id, owner_id) index from migration 37 refuses the second - so this clears only when the copies belong to that many distinct owners. Any residue beyond that has no append-only remedy: a correction row leaves the original it corrects inside this predicate, and altering an original is barred by the ledger invariant. For that residue, decide deliberately which row is real money, record the decision in audit_log, and apply it as an explicit one-off before re-running this migration.',
+      'the unmatched pile holds a transaction more than once: %. Match each copy that is genuinely owed to an owner (the normal quarantine-to-matched step, which moves it out of the unmatched bucket), until at most one non-correction unmatched row per transaction is left. Note the ceiling: only ONE copy per owner can be matched, because the (venmo_txn_id, owner_id) index from migration 37 refuses the second - so this clears only when the copies belong to that many distinct owners. Then judge whatever is still in quarantine: if the surviving unmatched row is a spurious copy rather than a receipt legitimately awaiting an owner, reverse it with a correction row carrying the same transaction id (corrections are exempt from these indexes, so the receipt nets to zero inside its own bucket, the way admin_merge_owner writes its reversals). That does not change the count this preflight makes - it is how the ledger records the judgment that the copy was never money, and it has to be made deliberately, because nothing downstream can infer it. One unmatched row per transaction is otherwise a normal end state: by shape it is indistinguishable from the un-matched half of a cross-owner split, which is precisely what migration 37 exists to allow, so this migration must not decide which it is. Any residue beyond the ceiling has no append-only remedy: a correction row leaves the original it corrects inside this predicate, and altering an original is barred by the ledger invariant. For that residue, decide deliberately which row is real money, record the decision in audit_log, and apply it as an explicit one-off before re-running this migration.',
       v_bad;
   end if;
 

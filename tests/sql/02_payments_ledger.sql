@@ -248,6 +248,58 @@ begin
   delete from owners where id = nil_owner;
 end $$;
 
+-- Reversing a spurious QUARANTINED copy is accepted and nets it to zero. This
+-- is what migration 40's preflight asks an operator to do with the last
+-- unmatched row when they judge it was never money -- the append-only way to
+-- record that judgment. Pinned because the guidance names it.
+do $$
+declare
+  yost uuid;
+  txn text := 'spurious-quarantine-0006';
+  orig uuid;
+begin
+  select id into yost from owners where last_name = 'Yost';
+
+  -- the legitimate shape this cannot be told apart from: one matched row and
+  -- one unmatched row for a single receipt, i.e. a cross-owner split whose
+  -- second half has not been matched yet
+  insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+  values (yost, 10000, 'venmo', current_date, txn, 'matched half');
+  insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+  values (null, 10000, 'venmo', current_date, txn, 'still in quarantine')
+  returning id into orig;
+
+  -- both partial indexes accept that pair, by design
+  if (select count(*) from payments where venmo_txn_id = txn) <> 2 then
+    raise exception 'a matched row and an unmatched row for one receipt must coexist';
+  end if;
+
+  -- judged spurious: reverse it rather than deleting it
+  -- the correction carries the same transaction id, as admin_merge_owner's
+  -- reversals do; the unique indexes exempt corrections, so this is accepted
+  -- and the receipt nets to zero inside its own bucket
+  insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id,
+                        corrects_payment_id, note)
+  values (null, -10000, 'correction', current_date, txn, orig,
+          'judged a duplicate, never money');
+
+  if (select sum(amount_cents) from payments
+       where venmo_txn_id = txn and owner_id is null) is distinct from 0 then
+    raise exception 'reversing a quarantined copy did not net it to zero';
+  end if;
+
+  -- and the original still counts for the unmatched index: a correction does
+  -- not remove it from the predicate, which is why the preflight says so
+  if (select count(*) from payments
+       where venmo_txn_id = txn and owner_id is null
+         and corrects_payment_id is null) <> 1 then
+    raise exception 'expected the reversed original to remain a non-correction row';
+  end if;
+
+  delete from payments where corrects_payment_id = orig;
+  delete from payments where venmo_txn_id = txn;
+end $$;
+
 -- Corrections: new negative rows referencing the row they correct. The computed
 -- balance follows the ledger with no edit or delete.
 do $$
