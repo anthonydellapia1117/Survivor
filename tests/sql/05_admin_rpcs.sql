@@ -500,3 +500,82 @@ begin
 end $$;
 
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- OWNER IDENTITY CORRECTED: default-named entries are derived from the owner
+-- name, so they re-derive — keeping name_is_default, leaving owner-named
+-- entries and free entries alone, and leaving Lynne's copy of the name intact
+-- so her correction is one hop to the final name, not two stacked renames.
+-- ---------------------------------------------------------------------------
+begin;
+
+do $$
+declare
+  v_wrong uuid;
+  v_mixed uuid;
+  r record;
+  res jsonb;
+  n int;
+begin
+  -- Four default-named entries, already sent to Lynne under the old name.
+  v_wrong := admin_create_owner('Wrong', 'Person', 'wrong@example.com', null,
+                                'email', null,
+                                array['Wrong Person #1','Wrong Person #2',
+                                      'Wrong Person #3','Wrong Person #4'],
+                                true, 'test');
+  perform admin_mark_new_entries_sent('test');
+
+  -- The identity was wrong; correct it.
+  perform admin_update_owner(v_wrong, 'Right', 'Person', 'right@example.com',
+                             null, 'confirmed', 'my error', 'test');
+  res := admin_resync_default_entry_names(v_wrong, 'test', 'identity corrected');
+  if (res->>'renamed')::int <> 4 then
+    raise exception 'expected 4 re-derived, got %', res->>'renamed';
+  end if;
+
+  select entry_name, name_is_default, submitted_as_name into r
+    from entries where owner_id = v_wrong and entry_index = 1;
+  if r.entry_name <> 'Right Person #1' then
+    raise exception 'entry not re-derived, got %', r.entry_name;
+  end if;
+  if not r.name_is_default then
+    raise exception 're-deriving a default name must NOT clear name_is_default';
+  end if;
+  -- THE POINT: Lynne still holds the ORIGINAL, so her correction is one hop.
+  if r.submitted_as_name <> 'Wrong Person #1' then
+    raise exception 'the name Lynne holds must survive, got %', r.submitted_as_name;
+  end if;
+
+  -- Idempotent.
+  res := admin_resync_default_entry_names(v_wrong, 'test', 'again');
+  if (res->>'renamed')::int <> 0 then
+    raise exception 'second run renamed % rows', res->>'renamed';
+  end if;
+
+  -- A mixed owner: only the default-named entry moves, and it keeps its slot.
+  v_mixed := admin_create_owner('Mixed', 'Case', 'mixed@example.com', null,
+                                'email', null, array['His Own Name'], false, 'test');
+  perform admin_add_entries(v_mixed, array['Mixed Case #2'], true, false, 'test');
+  perform admin_update_owner(v_mixed, 'Renamed', 'Case', 'mixed@example.com',
+                             null, 'confirmed', null, 'test');
+  res := admin_resync_default_entry_names(v_mixed, 'test', 'mixed owner');
+  if (res->>'renamed')::int <> 1 then
+    raise exception 'expected only the default entry to move, got %', res->>'renamed';
+  end if;
+  if not exists (select 1 from entries where owner_id = v_mixed
+                   and entry_name = 'His Own Name') then
+    raise exception 'an owner-supplied name was re-derived';
+  end if;
+  if not exists (select 1 from entries where owner_id = v_mixed
+                   and entry_name = 'Renamed Case #2') then
+    raise exception 'the default entry did not keep its position';
+  end if;
+
+  -- Free entries are the runner's own series and must never be re-derived.
+  select count(*) into n from entries e
+    join owners o on o.id = e.owner_id
+   where e.is_free_entry and e.entry_name not like 'AAA%';
+  if n <> 0 then raise exception 'a free entry was renamed off the AAA series'; end if;
+end $$;
+
+rollback;
