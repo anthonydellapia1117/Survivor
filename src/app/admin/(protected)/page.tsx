@@ -5,6 +5,7 @@ import { getData } from "@/lib/data";
 import { DEFAULT_PRICING, formatCents, lynneRemittanceCents } from "@/lib/pool";
 import { computeMargin, freeEntitlement } from "@/lib/free-entries";
 import { duplicateTeamRisks } from "@/lib/alive";
+import { nextLockBoundary } from "@/lib/dashboard";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ export default async function AdminOverviewPage() {
     cells,
     config,
     pot,
+    games,
   ] = await Promise.all([
     data.listOwners(),
     data.listEntries(),
@@ -36,6 +38,7 @@ export default async function AdminOverviewPage() {
     data.listGridCells(),
     data.getConfig(),
     pub.getPot(),
+    pub.getSchedule(),
   ]);
   const lastExport =
     audit.find((a) => a.action === "sheets_export")?.at ?? null;
@@ -75,14 +78,18 @@ export default async function AdminOverviewPage() {
 
   // F3/E2: missing picks for the next lock, sorted by urgency; pulses
   // when the deadline is under 6 hours.
-  const nextLock = weeks
-    .filter((w) => new Date(w.deadlineAt).getTime() > now)
-    .sort((a, b) => +new Date(a.deadlineAt) - +new Date(b.deadlineAt))[0];
+  // The first lock is the earliest TIER still ahead, not the week's full
+  // lock: in weeks 1 and 12 a Wednesday game closes a day before the early
+  // deadline, so reading earlyDeadlineAt made this alert 24h late and it only
+  // turned urgent after those picks had already closed. It also used to pick
+  // the week by deadlineAt and then count down to earlyDeadlineAt, which were
+  // two different boundaries.
+  const nextLock = nextLockBoundary(weeks, games, new Date(now));
   const nextLockMissing = nextLock
     ? alive.filter((e) => !pickedByWeek.get(nextLock.week)?.has(e.id))
     : [];
   const hoursToLock = nextLock
-    ? (new Date(nextLock.earlyDeadlineAt).getTime() - now) / 3600000
+    ? (new Date(nextLock.deadlineAt).getTime() - now) / 3600000
     : Infinity;
 
   // C3: a current pick reusing a team is an elimination in Lynne's pool.
