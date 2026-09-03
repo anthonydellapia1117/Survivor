@@ -13,7 +13,7 @@ import {
   updateOwnerAction,
 } from "@/app/admin/actions";
 import type { AdminOwner } from "@/lib/data/admin-types";
-import { defaultEntryNames } from "@/lib/pool";
+import { defaultEntryNames, ownerFullName } from "@/lib/pool";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -223,7 +223,10 @@ export function AddOwnerDialog() {
       setError("First and last name are required.");
       return;
     }
-    const resolved = resolveEntryNames(`${firstName} ${lastName}`, names);
+    const resolved = resolveEntryNames(
+      ownerFullName(firstName, lastName),
+      names,
+    );
     if (!resolved.ok) {
       setError(resolved.error);
       return;
@@ -336,7 +339,7 @@ export function AddOwnerDialog() {
           </div>
           <EntryNamesFields
             idPrefix="own"
-            fullName={`${firstName} ${lastName}`}
+            fullName={ownerFullName(firstName, lastName)}
             value={names}
             onChange={setNames}
           />
@@ -502,7 +505,7 @@ export function AddEntriesDialog({
   const [names, setNames] = useState<EntryNamesValue>(EMPTY_ENTRY_NAMES);
   const [isFree, setIsFree] = useState(false);
 
-  const fullName = `${owner.firstName} ${owner.lastName}`;
+  const fullName = ownerFullName(owner.firstName, owner.lastName);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

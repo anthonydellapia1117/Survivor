@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminOwner } from "@/lib/data/admin-types";
 import { addEntriesAction } from "@/app/admin/actions";
-import { defaultEntryNames } from "@/lib/pool";
+import { defaultEntryNames, ownerFullName } from "@/lib/pool";
 import {
   NameCollisionWarning,
   type ExistingName,
@@ -70,7 +70,7 @@ export function BulkAddDialog({
     if (useDefault) {
       if (!owner || !Number.isFinite(parsedCount) || parsedCount < 1) return [];
       return defaultEntryNames(
-        `${owner.firstName} ${owner.lastName}`,
+        ownerFullName(owner.firstName, owner.lastName),
         parsedCount,
       );
     }
@@ -120,8 +120,8 @@ export function BulkAddDialog({
         <DialogHeader>
           <DialogTitle>Bulk add entries</DialogTitle>
           <DialogDescription>
-            Add entries to a confirmed owner — named lines or the default
-            naming convention.
+            Add entries to a confirmed owner — named lines or the default naming
+            convention.
           </DialogDescription>
         </DialogHeader>
 
@@ -148,7 +148,11 @@ export function BulkAddDialog({
               checked={useDefault}
               onCheckedChange={(v) => setUseDefault(v === true)}
             />
-            Use default naming ({owner ? `${owner.firstName} ${owner.lastName}` : "Full Name"} 1, 2, …)
+            Use default naming (
+            {owner
+              ? ownerFullName(owner.firstName, owner.lastName)
+              : "Full Name"}{" "}
+            1, 2, …)
           </Label>
 
           {useDefault ? (

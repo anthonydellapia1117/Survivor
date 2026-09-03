@@ -63,6 +63,24 @@ export function formatCents(cents: number): string {
 }
 
 /**
+ * An owner's display name, built from the stored parts the way the database
+ * builds it. `admin_resync_default_entry_names` trims each component before
+ * joining — btrim(btrim(first) || ' ' || btrim(last)) — so trimming only the
+ * concatenated string would disagree whenever the whitespace sits at the join:
+ * "Ernie " + "DellaPia" yields "Ernie  DellaPia" and the doubled space survives
+ * an outer trim. The two layers have to produce the same string for the same
+ * owner, so build it here and nowhere else.
+ *
+ * Internal spacing WITHIN a component is the owner's and is untouched.
+ */
+export function ownerFullName(firstName: string, lastName: string): string {
+  return [firstName, lastName]
+    .map((part) => part.trim())
+    .filter((part) => part !== "")
+    .join(" ");
+}
+
+/**
  * Default entry naming when an owner supplies no names. Anthony's convention:
  * a single entry is the plain full name, several are "Full Name #1", "#2", …
  * — a space, a hash, then the digit with nothing between. One entry carries
