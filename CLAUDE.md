@@ -19,7 +19,7 @@ remits her share. Players see a public site; Anthony sees an admin site.
 - Production: **https://ad-26-survivor.vercel.app** (the only URL — older
   Vercel names were released and must never be referenced)
 - Supabase project `rpbzsmeqaqzdymfxkrzr`
-- Week 1 locks Tuesday 2026-09-08 12:00 PM ET
+- Season opens Wednesday 2026-09-09; see [pick deadlines](#pick-deadlines)
 
 ## Who is the authority on what
 
@@ -46,6 +46,39 @@ Two consequences that have bitten before:
   so week N+1 has fewer rows than week N. **A missing entry is not a data
   error** — never treat a shrinking sheet as corruption or as cause to
   re-add rows.
+
+## Pick deadlines
+
+**A pick's deadline depends on the day its team plays — in every week,
+Week 1 included.** There is no special Week 1 rule.
+
+| Game day               | Picks close           |
+| ---------------------- | --------------------- |
+| Wednesday              | Tuesday 12:00 PM ET   |
+| Thursday               | Wednesday 12:00 PM ET |
+| Saturday/Sunday/Monday | Friday 12:00 PM ET    |
+
+Saturday, Sunday and Monday share **one** window deliberately: that is where
+the volume is and it needs a single cutoff.
+
+So a deadline day is not a lock on the week. **Tuesday 2026-09-08 noon closes
+only the entries that picked the Wednesday game** (Patriots at Seahawks, Wed
+09-09). The Thursday game (49ers at Rams, 09-10) closes Wednesday noon, and
+everything from Saturday 09-12 on closes Friday 09-11 noon. The week is fully
+locked at the **late** deadline — Friday noon — which is also the sweep
+boundary.
+
+**Friday games take Thursday noon ET.** That tier was not part of the rule as
+stated; it follows the same day-before principle as the others, and it governs
+six games (Week 12 Black Friday, Week 16 Christmas Day). Change it if that is
+wrong — nothing before 2026-11-27 depends on it.
+
+The derivation is `pick_deadline(week, team)` in SQL, mirrored for display by
+`pickDeadlineIso` in `src/lib/deadlines.ts`. Only two boundaries are stored per
+week — `early_deadline_at` (Wednesday noon) and `late_deadline_at` (Friday
+noon); the Wednesday and Friday tiers derive one day either side of `early`, so
+editing a week's early deadline moves them with it. A bye, `SKIP_WEEK`, or a
+team with no game that week takes the late boundary.
 
 ## Money
 
