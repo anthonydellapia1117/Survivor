@@ -82,7 +82,11 @@ those rows — via /admin/audit — before re-raising anything.**
 - They are **Anthony's only**, under the participant row for
   `anthonydellapia@gmail.com` (distinct from the admin login).
 - Count is **FLOOR(recruited / 10)**.
-- Named **"AAA 1"** through **"AAA n"**.
+- Named **"AAA #1"** through **"AAA #n"** — the same separator as every
+  other multi-entry owner, per [the numbering convention](#the-numbering-convention).
+  `FREE_ENTRY_NAME_PREFIX` in `src/lib/free-entries.ts` is `"AAA #"`; the
+  parser accepts both forms so the pre-2026-09-01 names still read, but
+  anything newly minted carries the hash.
 - **Nobody else ever gets one.**
 - They **never count toward earning more** — the ratio is computed from
   recruited entries only.
