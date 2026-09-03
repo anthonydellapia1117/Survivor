@@ -10,6 +10,12 @@ import { formatDeadline } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  deadlineTier,
+  pickDeadlineIso,
+  type DeadlineTier,
+} from "@/lib/deadlines";
+import type { GameDay } from "@/lib/data/types";
 
 export const metadata: Metadata = { title: "Week cockpit" };
 
@@ -54,9 +60,6 @@ export default async function WeekCockpitPage(props: {
   );
 
   const weekGames = games.filter((g) => g.week === week);
-  const earlyGames = weekGames.filter((g) =>
-    ["Wednesday", "Thursday", "Friday"].includes(g.dayOfWeek),
-  );
   const weekImports = imports.filter((i) => i.week === week);
   const scored = weekCells.filter(
     (c) => c.result && c.result !== "pending",
@@ -67,16 +70,27 @@ export default async function WeekCockpitPage(props: {
     at,
     passed: new Date(at).getTime() <= now,
   });
+  // One phase per tier this week actually has, in deadline order. The tiers
+  // are the same in every week including Week 1 — a pick locks by the day its
+  // team plays, so a week with no Wednesday game simply has no Tuesday phase.
+  const TIER_PHASE: { tier: DeadlineTier; day: GameDay; label: string }[] = [
+    { tier: "wed", day: "Wednesday", label: "Wednesday-game picks lock" },
+    { tier: "thu", day: "Thursday", label: "Thursday-game picks lock" },
+    { tier: "fri", day: "Friday", label: "Friday-game picks lock" },
+  ];
   const phases = [
-    phase(
-      week === 1
-        ? "All picks lock (Tuesday rule)"
-        : `Wed/Thu/Fri-game picks lock (${earlyGames.length} ${earlyGames.length === 1 ? "game" : "games"})`,
-      w.earlyDeadlineAt,
-    ),
-    ...(w.earlyDeadlineAt !== w.lateDeadlineAt
-      ? [phase("Sat–Mon picks lock — week fully locked", w.lateDeadlineAt)]
-      : []),
+    ...TIER_PHASE.flatMap(({ tier, day, label }) => {
+      const n = weekGames.filter((g) => deadlineTier(g.dayOfWeek) === tier)
+        .length;
+      if (n === 0) return [];
+      return [
+        phase(
+          `${label} (${n} ${n === 1 ? "game" : "games"})`,
+          pickDeadlineIso(day, w.earlyDeadlineAt, w.lateDeadlineAt),
+        ),
+      ];
+    }),
+    phase("Sat–Mon picks lock — week fully locked", w.lateDeadlineAt),
   ];
 
   return (

@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { deadlineTier, TIER_LABEL } from "@/lib/deadlines";
 
 interface SlimEntry {
   id: string;
@@ -43,8 +44,9 @@ const DAY_TAG: Record<string, string> = {
   Sunday: "Su",
   Monday: "Mo",
 };
-// Wed/Thu/Fri games lock at the early (Wednesday noon) deadline.
-const EARLY_DAYS = new Set(["Wednesday", "Thursday", "Friday"]);
+// Which deadline a game day carries lives in one place, shared with the SQL
+// side; the grid only decides how loudly to draw it. Wed/Thu/Fri each close a
+// day apart, Sat-Mon share the Friday cutoff.
 
 function kickoffLabel(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
@@ -211,7 +213,8 @@ export function ScheduleGrid({
                       );
                     }
                     const tag = DAY_TAG[g.day] ?? g.day.slice(0, 2);
-                    const early = EARLY_DAYS.has(g.day);
+                    const tier = deadlineTier(g.day);
+                    const early = tier !== "late";
                     return (
                       <td
                         key={w}
@@ -220,9 +223,7 @@ export function ScheduleGrid({
                           w === currentWeek && "bg-primary/[0.07]",
                           burned && "line-through",
                         )}
-                        title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} — ${kickoffLabel(g.kickoffAt)} ET · ${
-                          early ? "Wednesday" : "Friday"
-                        } noon deadline`}
+                        title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} — ${kickoffLabel(g.kickoffAt)} ET · picks close ${TIER_LABEL[tier]} noon ET`}
                       >
                         <span className={cn(!g.home && "text-muted-foreground")}>
                           {g.home ? "" : "@"}
@@ -251,12 +252,12 @@ export function ScheduleGrid({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Every game carries its day (We/Th/Fr/Sa/Su/Mo).{" "}
-        <span className="font-semibold text-tie">Amber</span> days —
-        We/Th/Fr — lock at the early deadline, Wednesday noon ET; grey days —
-        Sa/Su/Mo — lock Friday noon ET. All of Week 1 locks Tuesday Sep 8,
-        noon ET regardless of day. Hover a cell for kickoff time and which
-        deadline applies.
+        Every game carries its day (We/Th/Fr/Sa/Su/Mo), and the deadline
+        follows the day the team plays — in every week, Week 1 included.{" "}
+        <span className="font-semibold text-tie">Amber</span> days close a day
+        apart: We by Tuesday noon ET, Th by Wednesday, Fr by Thursday. Grey
+        days — Sa/Su/Mo — share one cutoff, Friday noon ET. Hover a cell for
+        kickoff time and which deadline applies.
       </p>
     </div>
   );

@@ -15,7 +15,10 @@ export interface WeekRow {
   windowLabel: "thu_fri" | "sat_mon";
   /** The LATE boundary — when the whole week locks (reveal + sweep). */
   deadlineAt: string; // ISO timestamp
-  /** Wed/Thu/Fri-game picks lock here (Wednesday noon ET). */
+  /**
+   * Thursday-game picks lock here (Wednesday noon ET), and the Wednesday and
+   * Friday tiers derive from it — one day either side. See `pickDeadlineIso`.
+   */
   earlyDeadlineAt: string;
   /** Sat-Mon-game picks lock here (Friday noon ET). Equals deadlineAt. */
   lateDeadlineAt: string;
@@ -24,17 +27,19 @@ export interface WeekRow {
   confirmed: boolean;
 }
 
+export type GameDay =
+  | "Wednesday"
+  | "Thursday"
+  | "Friday"
+  | "Saturday"
+  | "Sunday"
+  | "Monday";
+
 export interface GameRow {
   id: string;
   week: number;
   kickoffAt: string; // ISO timestamp
-  dayOfWeek:
-    | "Wednesday"
-    | "Thursday"
-    | "Friday"
-    | "Saturday"
-    | "Sunday"
-    | "Monday";
+  dayOfWeek: GameDay;
   awayTeam: string;
   homeTeam: string;
   homeScore: number | null;

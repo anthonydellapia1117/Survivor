@@ -1,23 +1,19 @@
 -- Section 3 locked rules that live in the database, each asserted.
 -- (Pricing, remittance, free entries, naming are covered in 01 + vitest.)
 
--- Deadline windows: Week 1 is Tuesday 2026-09-08 noon ET for every pick
--- (early = late); weeks 2-18 carry a Wednesday-noon early window and a
--- Friday-noon late window derived from the verified schedule, with
--- deadline_at kept as the late (full-lock) boundary. Schedule-derived
--- weeks are auto-confirmed.
+-- Deadline windows: EVERY week 1-18 carries a Wednesday-noon early window
+-- and a Friday-noon late window derived from the verified schedule, with
+-- deadline_at kept as the late (full-lock) boundary. Week 1 is in the loop
+-- deliberately -- it used to be excluded, seeded early = late = Tuesday
+-- 2026-09-08 as a special case, and there is no such rule. Its Tuesday
+-- deadline is now what it always should have been: the derived Wednesday-game
+-- tier, one day before the early window, not a lock on the whole week.
+-- Schedule-derived weeks are auto-confirmed.
 do $$
 declare
   r record;
 begin
-  select * into r from weeks where week = 1;
-  if r.early_deadline_at <> '2026-09-08 16:00:00+00'::timestamptz
-     or r.late_deadline_at <> r.early_deadline_at
-     or r.deadline_at <> r.late_deadline_at then
-    raise exception 'week 1 must be Tue 2026-09-08 12:00 ET for every pick, got %/%', r.early_deadline_at, r.late_deadline_at;
-  end if;
-
-  for r in select * from weeks where week between 2 and 18 loop
+  for r in select * from weeks where week between 1 and 18 loop
     if to_char(r.early_deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Wed 12:00' then
       raise exception 'week % early deadline must be Wednesday noon ET, got %', r.week, r.early_deadline_at;
     end if;

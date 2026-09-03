@@ -118,9 +118,11 @@ begin
   end loop;
 end $$;
 
--- Window resolution: Thursday team -> Wednesday noon; Sunday team ->
--- Friday noon; bye/unknown team -> the late boundary; week 1 -> Tuesday
--- for everyone, whatever day their team plays.
+-- Window resolution, the same in EVERY week including Week 1: the deadline
+-- follows the day the picked team plays.
+--   Wednesday -> Tuesday noon    Thursday -> Wednesday noon
+--   Friday    -> Thursday noon   Sat/Sun/Mon and bye -> Friday noon
+-- Week 1 used to collapse onto Tuesday for everyone; it does not any more.
 do $$
 declare
   thu text; sun text;
@@ -140,21 +142,51 @@ begin
     raise exception 'a bye pick must lock at the late boundary';
   end if;
 
-  select home_team into sun from nfl_games where week = 1 and day_of_week = 'Sunday' limit 1;
-  if pick_deadline(1, sun) <> '2026-09-08 16:00:00+00'::timestamptz then
-    raise exception 'week 1 is Tuesday noon ET for everyone';
+  -- Week 1, the week the special case used to govern. Anthony's three cases,
+  -- asserted against the real 2026 openers rather than synthetic rows.
+  --   NE@SEA  Wed 09-09 -> Tue 09-08 noon ET
+  --   SF@LAR  Thu 09-10 -> Wed 09-09 noon ET
+  --   Sat 09-12 onward  -> Fri 09-11 noon ET
+  if pick_deadline(1, 'SEA') <> '2026-09-08 16:00:00+00'::timestamptz then
+    raise exception 'week 1 Wednesday game must close Tuesday noon ET, got %',
+      pick_deadline(1, 'SEA');
   end if;
-  -- The Wednesday opener kicks off AFTER the Tuesday deadline.
-  if exists (
-    select 1 from nfl_games where week = 1 and kickoff_at <= '2026-09-08 16:00:00+00'
-  ) then
-    raise exception 'a week 1 game kicks off before the Tuesday deadline';
+  if pick_deadline(1, 'LAR') <> '2026-09-09 16:00:00+00'::timestamptz then
+    raise exception 'week 1 Thursday game must close Wednesday noon ET, got %',
+      pick_deadline(1, 'LAR');
+  end if;
+  select home_team into sun from nfl_games where week = 1 and day_of_week = 'Sunday' limit 1;
+  if pick_deadline(1, sun) <> '2026-09-11 16:00:00+00'::timestamptz then
+    raise exception 'week 1 Sunday game must close Friday noon ET, got %',
+      pick_deadline(1, sun);
+  end if;
+  -- ...and Tuesday noon closes ONLY the Wednesday game, not the week.
+  if (select count(*) from nfl_games g
+       where g.week = 1
+         and pick_deadline(1, g.home_team) = '2026-09-08 16:00:00+00'::timestamptz) <> 1 then
+    raise exception 'Tuesday noon must close exactly the one Wednesday game';
+  end if;
+
+  -- Week 12 carries all four tiers at once: a Wednesday game, Thanksgiving,
+  -- Black Friday, and the Sunday slate. It is the week that proves the
+  -- Wednesday and Thursday tiers are genuinely a day apart.
+  select * into w from weeks where week = 12;
+  if pick_deadline(12, 'LAR') <> w.early_deadline_at - interval '1 day' then
+    raise exception 'week 12 Wednesday game must close a day before the Thursday tier';
+  end if;
+  select home_team into thu from nfl_games where week = 12 and day_of_week = 'Thursday' limit 1;
+  if pick_deadline(12, thu) <> w.early_deadline_at then
+    raise exception 'week 12 Thursday game must close at the early deadline';
+  end if;
+  if pick_deadline(12, 'PIT') <> w.early_deadline_at + interval '1 day' then
+    raise exception 'week 12 Friday game must close a day after the Thursday tier';
   end if;
 end $$;
 
 -- Late flags come from the pick's own window: with week 6 sitting between
 -- its windows (early passed, late not), a Thursday-team pick is late and a
--- Sunday-team pick is not. Week 1 past Tuesday: late for everyone.
+-- Sunday-team pick is not. Week 1 behaves identically -- that is the whole
+-- point of removing its special case.
 begin;
 do $$
 declare
@@ -182,15 +214,29 @@ begin
     raise exception 'Sunday-team pick before Friday noon must NOT be late';
   end if;
 
-  -- Week 1: Tuesday rule applies to a Sunday team too.
+  -- Week 1 is tiered like any other week. Put it between its windows: the
+  -- Wednesday tier (early - 1 day) and the Thursday tier (early) have passed,
+  -- the Sat-Mon tier has not. Under the old special case every one of these
+  -- would have been late together.
   select home_team into sun from nfl_games where week = 1 and day_of_week = 'Sunday' limit 1;
   update weeks set early_deadline_at = now() - interval '1 hour',
-                   late_deadline_at = now() - interval '1 hour',
-                   deadline_at = now() - interval '1 hour'
+                   late_deadline_at = now() + interval '1 hour',
+                   deadline_at = now() + interval '1 hour'
    where week = 1;
-  perform admin_submit_pick(e, 1, sun, 'admin', 'test');
+
+  perform admin_submit_pick(e, 1, 'SEA', 'admin', 'test');   -- Wednesday game
   if not (select late from picks where entry_id = e and week = 1 and is_current) then
-    raise exception 'week 1 pick after Tuesday noon must be late, Sunday team included';
+    raise exception 'week 1 Wednesday-game pick past its tier must be late';
+  end if;
+
+  perform admin_submit_pick(e, 1, 'LAR', 'admin', 'test');   -- Thursday game
+  if not (select late from picks where entry_id = e and week = 1 and is_current) then
+    raise exception 'week 1 Thursday-game pick past its tier must be late';
+  end if;
+
+  perform admin_submit_pick(e, 1, sun, 'admin', 'test');     -- Sunday game
+  if (select late from picks where entry_id = e and week = 1 and is_current) then
+    raise exception 'week 1 Sunday-game pick before Friday noon must NOT be late — this is the Tuesday-locks-everything bug';
   end if;
 end $$;
 rollback;
