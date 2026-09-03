@@ -27,6 +27,7 @@ import { BulkPasteDialog } from "@/components/admin/picks/bulk-paste-dialog";
 import {
   deadlineTier,
   pickDeadlineIso,
+  teamDeadlines,
   TIER_LABEL,
   type DeadlineTier,
 } from "@/lib/deadlines";
@@ -158,6 +159,36 @@ export function PicksEntry({
   }, [selectedWeek, games]);
 
   const rel = nextTier ? relDeadline(nextTier.at, Date.now()) : null;
+
+  /** Deadline for one team in the selected week, or null for a bye/no game. */
+  const teamDeadline = useMemo(
+    () =>
+      selectedWeek
+        ? teamDeadlines(
+            games.filter((g) => g.week === selectedWeek.week),
+            selectedWeek.earlyDeadlineAt,
+            selectedWeek.lateDeadlineAt,
+          )
+        : new Map<string, string>(),
+    [selectedWeek, games],
+  );
+
+  /**
+   * A staged team whose own tier has already closed. The week-level line above
+   * shows the next tier still open, which is not the same question: staging
+   * SEA after Tuesday noon in week 1 is late even while Wednesday is open, and
+   * admin_submit_pick will flag it on save.
+   */
+  const isTeamLate = (team: string | undefined): boolean => {
+    if (!team || !selectedWeek) return false;
+    const at =
+      team === SKIP_WEEK
+        ? selectedWeek.lateDeadlineAt
+        : (teamDeadline.get(team) ?? selectedWeek.lateDeadlineAt);
+    return new Date(at).getTime() < Date.now();
+  };
+
+  const lateStaged = Object.entries(staged).filter(([, t]) => isTeamLate(t));
   const multiTier = useMemo(
     () =>
       selectedWeek
@@ -326,6 +357,25 @@ export function PicksEntry({
         ) : null}
       </div>
 
+      {lateStaged.length > 0 ? (
+        <div className="rounded-md border border-tie bg-tie/15 px-4 py-3 text-sm text-tie">
+          <p className="font-semibold">
+            {lateStaged.length}{" "}
+            {lateStaged.length === 1 ? "staged pick is" : "staged picks are"}{" "}
+            past the deadline for the team chosen, and will be saved flagged
+            late.
+          </p>
+          <p className="mt-1 text-xs">
+            {lateStaged
+              .map(([id, team]) => {
+                const name = entryById.get(id)?.entryName ?? id;
+                return `${name} → ${teamDisplay(team)}`;
+              })
+              .join(" · ")}
+          </p>
+        </div>
+      ) : null}
+
       {dupeCount > 0 ? (
         <div className="rounded-md border border-loss bg-loss/15 px-4 py-3 text-sm text-loss">
           <p className="font-bold">
@@ -384,6 +434,7 @@ export function PicksEntry({
                 ? usedWeek.get(e.id)?.get(stagedTeam)
                 : undefined;
               const isOverride = isStaged && savedTeam !== "";
+              const stagedLate = isStaged && isTeamLate(stagedTeam);
               const failure = failures[e.id];
 
               return (
@@ -392,7 +443,12 @@ export function PicksEntry({
                   className={cn(
                     "h-12 border-b border-border/60 transition-colors duration-150 ease-out last:border-0 sm:h-10",
                     e.status === "eliminated" && "opacity-55",
-                    isStaged && (usedWarn ? "bg-loss/15" : "bg-primary/10"),
+                    isStaged &&
+                      (usedWarn
+                        ? "bg-loss/15"
+                        : stagedLate
+                          ? "bg-tie/15"
+                          : "bg-primary/10"),
                   )}
                 >
                   <td className="px-3">
