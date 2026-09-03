@@ -664,3 +664,129 @@ begin
 end $$;
 
 rollback;
+
+
+-- ---------------------------------------------------------------------------
+-- admin_mark_resent_as_new: a substitution communicated as delete + re-add
+--
+-- Lynne can be told "delete these rows, add these" instead of "rename these".
+-- She then holds brand new rows, so both the name she holds AND the date she
+-- received them have to move — the rename sweep only moves the name, leaving
+-- the app claiming she got the entry on the day the OLD name went out.
+-- ---------------------------------------------------------------------------
+begin;
+select set_config('request.jwt.claims', '{"role":"admin","email":"test"}', true);
+
+do $$
+declare
+  v_owner uuid;
+  v_other uuid;
+  v_ids uuid[];
+  v_void uuid;
+  v_unsent uuid;
+  res jsonb;
+  r record;
+  n int;
+  v_old_sent timestamptz;
+begin
+  v_owner := admin_create_owner('Wrong', 'Person', 'sub@example.com', null,
+                                'email', null,
+                                array['Wrong Person 1', 'Wrong Person 2'], false, 'test');
+  -- She received them under the original name.
+  perform admin_mark_new_entries_sent('test');
+  update entries set submitted_to_lynne_at = now() - interval '10 days'
+   where owner_id = v_owner;
+  select submitted_to_lynne_at into v_old_sent
+    from entries where owner_id = v_owner order by entry_index limit 1;
+
+  -- The identity was wrong; the entries are renamed locally.
+  perform admin_update_owner(v_owner, 'Right', 'Person', 'sub@example.com',
+                             null, 'confirmed', 'my error', 'test');
+  update entries set entry_name = 'Right Person #' || entry_index
+   where owner_id = v_owner;
+
+  -- An untouched owner, to prove the call does not sweep.
+  v_other := admin_create_owner('Other', 'Owner', 'other@example.com', null,
+                                'email', null, array['Other Owner 1'], false, 'test');
+  perform admin_mark_new_entries_sent('test');
+  update entries set entry_name = 'Other Owner #1' where owner_id = v_other;
+
+  select array_agg(id) into v_ids from entries where owner_id = v_owner;
+  res := admin_mark_resent_as_new(v_ids, 'test',
+           'sent to Lynne as delete Wrong Person 1-2, add Right Person #1-#2');
+
+  if (res->>'resent')::int <> 2 then
+    raise exception 'expected 2 re-sent, got %', res->>'resent';
+  end if;
+
+  -- Both fields moved: the name she now holds, and when she got it.
+  for r in select entry_name, submitted_as_name, submitted_to_lynne_at
+             from entries where owner_id = v_owner loop
+    if r.submitted_as_name <> r.entry_name then
+      raise exception 'name Lynne holds not updated: % vs %',
+        r.submitted_as_name, r.entry_name;
+    end if;
+    if r.submitted_to_lynne_at <= v_old_sent then
+      raise exception 'submitted_to_lynne_at still reads the old send date';
+    end if;
+  end loop;
+
+  -- They now sit in NO drift bucket: not new, not renamed, not removed.
+  select count(*) into n from entries
+   where owner_id = v_owner
+     and (submitted_to_lynne_at is null
+          or submitted_as_name is distinct from entry_name);
+  if n <> 0 then raise exception '% entries still flagged as drift', n; end if;
+
+  -- The name she was holding is preserved in the audit row, since this write is
+  -- what makes it untrue everywhere else.
+  select count(*) into n from audit_log
+   where action = 'mark_resent_as_new'
+     and after->'mapping' @> '[{"lynne_held": "Wrong Person 1"}]'::jsonb
+     and after->'mapping' @> '[{"lynne_held": "Wrong Person 2"}]'::jsonb;
+  if n <> 1 then
+    raise exception 'the outgoing name Lynne held was not recorded in the audit';
+  end if;
+
+  -- The other owner was untouched — explicit ids, never a sweep.
+  if exists (select 1 from entries where owner_id = v_other
+               and submitted_as_name = entry_name) then
+    raise exception 'an entry outside the given ids was updated';
+  end if;
+
+  -- A voided entry is a removal, not a re-send.
+  v_owner := admin_create_owner('Gone', 'Away', 'gone@example.com', null,
+                                'email', null, array['Gone Away 1'], false, 'test');
+  perform admin_mark_new_entries_sent('test');
+  select id into v_void from entries where owner_id = v_owner;
+  perform admin_void_entry(v_void, 'test');
+  begin
+    res := admin_mark_resent_as_new(array[v_void], 'test', 'should fail');
+    raise exception 'a voided entry was accepted as a re-send';
+  exception when others then
+    if sqlerrm not like '%is voided%' then raise; end if;
+  end;
+
+  -- An entry she never had cannot have been deleted and re-added.
+  v_owner := admin_create_owner('Brand', 'New', 'brand@example.com', null,
+                                'email', null, array['Brand New 1'], false, 'test');
+  select id into v_unsent from entries where owner_id = v_owner;
+  begin
+    res := admin_mark_resent_as_new(array[v_unsent], 'test', 'should fail');
+    raise exception 'a never-sent entry was accepted as a re-send';
+  exception when others then
+    if sqlerrm not like '%never sent%' then raise; end if;
+  end;
+
+  -- An unknown id fails the whole call rather than applying the rest.
+  begin
+    res := admin_mark_resent_as_new(
+             v_ids || '00000000-0000-0000-0000-000000000000'::uuid,
+             'test', 'should fail');
+    raise exception 'an unknown id was accepted';
+  exception when others then
+    if sqlerrm not like '%not found%' then raise; end if;
+  end;
+end $$;
+
+rollback;

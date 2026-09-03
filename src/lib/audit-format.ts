@@ -41,6 +41,8 @@ export const ACTION_LABEL: Record<string, string> = {
   mark_roster_sent: "Roster marked current",
   mark_new_entries_sent: "New entries marked sent",
   mark_renames_communicated: "Renames marked communicated",
+  mark_removals_communicated: "Removals marked communicated",
+  mark_resent_as_new: "Re-sent to Lynne as new rows",
   set_pool_pot: "Pool pot set",
   data_backup: "Data backup",
   sheets_export: "Sheets export",
