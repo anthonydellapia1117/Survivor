@@ -50,6 +50,20 @@ begin
       v_bad;
   end if;
 
+  -- The matched bucket is a different case, and the honest answer is that it
+  -- has no append-only remedy. Every dedupe regime this table has had covered
+  -- matched pairs - venmo_txn_id was column-unique at creation, then uniquely
+  -- indexed on the column alone, then on (venmo_txn_id, owner_id) - so the
+  -- 37-era regression could not produce this state and no supported workflow
+  -- can either: admin_record_payment only ever inserts.
+  --
+  -- Which means the earlier draft's advice here was doubly wrong. Re-pointing
+  -- or clearing an original's venmo_txn_id is an edit to a payment row, and
+  -- the table says outright: "append-only ledger. Corrections are new rows,
+  -- never edits or deletes." A correction row does not help either - the
+  -- originals it corrects still sit inside the predicate. So this reports the
+  -- state and stops, rather than prescribing something that would either fail
+  -- or break the audit model.
   select string_agg(format('%s / owner %s (%s rows)', venmo_txn_id, owner_id, n), '; ')
     into v_bad
     from (select venmo_txn_id, owner_id, count(*) as n
@@ -60,7 +74,7 @@ begin
            group by venmo_txn_id, owner_id having count(*) > 1) d;
   if v_bad is not null then
     raise exception
-      'the same receipt is recorded more than once against one owner: %. Reverse the surplus with a correction row and re-point or clear its venmo_txn_id, until at most one non-correction row per transaction and owner is left.',
+      'the same receipt is recorded more than once against one owner: %. This cannot be produced by any supported path - every dedupe index this table has had covered matched pairs, and admin_record_payment only inserts - so these rows were written with the index absent. There is no append-only fix: a correction row leaves the originals inside the predicate, and altering an original is barred by the ledger invariant. Decide deliberately which row is real money, record that decision in audit_log, and apply it as an explicit one-off before re-running this migration.',
       v_bad;
   end if;
 end $$;
