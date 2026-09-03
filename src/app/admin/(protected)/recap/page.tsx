@@ -11,20 +11,25 @@ export default async function RecapPage(props: {
 }) {
   const { week: weekParam } = await props.searchParams;
   const data = getData();
-  const [entries, cells, weeks] = await Promise.all([
+  const [entries, cells, weeks, games] = await Promise.all([
     getAdminData().listEntrySummaries(),
     getAdminData().listGridCells(),
     data.getWeeks(),
+    data.getSchedule(),
   ]);
 
   // Default to the most recent week with any scored result.
   const scoredWeeks = [
-    ...new Set(cells.filter((c) => c.result && c.result !== "pending").map((c) => c.week)),
+    ...new Set(
+      cells
+        .filter((c) => c.result && c.result !== "pending")
+        .map((c) => c.week),
+    ),
   ].sort((a, b) => a - b);
   const defaultWeek = scoredWeeks.at(-1) ?? 1;
   const week = Math.min(18, Math.max(1, Number(weekParam) || defaultWeek));
 
-  const recap = buildRecap(week, entries, cells, weeks, new Date());
+  const recap = buildRecap(week, entries, cells, weeks, games, new Date());
 
   return (
     <RecapView

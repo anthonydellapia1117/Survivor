@@ -62,7 +62,9 @@ function week(n: number, deadlineIso: string, earlyIso?: string): WeekRow {
 describe("eliminationWeek", () => {
   it("is null with fewer than two early losses", () => {
     expect(eliminationWeek([cell("e", 1, "loss")])).toBeNull();
-    expect(eliminationWeek([cell("e", 1, "win"), cell("e", 2, "win")])).toBeNull();
+    expect(
+      eliminationWeek([cell("e", 1, "win"), cell("e", 2, "win")]),
+    ).toBeNull();
   });
 
   it("is the week of the second loss in the double-elim window", () => {
@@ -94,7 +96,11 @@ describe("eliminationWeek", () => {
 
 describe("survivalCurve", () => {
   it("starts at the full field and drops on elimination weeks", () => {
-    const entries = [entry("a", "active"), entry("b", "eliminated"), entry("c", "active")];
+    const entries = [
+      entry("a", "active"),
+      entry("b", "eliminated"),
+      entry("c", "active"),
+    ];
     const cells = [
       cell("a", 1, "win"),
       cell("b", 1, "loss"),
@@ -131,27 +137,74 @@ describe("week selection", () => {
 });
 
 describe("nextLockBoundary", () => {
+  // The real 2026 shape: week 1 has a Wednesday opener and a Thursday game,
+  // week 2 has only Thursday. Both close Sat-Mon at their late deadline.
   const weeks = [
-    week(1, "2026-09-08T16:00:00Z"), // early = late -> "all"
+    week(1, "2026-09-11T16:00:00Z", "2026-09-09T16:00:00Z"),
     week(2, "2026-09-18T16:00:00Z", "2026-09-16T16:00:00Z"),
   ];
+  const games = [
+    { week: 1, dayOfWeek: "Wednesday" as const },
+    { week: 1, dayOfWeek: "Thursday" as const },
+    { week: 1, dayOfWeek: "Sunday" as const },
+    { week: 2, dayOfWeek: "Thursday" as const },
+    { week: 2, dayOfWeek: "Sunday" as const },
+  ];
 
-  it("week 1 locks everything at once", () => {
-    const b = nextLockBoundary(weeks, new Date("2026-09-01T00:00:00Z"));
-    expect(b).toMatchObject({ week: 1, kind: "all" });
+  // The bug this replaced: week 1 reported one "all picks" lock, and once
+  // tiered it would have advertised Wednesday while Seahawks picks were
+  // closing Tuesday.
+  it("offers week 1's Wednesday-game tier first, a day before the early deadline", () => {
+    const b = nextLockBoundary(weeks, games, new Date("2026-09-01T00:00:00Z"));
+    expect(b).toMatchObject({
+      week: 1,
+      kind: "wed",
+      deadlineAt: "2026-09-08T16:00:00.000Z",
+    });
   });
 
-  it("after week 1, the Wednesday early window is next", () => {
-    const b = nextLockBoundary(weeks, new Date("2026-09-09T00:00:00Z"));
+  it("then the Thursday tier, then the Sat-Mon lock", () => {
+    expect(
+      nextLockBoundary(weeks, games, new Date("2026-09-08T17:00:00Z")),
+    ).toMatchObject({
+      week: 1,
+      kind: "thu",
+      deadlineAt: "2026-09-09T16:00:00Z",
+    });
+    expect(
+      nextLockBoundary(weeks, games, new Date("2026-09-10T00:00:00Z")),
+    ).toMatchObject({
+      week: 1,
+      kind: "late",
+      deadlineAt: "2026-09-11T16:00:00Z",
+    });
+  });
+
+  it("skips a tier the week has no game for", () => {
+    // Week 2 has no Wednesday game, so nothing closes on its Tuesday.
+    const b = nextLockBoundary(weeks, games, new Date("2026-09-12T00:00:00Z"));
     expect(b).toMatchObject({
       week: 2,
-      kind: "early",
+      kind: "thu",
       deadlineAt: "2026-09-16T16:00:00Z",
     });
   });
 
+  it("offers a Friday tier only when the week has a Friday game", () => {
+    // Without one, the next boundary after week 2's Thursday tier is its
+    // Sat-Mon lock; adding a Friday game inserts a cutoff a day earlier.
+    const withFriday = [...games, { week: 2, dayOfWeek: "Friday" as const }];
+    expect(
+      nextLockBoundary(weeks, withFriday, new Date("2026-09-17T00:00:00Z")),
+    ).toMatchObject({
+      week: 2,
+      kind: "fri",
+      deadlineAt: "2026-09-17T16:00:00.000Z",
+    });
+  });
+
   it("between the windows, the Friday late boundary is next", () => {
-    const b = nextLockBoundary(weeks, new Date("2026-09-17T00:00:00Z"));
+    const b = nextLockBoundary(weeks, games, new Date("2026-09-17T00:00:00Z"));
     expect(b).toMatchObject({
       week: 2,
       kind: "late",
@@ -160,7 +213,9 @@ describe("nextLockBoundary", () => {
   });
 
   it("null once everything is locked", () => {
-    expect(nextLockBoundary(weeks, new Date("2026-09-19T00:00:00Z"))).toBeNull();
+    expect(
+      nextLockBoundary(weeks, games, new Date("2026-09-19T00:00:00Z")),
+    ).toBeNull();
   });
 });
 
@@ -188,7 +243,11 @@ describe("pickDistribution", () => {
       { ...cells[2], team: "LOCKED" },
       { ...cells[3], team: "LOCKED" },
     ];
-    const d = pickDistribution(weeks, partial, new Date("2026-09-08T16:01:00Z"));
+    const d = pickDistribution(
+      weeks,
+      partial,
+      new Date("2026-09-08T16:01:00Z"),
+    );
     expect(d!.revealed).toBe(true);
     expect(d!.rows).toEqual([{ team: "KC", count: 2, pct: 100 }]);
   });
@@ -208,14 +267,20 @@ describe("gameIsRevealed", () => {
 
   it("automatic: kickoff decides", async () => {
     const { gameIsRevealed } = await import("@/lib/data/types");
-    expect(gameIsRevealed({ ...base, revealOverride: null }, before)).toBe(false);
+    expect(gameIsRevealed({ ...base, revealOverride: null }, before)).toBe(
+      false,
+    );
     expect(gameIsRevealed({ ...base, revealOverride: null }, after)).toBe(true);
   });
 
   it("the override wins in both directions", async () => {
     const { gameIsRevealed } = await import("@/lib/data/types");
-    expect(gameIsRevealed({ ...base, revealOverride: true }, before)).toBe(true);
-    expect(gameIsRevealed({ ...base, revealOverride: false }, after)).toBe(false);
+    expect(gameIsRevealed({ ...base, revealOverride: true }, before)).toBe(
+      true,
+    );
+    expect(gameIsRevealed({ ...base, revealOverride: false }, after)).toBe(
+      false,
+    );
   });
 });
 

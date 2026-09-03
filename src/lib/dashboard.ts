@@ -1,9 +1,16 @@
 import type {
   EntrySummary,
+  GameDay,
+  GameRow,
   GridCell,
   PickResult,
   WeekRow,
 } from "@/lib/data/types";
+import {
+  deadlineTier,
+  pickDeadlineIso,
+  type DeadlineTier,
+} from "@/lib/deadlines";
 
 const LOSS_RESULTS: PickResult[] = ["loss", "tie_loss", "missed"];
 
@@ -76,42 +83,71 @@ export function nextDeadline(weeks: WeekRow[], now: Date): WeekRow | null {
 
 export interface LockBoundary {
   week: number;
-  /** all = every pick locks at once (week 1); early = Wed/Thu/Fri games; late = Sat-Mon. */
-  kind: "all" | "early" | "late";
+  /** Which game-day tier this boundary closes. `late` is the Sat-Mon window. */
+  kind: DeadlineTier;
   deadlineAt: string;
 }
 
 /**
- * The next pick-lock boundary of any kind: each week locks Wed/Thu/Fri-game
- * picks at its early deadline and everything else at the late one.
+ * The next deadline any entry actually faces.
+ *
+ * It has to consult the schedule, not just the week's two stored boundaries:
+ * the tiers are per game day, so a week with a Wednesday game closes those
+ * picks a day BEFORE its early deadline, and a week with a Friday game closes
+ * those a day after. Reading only early/late would advertise Wednesday as the
+ * next lock while Seahawks picks were closing on Tuesday.
+ *
+ * A tier is only offered if the week has a game on that day; the Sat-Mon
+ * boundary is always offered, since it is the week's full lock.
  */
 export function nextLockBoundary(
   weeks: WeekRow[],
+  games: Pick<GameRow, "week" | "dayOfWeek">[],
   now: Date,
 ): LockBoundary | null {
+  const daysByWeek = new Map<number, Set<DeadlineTier>>();
+  for (const g of games) {
+    const set = daysByWeek.get(g.week) ?? new Set<DeadlineTier>();
+    set.add(deadlineTier(g.dayOfWeek));
+    daysByWeek.set(g.week, set);
+  }
+
   const upcoming: LockBoundary[] = [];
   for (const w of weeks) {
-    const single = w.earlyDeadlineAt === w.lateDeadlineAt;
-    if (new Date(w.earlyDeadlineAt) > now) {
-      upcoming.push({
-        week: w.week,
-        kind: single ? "all" : "early",
-        deadlineAt: w.earlyDeadlineAt,
-      });
-    }
-    if (!single && new Date(w.lateDeadlineAt) > now) {
-      upcoming.push({ week: w.week, kind: "late", deadlineAt: w.lateDeadlineAt });
+    const tiers = daysByWeek.get(w.week) ?? new Set<DeadlineTier>();
+    for (const kind of ["wed", "thu", "fri", "late"] as const) {
+      // The late boundary is the week's full lock and always applies — a
+      // bye or an entry with no pick yet is governed by it.
+      if (kind !== "late" && !tiers.has(kind)) continue;
+      const at = pickDeadlineIso(
+        TIER_DAY[kind],
+        w.earlyDeadlineAt,
+        w.lateDeadlineAt,
+      );
+      if (new Date(at) > now) {
+        upcoming.push({ week: w.week, kind, deadlineAt: at });
+      }
     }
   }
   upcoming.sort(
-    (a, b) => new Date(a.deadlineAt).getTime() - new Date(b.deadlineAt).getTime(),
+    (a, b) =>
+      new Date(a.deadlineAt).getTime() - new Date(b.deadlineAt).getTime(),
   );
   return upcoming[0] ?? null;
 }
 
+/** A representative game day per tier, to drive the shared derivation. */
+const TIER_DAY: Record<DeadlineTier, GameDay> = {
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  late: "Sunday",
+};
+
 export const LOCK_KIND_LABEL: Record<LockBoundary["kind"], string> = {
-  all: "all picks",
-  early: "Wed/Thu/Fri picks",
+  wed: "Wednesday-game picks",
+  thu: "Thursday-game picks",
+  fri: "Friday-game picks",
   late: "Sat–Mon picks",
 };
 

@@ -43,9 +43,12 @@ export function pickDeadlineIso(
 ): string {
   const tier = deadlineTier(day);
   if (tier === "late") return lateDeadlineAt;
+  // Thursday IS the stored early boundary, so hand back exactly what was
+  // given rather than round-tripping it through Date — otherwise the string
+  // format would depend on the tier, which callers compare on.
+  if (tier === "thu") return earlyDeadlineAt;
   const early = new Date(earlyDeadlineAt).getTime();
-  const offset = tier === "wed" ? -DAY_MS : tier === "fri" ? DAY_MS : 0;
-  return new Date(early + offset).toISOString();
+  return new Date(early + (tier === "wed" ? -DAY_MS : DAY_MS)).toISOString();
 }
 
 /** Short label for the tier, for column headers and legends. */
