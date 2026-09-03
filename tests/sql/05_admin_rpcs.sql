@@ -808,3 +808,49 @@ begin
 end $$;
 
 rollback;
+
+
+-- ---------------------------------------------------------------------------
+-- No admin_* RPC is callable by PUBLIC or anon
+--
+-- Postgres grants EXECUTE to PUBLIC on a newly created function unless it is
+-- revoked, and `create or replace` only carries forward what the first CREATE
+-- left. That is how admin_mark_resent_as_new shipped callable by anon. RLS still
+-- stood behind it, but the gate is not supposed to rest on RLS alone — so assert
+-- the whole family at once rather than one function at a time.
+-- ---------------------------------------------------------------------------
+begin;
+
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(format('%s [%s]', p.proname, a.grantee), ', ' order by p.proname)
+    into v_bad
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(p.proacl) as a
+   where n.nspname = 'public'
+     and p.proname like 'admin\_%'
+     and p.proacl is not null
+     and a.privilege_type = 'EXECUTE'
+     and (a.grantee = 0                                    -- 0 is PUBLIC
+          or a.grantee = (select oid from pg_roles where rolname = 'anon'));
+  if v_bad is not null then
+    raise exception 'admin RPC executable by PUBLIC/anon: %', v_bad;
+  end if;
+
+  -- A null proacl means defaults are in force, which for a function IS
+  -- EXECUTE to PUBLIC. Equally bad, and invisible to the check above.
+  select string_agg(p.proname, ', ' order by p.proname) into v_bad
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname like 'admin\_%'
+     and p.proacl is null;
+  if v_bad is not null then
+    raise exception 'admin RPC left at default grants (PUBLIC can execute): %', v_bad;
+  end if;
+end $$;
+
+rollback;
