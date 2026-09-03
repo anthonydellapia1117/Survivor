@@ -579,3 +579,88 @@ begin
 end $$;
 
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- admin_resync_default_entry_names: owner names that are blank or padded
+--
+-- Lynne matches entry names exactly. An owner name carrying edge whitespace
+-- used to produce "Name  #1" with a doubled space, and an all-blank name a bare
+-- " #1" — neither caught by the old NULL check, which could not fire anyway
+-- because both name columns are NOT NULL.
+-- ---------------------------------------------------------------------------
+begin;
+select set_config('request.jwt.claims', '{"role":"admin","email":"test"}', true);
+
+do $$
+declare
+  v_pad uuid;
+  v_blank uuid;
+  res jsonb;
+  v_name text;
+begin
+  -- Edge whitespace is trimmed out of the generated name, not carried into it.
+  v_pad := admin_create_owner('Ernie', 'DellaPia Jr.', 'pad@example.com', null,
+                              'email', null, array['x #1', 'x #2'], false, 'test');
+  update entries set name_is_default = true where owner_id = v_pad;
+  update owners set last_name = 'DellaPia Jr. ' where id = v_pad;
+
+  res := admin_resync_default_entry_names(v_pad, 'test', 'padded name');
+  if (res->>'renamed')::int <> 2 then
+    raise exception 'expected 2 re-derived, got %', res->>'renamed';
+  end if;
+
+  select entry_name into v_name
+    from entries where owner_id = v_pad and entry_index = 1;
+  if v_name <> 'Ernie DellaPia Jr. #1' then
+    raise exception 'padded owner name leaked into the entry name: %',
+      quote_literal(v_name);
+  end if;
+  if v_name ~ '  ' then
+    raise exception 'doubled space in generated entry name: %', quote_literal(v_name);
+  end if;
+
+  -- The owners row itself is left exactly as stored — names are verbatim.
+  select last_name into v_name from owners where id = v_pad;
+  if v_name <> 'DellaPia Jr. ' then
+    raise exception 'the resync rewrote the owner name to %', quote_literal(v_name);
+  end if;
+
+  -- A name with nothing left after trimming is refused outright, never minted
+  -- as " #1".
+  v_blank := admin_create_owner('Temp', 'Owner', 'blank@example.com', null,
+                                'email', null, array['y #1'], false, 'test');
+  update entries set name_is_default = true where owner_id = v_blank;
+  update owners set first_name = ' ', last_name = '' where id = v_blank;
+
+  begin
+    res := admin_resync_default_entry_names(v_blank, 'test', 'blank name');
+    raise exception 'a blank owner name was allowed to generate entry names';
+  exception when others then
+    if sqlerrm like '%has no usable name%' then
+      null;  -- expected
+    elsif sqlerrm like '%was allowed to generate%' then
+      raise;
+    else
+      raise exception 'wrong error for a blank owner name: %', sqlerrm;
+    end if;
+  end;
+
+  -- Nothing was written on the refused call.
+  select entry_name into v_name from entries where owner_id = v_blank;
+  if v_name <> 'y #1' then
+    raise exception 'refused call still rewrote the entry to %', quote_literal(v_name);
+  end if;
+
+  -- A genuinely absent owner still reports as not found, not as a name problem.
+  begin
+    res := admin_resync_default_entry_names(
+             '00000000-0000-0000-0000-000000000000'::uuid, 'test', 'missing');
+    raise exception 'a missing owner did not raise';
+  exception when others then
+    if sqlerrm not like '%not found%' then
+      raise exception 'missing owner reported as %', sqlerrm;
+    end if;
+  end;
+end $$;
+
+rollback;
