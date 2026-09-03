@@ -7,17 +7,19 @@
 
 import type {
   EntrySummary,
+  GameRow,
   GridCell,
   LynneImportRow,
   WeekRow,
 } from "@/lib/data/types";
 import type { AdminOwner, AdminPayment } from "@/lib/data/admin-types";
-import {
-  freeEntriesEarned,
-  lynneRemittanceCents,
-} from "@/lib/pool";
+import { freeEntriesEarned, lynneRemittanceCents } from "@/lib/pool";
 import { STATUS_LABEL, STATUS_ORDER, SKIP_WEEK } from "@/lib/standing";
-import { standingsBreakdown } from "@/lib/dashboard";
+import {
+  standingsBreakdown,
+  nextLockBoundary,
+  LOCK_KIND_LABEL,
+} from "@/lib/dashboard";
 import { COLORS, type CellSpec, type TabSpec, type RgbColor } from "./types";
 
 export interface PoolConfig {
@@ -45,6 +47,8 @@ export interface SheetsInput {
   now: Date;
   entries: EntrySummary[];
   weeks: WeekRow[];
+  /** Needed for the deadline tiers — a week has several, by game day. */
+  games: GameRow[];
   cells: GridCell[];
   owners: AdminOwner[];
   payments: AdminPayment[];
@@ -55,7 +59,7 @@ export interface SheetsInput {
 
 const MONEY = "$#,##0";
 const DATE_FMT = "ddd, mmm d";
-const DATETIME_FMT = 'ddd, mmm d h:mm am/pm';
+const DATETIME_FMT = "ddd, mmm d h:mm am/pm";
 
 const STATUS_COLOR: Record<string, RgbColor> = {
   active: COLORS.win,
@@ -133,7 +137,10 @@ export function buildSummary(input: SheetsInput): TabSpec {
   const paid = confirmed.reduce((s, o) => s + o.paidCents, 0);
   const b = standingsBreakdown(entries);
   const nowMs = now.getTime();
-  const nextWeek = weeks.find((w) => new Date(w.deadlineAt).getTime() > nowMs);
+  // The next deadline any entry actually faces, not the week's full lock:
+  // deadlines are tiered by game day, so before Week 1 the true next cutoff
+  // is Tuesday (the Wednesday game), not Friday.
+  const nextLock = nextLockBoundary(weeks, input.games, now);
   const playWeek =
     [...weeks].reverse().find((w) => new Date(w.deadlineAt).getTime() <= nowMs)
       ?.week ?? weeks[0]?.week;
@@ -143,7 +150,9 @@ export function buildSummary(input: SheetsInput): TabSpec {
 
   const cols = 4;
   const bar = (n: number, color: RgbColor): CellSpec => ({
-    v: "█".repeat(Math.max(0, Math.round((n / Math.max(1, entries.length)) * 24))),
+    v: "█".repeat(
+      Math.max(0, Math.round((n / Math.max(1, entries.length)) * 24)),
+    ),
     color,
   });
 
@@ -158,7 +167,18 @@ export function buildSummary(input: SheetsInput): TabSpec {
     extra2: CellSpec = {},
   ) => {
     const bg = band(rows.length);
-    rows.push(pad([{ v: label, color: COLORS.muted, bg }, { ...value, bg }, { ...extra, bg }, { ...extra2, bg }], cols, bg));
+    rows.push(
+      pad(
+        [
+          { v: label, color: COLORS.muted, bg },
+          { ...value, bg },
+          { ...extra, bg },
+          { ...extra2, bg },
+        ],
+        cols,
+        bg,
+      ),
+    );
   };
 
   push("Pot collected", { v: paid / 100, numberFormat: MONEY, bold: true });
@@ -173,40 +193,44 @@ export function buildSummary(input: SheetsInput): TabSpec {
   push("", {});
   push("Active", { v: b.active }, bar(b.active, COLORS.win));
   push("At risk", { v: b.atRisk }, bar(b.atRisk, COLORS.tie));
-  push("Bye eligible", { v: b.byeEligible }, bar(b.byeEligible, COLORS.accentBlue));
+  push(
+    "Bye eligible",
+    { v: b.byeEligible },
+    bar(b.byeEligible, COLORS.accentBlue),
+  );
   push("Bye used", { v: b.byeUsed }, bar(b.byeUsed, COLORS.bye));
   push("Eliminated", { v: b.eliminated }, bar(b.eliminated, COLORS.loss));
   push("", {});
   push("Current week", { v: playWeek ?? "—" });
   push(
     "Next deadline",
-    nextWeek
+    nextLock
       ? {
-          v: `W${nextWeek.week} — ${etString(nextWeek.deadlineAt)}`,
+          v: `W${nextLock.week} ${LOCK_KIND_LABEL[nextLock.kind]} — ${etString(
+            nextLock.deadlineAt,
+          )}`,
         }
       : { v: "season complete" },
   );
   push("Lynne remittance owed", {
-    v: lynneRemittanceCents(entries.filter((e) => !e.isFreeEntry).length, {
-      tier13Cents: config.tier13Cents,
-      tier4PlusCents: config.tier4PlusCents,
-      lynneRateCents: config.lynneRateCents,
-      freeEntryRatio: config.freeEntryRatio,
-    }) / 100,
+    v:
+      lynneRemittanceCents(entries.filter((e) => !e.isFreeEntry).length, {
+        tier13Cents: config.tier13Cents,
+        tier4PlusCents: config.tier4PlusCents,
+        lynneRateCents: config.lynneRateCents,
+        freeEntryRatio: config.freeEntryRatio,
+      }) / 100,
     numberFormat: MONEY,
   });
   // Free-entry rule: FLOOR(recruited / ratio) — recruited entries, not
   // payment-covered ones.
   push("Free entries earned", {
-    v: freeEntriesEarned(
-      entries.filter((e) => !e.isFreeEntry).length,
-      {
-        tier13Cents: config.tier13Cents,
-        tier4PlusCents: config.tier4PlusCents,
-        lynneRateCents: config.lynneRateCents,
-        freeEntryRatio: config.freeEntryRatio,
-      },
-    ),
+    v: freeEntriesEarned(entries.filter((e) => !e.isFreeEntry).length, {
+      tier13Cents: config.tier13Cents,
+      tier4PlusCents: config.tier4PlusCents,
+      lynneRateCents: config.lynneRateCents,
+      freeEntryRatio: config.freeEntryRatio,
+    }),
   });
   push("Generated", { v: now.toISOString(), color: COLORS.muted });
 
@@ -300,7 +324,13 @@ function gridCell(c: GridCell | undefined, bandBg: RgbColor): CellSpec {
         strikethrough: true,
       };
     default:
-      return { ...base, v: c.team, bg: COLORS.pendingBg, color: COLORS.muted, bold: false };
+      return {
+        ...base,
+        v: c.team,
+        bg: COLORS.pendingBg,
+        color: COLORS.muted,
+        bold: false,
+      };
   }
 }
 
@@ -341,7 +371,12 @@ export function buildEntries(input: SheetsInput): TabSpec {
     rows.push([
       dotCell(e.entryName, e.status, bg),
       { v: e.ownerName, bg, color: COLORS.muted },
-      { v: STATUS_LABEL[e.status], bg, color: STATUS_COLOR[e.status], bold: true },
+      {
+        v: STATUS_LABEL[e.status],
+        bg,
+        color: STATUS_COLOR[e.status],
+        bold: true,
+      },
       { v: e.livesRemaining, bg },
       { v: e.wins, bg },
       { v: e.losses, bg },
@@ -381,7 +416,11 @@ export function buildOwners(input: SheetsInput): TabSpec {
     const bg = band(i);
     const bal = o.dueCents - o.paidCents;
     const balColor =
-      bal <= 0 ? COLORS.paidGreen : o.paidCents > 0 ? COLORS.partial : COLORS.loss;
+      bal <= 0
+        ? COLORS.paidGreen
+        : o.paidCents > 0
+          ? COLORS.partial
+          : COLORS.loss;
     rows.push([
       { v: `${o.firstName} ${o.lastName}`, bg },
       { v: o.entryCount, bg },
@@ -400,7 +439,11 @@ export function buildOwners(input: SheetsInput): TabSpec {
   const paid = confirmed.reduce((s, o) => s + o.paidCents, 0);
   rows.push([
     { v: "TOTAL", bold: true, borderTop: true },
-    { v: confirmed.reduce((s, o) => s + o.entryCount, 0), bold: true, borderTop: true },
+    {
+      v: confirmed.reduce((s, o) => s + o.entryCount, 0),
+      bold: true,
+      borderTop: true,
+    },
     { v: due / 100, numberFormat: MONEY, bold: true, borderTop: true },
     { v: paid / 100, numberFormat: MONEY, bold: true, borderTop: true },
     { v: (due - paid) / 100, numberFormat: MONEY, bold: true, borderTop: true },
@@ -426,18 +469,28 @@ export function buildPayments(input: SheetsInput): TabSpec {
   const { now, payments } = input;
   const chrono = [...payments].sort(
     (a, b) =>
-      a.paidOn.localeCompare(b.paidOn) || a.createdAt.localeCompare(b.createdAt),
+      a.paidOn.localeCompare(b.paidOn) ||
+      a.createdAt.localeCompare(b.createdAt),
   );
   const cols = 7;
   const rows: CellSpec[][] = [
     banner(now, cols),
     header(
-      ["Payment ID", "Owner", "Amount", "Method", "Date", "Venmo txn", "Note / corrects"],
+      [
+        "Payment ID",
+        "Owner",
+        "Amount",
+        "Method",
+        "Date",
+        "Venmo txn",
+        "Note / corrects",
+      ],
       cols,
     ),
   ];
   chrono.forEach((p, i) => {
-    const isCorrection = p.correctsPaymentId !== null || p.method === "correction";
+    const isCorrection =
+      p.correctsPaymentId !== null || p.method === "correction";
     const bg = isCorrection ? COLORS.correctionBg : band(i);
     const note = [
       p.note ?? "",
@@ -447,7 +500,11 @@ export function buildPayments(input: SheetsInput): TabSpec {
       .join(" · ");
     rows.push([
       { v: p.id.slice(0, 8), bg, color: COLORS.muted, fontSize: 9 },
-      { v: p.ownerName ?? "UNMATCHED", bg, color: p.ownerName ? COLORS.text : COLORS.tie },
+      {
+        v: p.ownerName ?? "UNMATCHED",
+        bg,
+        color: p.ownerName ? COLORS.text : COLORS.tie,
+      },
       {
         v: p.amountCents / 100,
         numberFormat: MONEY,
@@ -471,7 +528,12 @@ export function buildPayments(input: SheetsInput): TabSpec {
     { borderTop: true },
     { borderTop: true },
     { borderTop: true },
-    { v: "must equal Summary · Pot collected", color: COLORS.muted, fontSize: 9, borderTop: true },
+    {
+      v: "must equal Summary · Pot collected",
+      color: COLORS.muted,
+      fontSize: 9,
+      borderTop: true,
+    },
   ]);
   return {
     title: "Payments",
@@ -502,7 +564,16 @@ export function buildPicks(input: SheetsInput): TabSpec {
   const rows: CellSpec[][] = [
     banner(now, cols),
     header(
-      ["Entry", "Week", "Team", "Submitted", "Source", "Late", "Result", "Superseded"],
+      [
+        "Entry",
+        "Week",
+        "Team",
+        "Submitted",
+        "Source",
+        "Late",
+        "Result",
+        "Superseded",
+      ],
       cols,
     ),
   ];
@@ -516,14 +587,23 @@ export function buildPicks(input: SheetsInput): TabSpec {
       { v: p.source, bg, color: COLORS.muted },
       { v: p.late ? "LATE" : "", bg, color: COLORS.tie, bold: p.late },
       { v: p.result ?? "pending", bg },
-      { v: p.superseded ? "superseded" : "", bg, color: COLORS.muted, italic: true },
+      {
+        v: p.superseded ? "superseded" : "",
+        bg,
+        color: COLORS.muted,
+        italic: true,
+      },
     ]);
   });
   if (pickLog.length === 0) {
     // A tab whose only rows are the frozen banner+header is rejected by the
     // Sheets API ("can't freeze all visible rows").
     rows.push(
-      pad([{ v: "No picks recorded yet", color: COLORS.muted }], cols, COLORS.bandA),
+      pad(
+        [{ v: "No picks recorded yet", color: COLORS.muted }],
+        cols,
+        COLORS.bandA,
+      ),
     );
   }
   return {
@@ -585,17 +665,29 @@ export function buildLynne(input: SheetsInput): TabSpec {
       { v: im.importedAt, bg, numberFormat: DATETIME_FMT, fontSize: 9 },
       { v: im.rowCount ?? 0, bg },
       { v: im.matchedCount ?? 0, bg, color: COLORS.paidGreen },
-      { v: (im.unmatched ?? []).length, bg, color: (im.unmatched ?? []).length > 0 ? COLORS.loss : COLORS.muted },
+      {
+        v: (im.unmatched ?? []).length,
+        bg,
+        color: (im.unmatched ?? []).length > 0 ? COLORS.loss : COLORS.muted,
+      },
     ]);
   }
   if (ordered.length === 0) {
-    rows.push(pad([{ v: "No imports yet", color: COLORS.muted }], cols, COLORS.bandA));
+    rows.push(
+      pad([{ v: "No imports yet", color: COLORS.muted }], cols, COLORS.bandA),
+    );
   }
 
   rows.push(pad([{}], cols, COLORS.bandA));
   rows.push(
     pad(
-      [{ v: "VARIANCES — local record vs. her file, unresolved", bold: true, color: COLORS.tie }],
+      [
+        {
+          v: "VARIANCES — local record vs. her file, unresolved",
+          bold: true,
+          color: COLORS.tie,
+        },
+      ],
       cols,
       COLORS.bandA,
     ),
@@ -614,7 +706,9 @@ export function buildLynne(input: SheetsInput): TabSpec {
     for (const v of (im.variances ?? []) as V[]) {
       const bg = band(bandI++);
       const fmt = (x?: { team?: string | null; result?: string | null }) =>
-        x ? [x.team ?? "no pick", x.result ?? ""].filter(Boolean).join(" · ") : "—";
+        x
+          ? [x.team ?? "no pick", x.result ?? ""].filter(Boolean).join(" · ")
+          : "—";
       rows.push([
         { v: im.week ?? "", bg },
         { v: v.entryName ?? "?", bg },
@@ -673,7 +767,11 @@ export function buildConfig(input: SheetsInput): TabSpec {
     );
   };
   push("Entries 1-3, price each", config.tier13Cents / 100, MONEY);
-  push("Entries 4+, price each (all entries)", config.tier4PlusCents / 100, MONEY);
+  push(
+    "Entries 4+, price each (all entries)",
+    config.tier4PlusCents / 100,
+    MONEY,
+  );
   push("Lynne remittance per entry", config.lynneRateCents / 100, MONEY);
   push("Free entry per N paid entries", config.freeEntryRatio);
   push("Double elimination through week", config.doubleElimThroughWeek);
@@ -684,13 +782,7 @@ export function buildConfig(input: SheetsInput): TabSpec {
   push("Timezone", config.timezone);
   push("", "");
   const bg2 = COLORS.bandB;
-  rows.push(
-    pad(
-      [{ v: "PICK DEADLINES", bold: true, bg: bg2 }],
-      cols,
-      bg2,
-    ),
-  );
+  rows.push(pad([{ v: "PICK DEADLINES", bold: true, bg: bg2 }], cols, bg2));
   for (const w of weeks) {
     const bg = band(rows.length);
     rows.push(

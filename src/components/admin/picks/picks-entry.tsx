@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
   EntrySummary,
@@ -73,6 +73,17 @@ export function PicksEntry({
 }) {
   const router = useRouter();
 
+  // A tier boundary can pass while this page sits open. Without a ticking
+  // clock the memo below never recomputes -- neither the week nor the schedule
+  // changes -- so the header would keep naming an expired cutoff as "next"
+  // and call still-open teams late. Once a minute is plenty for a noon
+  // deadline and costs nothing.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const [week, setWeek] = useState<number>(() => {
     const now = Date.now();
     return (
@@ -134,7 +145,7 @@ export function PicksEntry({
   // database was about to flag it late.
   const nextTier = useMemo(() => {
     if (!selectedWeek) return null;
-    const now = Date.now();
+    const now = nowMs;
     const tiers = new Set(
       games
         .filter((g) => g.week === selectedWeek.week)
@@ -156,9 +167,9 @@ export function PicksEntry({
       options[options.length - 1] ??
       null
     );
-  }, [selectedWeek, games]);
+  }, [selectedWeek, games, nowMs]);
 
-  const rel = nextTier ? relDeadline(nextTier.at, Date.now()) : null;
+  const rel = nextTier ? relDeadline(nextTier.at, nowMs) : null;
 
   /** Deadline for one team in the selected week, or null for a bye/no game. */
   const teamDeadline = useMemo(
@@ -185,7 +196,7 @@ export function PicksEntry({
       team === SKIP_WEEK
         ? selectedWeek.lateDeadlineAt
         : (teamDeadline.get(team) ?? selectedWeek.lateDeadlineAt);
-    return new Date(at).getTime() < Date.now();
+    return new Date(at).getTime() < nowMs;
   };
 
   const lateStaged = Object.entries(staged).filter(([, t]) => isTeamLate(t));

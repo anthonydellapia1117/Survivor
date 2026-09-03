@@ -77,7 +77,12 @@ function payment(
   };
 }
 
-function cell(entryId: string, week: number, team: string, result: GridCell["result"]): GridCell {
+function cell(
+  entryId: string,
+  week: number,
+  team: string,
+  result: GridCell["result"],
+): GridCell {
   return {
     entryId,
     week,
@@ -107,7 +112,26 @@ function baseInput(): SheetsInput {
       resultsFinal: false,
       confirmed: true,
     })),
-    cells: [cell("e1", 1, "KC", "win"), cell("e2", 1, "BUF", "loss"), cell("e3", 2, "SKIP_WEEK", "bye")],
+    // One Thursday game per week: the summary's next-deadline line is tiered
+    // by game day now, so the fixture has to carry a schedule.
+    games: Array.from({ length: 18 }, (_, i) => ({
+      id: `g${i + 1}`,
+      week: i + 1,
+      kickoffAt: `2026-09-${String(9 + i).padStart(2, "0")}T00:15:00Z`,
+      dayOfWeek: "Thursday" as const,
+      awayTeam: "KC",
+      homeTeam: "BUF",
+      homeScore: null,
+      awayScore: null,
+      status: "scheduled" as const,
+      revealOverride: null,
+      network: null,
+    })),
+    cells: [
+      cell("e1", 1, "KC", "win"),
+      cell("e2", 1, "BUF", "loss"),
+      cell("e3", 2, "SKIP_WEEK", "bye"),
+    ],
     owners: [owner("Alpha", 4, 10000, 10000), owner("Beta", 2, 6000, 0)],
     payments: [
       payment("p1", "o-Alpha", 10000),
@@ -223,8 +247,16 @@ describe("grid cells", () => {
     const flat = grid.rows.flat();
     const kc = flat.find((c) => c.v === "KC")!;
     const buf = flat.find((c) => c.v === "BUF")!;
-    expect(kc.bg).toEqual({ red: 0x10 / 255, green: 0xb9 / 255, blue: 0x81 / 255 });
-    expect(buf.bg).toEqual({ red: 0xef / 255, green: 0x44 / 255, blue: 0x44 / 255 });
+    expect(kc.bg).toEqual({
+      red: 0x10 / 255,
+      green: 0xb9 / 255,
+      blue: 0x81 / 255,
+    });
+    expect(buf.bg).toEqual({
+      red: 0xef / 255,
+      green: 0x44 / 255,
+      blue: 0x44 / 255,
+    });
     expect(flat.some((c) => c.v === "BYE")).toBe(true);
     expect(grid.frozenCols).toBe(1);
     expect(grid.frozenRows).toBe(2);
