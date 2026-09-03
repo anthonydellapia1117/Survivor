@@ -134,6 +134,55 @@ begin
   delete from payments where venmo_txn_id = txn;
 end $$;
 
+-- An owner whose id happens to be the nil uuid must not share a dedupe bucket
+-- with the unmatched pile. The earlier coalesce sentinel folded the two
+-- together; two partial indexes keep them apart by construction.
+do $$
+declare
+  nil_owner uuid := '00000000-0000-0000-0000-000000000000'::uuid;
+  txn text := 'nil-uuid-owner-0004';
+  rejected boolean := false;
+begin
+  insert into owners (id, first_name, last_name, participation_status)
+  values (nil_owner, 'Nil', 'Sentinel', 'confirmed');
+
+  -- quarantined row for this txn
+  insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+  values (null, 3000, 'venmo', current_date, txn, 'unmatched');
+
+  -- a real payment for the nil-uuid owner, same txn: a DIFFERENT bucket, so it
+  -- must be accepted. Under the sentinel index it collided with the row above.
+  insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+  values (nil_owner, 3000, 'venmo', current_date, txn, 'matched to nil-uuid owner');
+
+  if (select count(*) from payments where venmo_txn_id = txn) <> 2 then
+    raise exception 'the nil-uuid owner was deduped against the unmatched pile';
+  end if;
+
+  -- each bucket is still closed against itself
+  begin
+    insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+    values (nil_owner, 3000, 'venmo', current_date, txn, 'double entry');
+  exception when unique_violation then rejected := true;
+  end;
+  if not rejected then
+    raise exception 'the nil-uuid owner bucket accepted a double entry';
+  end if;
+
+  rejected := false;
+  begin
+    insert into payments (owner_id, amount_cents, method, paid_on, venmo_txn_id, note)
+    values (null, 3000, 'venmo', current_date, txn, 'second quarantine');
+  exception when unique_violation then rejected := true;
+  end;
+  if not rejected then
+    raise exception 'the unmatched bucket accepted a second quarantine';
+  end if;
+
+  delete from payments where venmo_txn_id = txn;
+  delete from owners where id = nil_owner;
+end $$;
+
 -- Corrections: new negative rows referencing the row they correct. The computed
 -- balance follows the ledger with no edit or delete.
 do $$
