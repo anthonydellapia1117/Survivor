@@ -1351,3 +1351,108 @@ begin
   end if;
 end $$;
 rollback;
+
+-- The numbering history covers entries that predate the trigger.
+--
+-- 20260904000055 read durable history from audit_log but filtered on
+-- action = 'mint_free_entries', so the history began the day the trigger did.
+-- AAA #1..#9 predate it -- seven minted by the old app-layer rule under
+-- 'add_entries', two by hand -- and production carries nine AAA rows with zero
+-- mint audit rows. Renaming the highest of those away still reused its number:
+--
+--   AAA #1..#4 present, no mint audit rows
+--   rename AAA #4 away and untick free
+--   -> "Renamed away" (not free) AND a fresh live AAA #4
+--
+-- Fixed by seeding the numbers in use at install time, and by matching any
+-- audit row that carries a `minted` array rather than one action name.
+begin;
+do $$
+declare
+  runner uuid;
+  victim uuid;
+  highest int;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+
+  -- Model production: AAA rows whose mint audit rows do not exist, with the
+  -- one-time backfill having recorded their numbers. (On a fresh replay the
+  -- migration's backfill runs before any AAA row exists, so it seeds nothing
+  -- and there is nothing for it to capture -- which is correct there and is
+  -- why this block stages the state by hand.)
+  delete from audit_log where action = 'mint_free_entries';
+  insert into audit_log (actor, action, target_table, target_id, after, note)
+  select 'system (free-entry rule)', 'free_entry_numbers_backfill', 'entries',
+         null,
+         jsonb_build_object('minted',
+           array_agg(e.entry_name order by
+                     (regexp_match(e.entry_name, '^AAA #?(\d+)$'))[1]::int)),
+         'staged by the test, exactly as 20260904000056 does'
+    from entries e
+   where e.entry_name ~ '^AAA #?\d+$';
+
+  select coalesce(max((regexp_match(entry_name,'^AAA #?(\d+)$'))[1]::int), 0)
+    into highest from entries where owner_id = runner and is_free_entry;
+  if highest < 1 then raise exception 'setup: expected a minted backlog'; end if;
+  if exists (select 1 from audit_log where action = 'mint_free_entries') then
+    raise exception 'setup: the mint audit rows should be gone';
+  end if;
+
+  select id into victim from entries
+   where owner_id = runner and entry_name = 'AAA #' || highest;
+  perform admin_update_entry(victim, 'Renamed away', null, false, 'test');
+
+  if exists (select 1 from entries where entry_name = 'AAA #' || highest) then
+    raise exception
+      'AAA #% came back: its number predates the trigger and was not in the seeded history',
+      highest;
+  end if;
+  if not exists (select 1 from entries
+                  where owner_id = runner and is_free_entry
+                    and entry_name = 'AAA #' || (highest + 1)) then
+    raise exception 'expected the re-mint to continue at AAA #%', highest + 1;
+  end if;
+end $$;
+rollback;
+
+-- A number in use with NO durable record behind it is the residual gap, and it
+-- is documented rather than papered over: place an AAA name outside the rule
+-- (a hand INSERT, or admin_add_entries with is_free) AFTER the backfill has
+-- run, then rename it away, and nothing remembers it. Closing that would mean
+-- recording on every write that happens to carry an AAA name, which is more
+-- machinery than the case is worth. What IS guaranteed: every number the rule
+-- minted, and every number in use when the history was introduced.
+do $$
+declare
+  runner uuid;
+  highest int;
+begin
+  select o.id into runner from owners o
+   where lower(o.email) = 'anthonydellapia@gmail.com' and o.deleted_at is null;
+  if runner is null then return; end if;   -- fixture has no runner
+  select coalesce(max((regexp_match(entry_name,'^AAA #?(\d+)$'))[1]::int), 0)
+    into highest from entries where entry_name ~ '^AAA #?\d+$';
+  if highest <> 0 then
+    raise exception
+      'the fixture unexpectedly carries AAA rows; the note above about the backfill seeding nothing needs revisiting';
+  end if;
+end $$;
+
+-- The seeding is a one-time record, not a claimed mint, and does not stack.
+do $$
+declare
+  n int;
+begin
+  select count(*) into n from audit_log
+   where action = 'free_entry_numbers_backfill';
+  if n > 1 then
+    raise exception 'the numbering backfill must be idempotent, found % rows', n;
+  end if;
+  -- It must not masquerade as a mint: nothing was created.
+  if exists (select 1 from audit_log
+              where action = 'free_entry_numbers_backfill'
+                and (after ? 'entitlement' or after ? 'held_before')) then
+    raise exception 'the backfill row must not look like a mint';
+  end if;
+end $$;
