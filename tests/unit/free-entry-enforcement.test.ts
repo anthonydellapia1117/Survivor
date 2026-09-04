@@ -173,6 +173,31 @@ describe("the trigger and the app agree on the free-entry constants", () => {
     }
   });
 
+  it("counts what the pool holds, not what the runner's row holds", () => {
+    // admin_merge_owner moves every source entry to the target and then
+    // archives the source. With the runner as source, the trigger fires in
+    // between and — counting only his own rows — re-minted the entire
+    // entitlement, restarting the numbering at AAA #1. Observed: four
+    // duplicated numbers Lynne holds, the new four stranded on an owner the
+    // next statement archived, and the merge reporting success.
+    //
+    // Neither read is really about which owner row an entry sits under today.
+    const held = MIGRATION.slice(MIGRATION.indexOf("into v_have"));
+    expect(MIGRATION).toMatch(/into v_have[\s\S]{0,400}?join owners o on o\.id = e\.owner_id/);
+    expect(
+      MIGRATION.slice(0, MIGRATION.indexOf("into v_have")).length,
+      "v_have must be read after the lock",
+    ).toBeGreaterThan(MIGRATION.indexOf("pg_advisory_xact_lock"));
+    // Neither the held count nor the numbering may be scoped to the runner.
+    const haveClause = held.slice(0, held.indexOf(";"));
+    expect(haveClause).not.toMatch(/owner_id = v_owner/);
+    const maxAt = MIGRATION.indexOf("into v_max");
+    const maxClause = MIGRATION.slice(maxAt, MIGRATION.indexOf(";", maxAt));
+    expect(maxClause).not.toMatch(/owner_id = v_owner/);
+    // ...but the mint itself still lands under the runner.
+    expect(MIGRATION).toMatch(/insert into entries[\s\S]{0,200}?values \(v_owner/);
+  });
+
   it("watches every input to the entitlement, not just entries", () => {
     // FLOOR(recruited / ratio) held against the runner's row reads from
     // exactly three tables. A trigger on only `entries` let the other two

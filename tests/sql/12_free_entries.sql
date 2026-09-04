@@ -971,3 +971,86 @@ begin
       'a function now takes an explicit row/table lock; re-check the lock ordering argument (% found)', n;
   end if;
 end $$;
+
+-- Merging the RUNNER as source must not re-mint his entitlement.
+--
+-- admin_merge_owner reassigns every source entry to the target and THEN
+-- archives the source. With the runner as source the trigger fires in
+-- between, at the one moment when he owns no free entries but is still a
+-- live confirmed owner. Counting only his own rows, it concluded the whole
+-- entitlement was owed and -- finding no AAA numbers under him either --
+-- restarted at 1. Observed before 20260904000048:
+--
+--   Brian Yost        live      AAA #1, AAA #2, AAA #3, AAA #4
+--   Anthony DellaPia  archived  AAA #1, AAA #2, AAA #3, AAA #4
+--
+-- Four duplicated numbers Lynne holds, the new four invisible on the roster,
+-- and the merge reporting success.
+begin;
+do $$
+declare
+  runner uuid;
+  target uuid;
+  before_free int;
+  dupes int;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  select count(*) into before_free from entries where is_free_entry;
+  if before_free < 1 then
+    raise exception 'setup: expected the runner to hold a backlog';
+  end if;
+
+  select o.id into target from owners o
+   where o.deleted_at is null and o.id <> runner
+     and exists (select 1 from entries e where e.owner_id = o.id)
+   limit 1;
+  perform admin_merge_owner(runner, target, 'test');
+
+  select count(*) into dupes from (
+    select entry_name from entries where is_free_entry
+     group by entry_name having count(*) > 1) d;
+  if dupes <> 0 then
+    raise exception 'merging the runner duplicated % AAA number(s)', dupes;
+  end if;
+  if (select count(*) from entries where is_free_entry) <> before_free then
+    raise exception 'merging the runner must not mint: had %, now %',
+      before_free, (select count(*) from entries where is_free_entry);
+  end if;
+  -- ...and nothing was left stranded on the archived owner.
+  if exists (select 1 from entries e join owners o on o.id = e.owner_id
+              where e.is_free_entry and o.deleted_at is not null) then
+    raise exception 'free entries were left on the archived owner';
+  end if;
+end $$;
+rollback;
+
+-- A free entry that has ended up under someone else still COUNTS. The rule is
+-- that FLOOR(recruited / ratio) of them exist, not that a particular owner row
+-- holds them, and /admin counts the same way. Minting another on top would
+-- double it; surfacing the anomaly is the same posture as a downward crossing.
+begin;
+do $$
+declare
+  runner uuid;
+  other uuid;
+  held int;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  select count(*) into held from entries where is_free_entry;
+
+  select o.id into other from owners o
+   where o.deleted_at is null and o.id <> runner limit 1;
+  update entries set owner_id = other,
+                     entry_index = (select coalesce(max(e2.entry_index), 0) + 1
+                                      from entries e2 where e2.owner_id = other)
+   where owner_id = runner and is_free_entry
+     and entry_index = (select min(entry_index) from entries
+                         where owner_id = runner and is_free_entry);
+
+  if (select count(*) from entries where is_free_entry) <> held then
+    raise exception 'moving a free entry to another owner must not mint another';
+  end if;
+end $$;
+rollback;
