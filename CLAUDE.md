@@ -198,6 +198,13 @@ recruited count), `owners` (who the runner is, and whose entries count) and
 importing the roster writes only `owners`, so the whole backlog stayed unminted
 until some unrelated entry write happened along.
 
+**It has now fired in production.** On 2026-09-04, TJ Auletto's four entries
+took recruited from 99 to 103 and the trigger minted `AAA #10` inside that same
+`admin_create_owner` call — issued as raw SQL with no app layer anywhere. The
+mint's `audit_log` row and the `create_owner` row carry the **identical**
+timestamp, which is what one transaction looks like; the mint row is written by
+`system (free-entry rule)` and records `held_before: 9, entitlement: 10`.
+
 It takes an advisory lock **before reading anything**. There is deliberately no
 "nothing is owed, skip the lock" shortcut, because that decision is itself made
 from an unlocked read: two transactions each adding one recruit to a roster of
@@ -300,11 +307,15 @@ cleared the still-need-to-ask flag.
 These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
 
-**As of 2026-09-04:** 94 recruited + 9 free = **103 entries**, 31 owner rows
-(29 of them carrying recruited entries). $2,420 due, $1,470 collected, $950
-outstanding, **$2,350 owed to Lynne** (94 × $25). 18 owners settled, 11 still
-owing. Every live entry is stamped as sent to Lynne and nothing has moved
-since — **+0 ✎0 −0**.
+**As of 2026-09-04:** 103 recruited + 10 free = **113 entries**, 34 owner rows
+(32 of them carrying recruited entries). $2,650 due, $1,500 collected, $1,150
+outstanding, **$2,575 owed to Lynne** (103 × $25). 19 owners settled, 13 still
+owing.
+
+**Lynne is owed ten additions — +10 ✎0 −0.** Three owners joined after the
+2026-09-03 send: Mario Tropea III (`Mario 3rd #1`–`#4`), Michael Ciarrocchi
+(`Mikecia`) and TJ Auletto (`TJA #1`–`#4`) — nine recruited entries, and
+`AAA #10`, which the trigger minted when those crossed 100.
 
 **Sent in two passes on 2026-09-03.** At the first the roster stood at 90, the
 full 90 went to her, and every bucket was clear. That pass was structured as 61
@@ -347,6 +358,13 @@ Two standing facts that are NOT snapshots and must survive:
   on the one pick email. **Do not split this into two owners** — see
   [why the tiers exist](#why-the-tiers-exist--admin-only). All four names are
   still `name_is_default`; nobody has supplied a real one.
+- **There are three Tropeas and they are three people.** `mariohockey97@yahoo.com`
+  is **Mario Tropea III**, who goes by "Mario 3rd" and owns `Mario 3rd #1`–`#4`
+  in this pool. `mariocentercity@gmail.com` is **Mario Tropea Jr.**, his father.
+  `tropea920@gmail.com` is **Anthony Tropea Sr**. All three are on Anthony's
+  distribution lists; only Mario III is in Survivor. **Never merge them, and
+  never attach entries to the wrong one** — set 2026-09-04, when the four
+  entries went in.
 - **Ray Vassallo and John Vassallo are not a shared arrangement.** Ray covers
   `Johnvas #1`–`#2`; John Vassallo is separately in for four. They came to
   Anthony independently and the names are a coincidence. No action, ever —
