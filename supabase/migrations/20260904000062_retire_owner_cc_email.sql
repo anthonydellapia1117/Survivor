@@ -42,6 +42,14 @@ begin
      -- filters shells out for the same reason; this guard reads the table
      -- directly, so it has to do it itself.
      and o.merged_into_owner_id is null
+     -- A SELF-CC is not a second contact. sameAddress() in the app treated a
+     -- cc_email equal to the owner's own address as one person and never
+     -- emitted it, so dropping the column loses nothing there. The old edit
+     -- path permitted the value, so it can exist; requiring a gifted entry to
+     -- carry it would abort the migration over a contact that was never a
+     -- contact. Case-insensitive and trimmed, matching sameAddress exactly.
+     and lower(trim_name_ws(o.cc_email))
+         is distinct from lower(trim_name_ws(coalesce(o.email, '')))
      and not exists (
        select 1 from entries e
         where e.owner_id = o.id
