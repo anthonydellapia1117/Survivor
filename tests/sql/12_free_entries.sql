@@ -916,3 +916,58 @@ begin
   end if;
 end $$;
 rollback;
+
+-- The advisory lock is taken BEFORE the statement's row locks.
+--
+-- Taken in an AFTER trigger, a transaction is already holding row locks by the
+-- time it asks for it, so two transactions can acquire the same two resources
+-- in opposite orders. Reproduced with two sessions:
+--
+--   T1  update entries ... where owner_id = S   -> row locks, then advisory
+--   T2  update owners  ... where id = S         -> row lock, waits on advisory
+--   T1  update owners  ... where id = S         -> waits on T2's row lock
+--   ERROR: deadlock detected
+--
+-- admin_merge_owner is exactly that shape: entries then owners, one
+-- transaction. A BEFORE STATEMENT trigger runs before the statement takes any
+-- lock, so the order is the same for everyone and there is no cycle.
+--
+-- The interleaving needs two connections, so what is checked here is the
+-- property the argument rests on: the lock trigger exists on all three tables,
+-- fires BEFORE, and per statement.
+do $$
+declare
+  t text;
+  n int;
+begin
+  foreach t in array array['entries','owners','config'] loop
+    select count(*) into n
+      from pg_trigger tg join pg_class c on c.oid = tg.tgrelid
+     where c.relname = t
+       and not tg.tgisinternal
+       and tg.tgfoid = 'lock_free_entry_rule'::regproc
+       and (tg.tgtype & 2) = 2      -- BEFORE
+       and (tg.tgtype & 1) = 0;     -- statement level, not per row
+    if n <> 1 then
+      raise exception
+        'expected exactly one BEFORE STATEMENT lock trigger on %, found %', t, n;
+    end if;
+  end loop;
+end $$;
+
+-- ...and nothing else in the schema takes a row lock on those tables without
+-- going through it. A `select ... for update` or a `lock table` anywhere would
+-- reopen the cycle the BEFORE trigger closes.
+do $$
+declare
+  n int;
+begin
+  select count(*) into n from pg_proc p
+   join pg_namespace ns on ns.oid = p.pronamespace
+   where ns.nspname = 'public'
+     and p.prosrc ~* '(for\s+update|for\s+share|lock\s+table)';
+  if n <> 0 then
+    raise exception
+      'a function now takes an explicit row/table lock; re-check the lock ordering argument (% found)', n;
+  end if;
+end $$;

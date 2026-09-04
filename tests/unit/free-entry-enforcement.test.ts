@@ -145,6 +145,34 @@ describe("the trigger and the app agree on the free-entry constants", () => {
     }
   });
 
+  it("takes the lock before the statement's row locks, on every input table", () => {
+    // Acquired in an AFTER trigger, a transaction is already holding row locks
+    // when it asks for the advisory lock, so two transactions can take the
+    // same two resources in opposite orders. Reproduced: a merge-shaped
+    // transaction (entries then owners) deadlocked against a concurrent owner
+    // edit and PostgreSQL aborted one legitimate admin action. A BEFORE
+    // STATEMENT trigger runs before the statement takes any lock, which makes
+    // the order the same for everyone.
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => readFileSync(join(MIGRATIONS_DIR, f), "utf8"))
+      .join("\n");
+    expect(files).toMatch(
+      /create or replace function lock_free_entry_rule[\s\S]{0,600}?pg_advisory_xact_lock/,
+    );
+    for (const table of ["entries", "owners", "config"]) {
+      expect(
+        files,
+        `no BEFORE STATEMENT lock trigger on ${table}`,
+      ).toMatch(
+        new RegExp(
+          `create trigger \\w+\\s+before[\\s\\S]{0,120}?on ${table}\\b[\\s\\S]{0,120}?for each statement[\\s\\S]{0,120}?lock_free_entry_rule`,
+        ),
+      );
+    }
+  });
+
   it("watches every input to the entitlement, not just entries", () => {
     // FLOOR(recruited / ratio) held against the runner's row reads from
     // exactly three tables. A trigger on only `entries` let the other two
