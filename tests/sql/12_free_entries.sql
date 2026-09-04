@@ -1195,3 +1195,35 @@ begin
   insert into owners (first_name, last_name) values ('ReadCommitted','Fine');
 end $$;
 rollback;
+
+-- admin_merge_owner takes the rule's lock BEFORE it reads anything.
+--
+-- Its runner-as-source guard is the first thing it does, and it was deciding
+-- unlocked. With no runner yet, the merge could read the source's old email
+-- and pass, a concurrent admin_update_owner could set that email to the
+-- runner's and commit (minting the backlog under the source), and the merge
+-- would proceed on the stale answer -- archiving the sole runner and moving
+-- the entries it had just been given. Reproduced with two sessions.
+--
+-- The interleaving needs two connections; what is checked here is the property
+-- the fix rests on -- that nothing is read before the lock is held.
+do $$
+declare
+  v_src text;
+  lock_at int;
+  read_at int;
+begin
+  select prosrc into v_src from pg_proc where proname = 'admin_merge_owner';
+  lock_at := position('pg_advisory_xact_lock' in v_src);
+  read_at := position('o.email from owners o where o.id = p_source' in v_src);
+  if lock_at = 0 then
+    raise exception 'admin_merge_owner must take the rule''s advisory lock';
+  end if;
+  if read_at = 0 then
+    raise exception 'expected admin_merge_owner to guard on the source''s email';
+  end if;
+  if lock_at > read_at then
+    raise exception
+      'admin_merge_owner reads the source before locking, so its guard can decide from a snapshot another transaction invalidates';
+  end if;
+end $$;
