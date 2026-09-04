@@ -1147,3 +1147,51 @@ begin
   end if;
 end $$;
 rollback;
+
+-- REPEATABLE READ is refused, because the rule cannot hold under it.
+--
+-- The advisory lock works by making a waiter re-read the counts after the
+-- transaction ahead of it commits, and that depends on READ COMMITTED giving
+-- each statement a fresh snapshot. Under REPEATABLE READ the snapshot is fixed
+-- at the first statement and a lock does not refresh it, so the waiter blocks,
+-- acquires, re-reads, and sees exactly what it saw before. Measured with two
+-- sessions, 8 recruited at a ratio of 10, one recruit each:
+--
+--   read committed    recruited=10  free=1   correct
+--   repeatable read   recruited=10  free=0   SILENTLY UNDER-MINTED
+--   serializable      recruited=9   free=0   correct (SSI aborted one)
+--
+-- Only the middle one is refused. SERIALIZABLE is safe on its own terms.
+begin;
+set transaction isolation level repeatable read;
+do $$
+declare
+  ok boolean := false;
+begin
+  begin
+    insert into owners (first_name, last_name) values ('Repeatable','Read');
+  exception when invalid_transaction_state then
+    ok := true;
+  end;
+  if not ok then
+    raise exception 'a write under REPEATABLE READ must be refused';
+  end if;
+end $$;
+rollback;
+
+-- ...and the levels the rule IS correct under are not refused.
+begin;
+set transaction isolation level serializable;
+do $$
+begin
+  insert into owners (first_name, last_name) values ('Serializable','Fine');
+end $$;
+rollback;
+
+begin;
+set transaction isolation level read committed;
+do $$
+begin
+  insert into owners (first_name, last_name) values ('ReadCommitted','Fine');
+end $$;
+rollback;
