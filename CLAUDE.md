@@ -307,15 +307,23 @@ cleared the still-need-to-ask flag.
 These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
 
-**As of 2026-09-04:** 103 recruited + 10 free = **113 entries**, 34 owner rows
-(32 of them carrying recruited entries). $2,650 due, $1,500 collected, $1,150
-outstanding, **$2,575 owed to Lynne** (103 × $25). 19 owners settled, 13 still
+**As of 2026-09-04:** 101 recruited + 10 free = **111 entries**, 35 owner rows
+(32 of them carrying recruited entries). $2,610 due, $1,500 collected, $1,110
+outstanding, **$2,525 owed to Lynne** (101 × $25). 19 owners settled, 13 still
 owing.
 
-**Lynne is owed ten additions — +10 ✎0 −0.** Three owners joined after the
-2026-09-03 send: Mario Tropea III (`Mario 3rd #1`–`#4`), Michael Ciarrocchi
-(`Mikecia`) and TJ Auletto (`TJA #1`–`#4`) — nine recruited entries, and
-`AAA #10`, which the trigger minted when those crossed 100.
+**Lynne is owed twelve additions and four removals — +12 ✎0 −4.** Four owners
+joined after the 2026-09-03 send: Mario Tropea III (`Mario 3rd #1`–`#4`),
+Michael Ciarrocchi (`Mike Cia`), TJ Auletto (`TJA #1`–`#4`) and Linda DellaPia
+(`Linda DellaPia #1`–`#2`) — eleven recruited entries, plus `AAA #10`, which
+the trigger minted when those crossed 100. The four removals are John
+Vassallo's, below.
+
+**A rename she will never see.** `Mikecia` became `Mike Cia` on 2026-09-04 —
+his 2024 wording. The entry had not been sent, so it moves within the
+additions bucket rather than owing her a correction. Michael **sat out 2025
+and played 2024**; the absence of 2025 history is expected and is not a gap to
+re-investigate.
 
 **Sent in two passes on 2026-09-03.** At the first the roster stood at 90, the
 full 90 went to her, and every bucket was clear. That pass was structured as 61
@@ -365,10 +373,18 @@ Two standing facts that are NOT snapshots and must survive:
   distribution lists; only Mario III is in Survivor. **Never merge them, and
   never attach entries to the wrong one** — set 2026-09-04, when the four
   entries went in.
-- **Ray Vassallo and John Vassallo are not a shared arrangement.** Ray covers
-  `Johnvas #1`–`#2`; John Vassallo is separately in for four. They came to
-  Anthony independently and the names are a coincidence. No action, ever —
-  this is here so a future session stops re-finding it.
+- **Ray Vassallo covers all four Vassallo entries; John has none.**
+  `Rayvas #1`–`#2` and `Johnvas #1`–`#2` are Ray's, one owner, one payment.
+  **Superseded on 2026-09-04:** this note used to say John was separately in
+  for four and that the two were unrelated. The first half was wrong — John
+  and Ray each asked for four independently and it was the same four, so
+  `John Vassallo #1`–`#4` were **voided** on 2026-09-04 and his
+  `participation_status` set to `declined`. He paid nothing, so no refund is
+  owed. Anthony emailed both brothers confirming it. The entries are voided
+  and **not deleted**: Lynne received them on 2026-08-24 and the rows have to
+  survive to carry `submitted_as_name` into the removal bucket. What remains
+  true is the naming: `Johnvas` is Ray's wording for entries he pays for, not
+  evidence of a second owner.
 
 ## Working rules
 
