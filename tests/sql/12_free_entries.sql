@@ -1270,51 +1270,28 @@ begin
   end if;
 end $$;
 
--- TRUNCATE is a write too.
+-- TRUNCATE deliberately does NOT reconcile, and must not be re-added.
 --
--- PostgreSQL does not fire a statement trigger for TRUNCATE unless the trigger
--- names it, so emptying a watched table used to skip reconciliation. With a
--- ratio of 20 and 20 recruited, one free entry is owed and held; truncating
--- `config` drops the ratio to the fallback of 10, making two owed -- and
--- nothing was minted until some unrelated write came along.
+-- 20260904000054 made the triggers fire on TRUNCATE, closing a genuinely
+-- narrow gap: with a non-default ratio, `truncate config` drops the ratio to
+-- the fallback and raises the entitlement, and nothing minted until the next
+-- ordinary write. It was a bad trade and 20260904000055 reverted it.
 --
--- Narrow (it needs a non-default ratio and a bare TRUNCATE the app never
--- issues) but the rule's claim is unconditional, and "we listed three of the
--- four write shapes" is the same shape as the bug this all started with.
-begin;
-do $$
-declare
-  runner uuid;
-  names text[];
-  i int;
-begin
-  update entries set voided_at = now() where voided_at is null;
-  update config set free_entry_ratio = 20;
-  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
-                               '','email','', null, false, 'test');
-  names := array[]::text[];
-  for i in 1..20 loop names := names || format('R %s', i); end loop;
-  perform admin_create_owner('Twenty','Recruits','t20@example.com','','email','',
-                             names, true, 'test');
-  if (select count(*) from entries
-       where owner_id = runner and is_free_entry and voided_at is null) <> 1 then
-    raise exception 'setup: 20 recruited at a ratio of 20 owes exactly one';
-  end if;
-
-  truncate config;
-
-  if (select count(*) from entries
-       where owner_id = runner and is_free_entry and voided_at is null) <> 2 then
-    raise exception
-      'truncating config must reconcile: the ratio fell back to 10, so two are owed, and % are held',
-      (select count(*) from entries
-        where owner_id = runner and is_free_entry and voided_at is null);
-  end if;
-end $$;
-rollback;
-
--- ...and every watched table names TRUNCATE, so no fourth write shape is
--- quietly missing.
+-- For TRUNCATE, PostgreSQL takes the table's ACCESS EXCLUSIVE lock BEFORE
+-- firing the BEFORE trigger, so a truncating transaction holds a relation lock
+-- while waiting for the advisory lock -- the exact inversion the BEFORE trigger
+-- exists to prevent. A transaction that had written `entries` and then went to
+-- write `config` deadlocked against a concurrent `truncate config`:
+--
+--   ERROR:  deadlock detected
+--
+-- No trigger can fix that: the relation lock is already held by the time any
+-- trigger runs. It would need every truncating caller to take the advisory
+-- lock first, which the schema cannot enforce.
+--
+-- The accepted consequence: truncating a watched table leaves the entitlement
+-- unreconciled until the next ordinary write. The data backup is unaffected --
+-- it disables these triggers and settles at the end.
 do $$
 declare
   t text;
@@ -1326,9 +1303,51 @@ begin
      where c.relname = t and not tg.tgisinternal
        and tg.tgfoid in ('mint_free_entries'::regproc, 'lock_free_entry_rule'::regproc)
        and (tg.tgtype & 32) = 32;   -- TRUNCATE
-    if n <> 2 then
+    if n <> 0 then
       raise exception
-        'expected both the lock and mint triggers on % to fire for TRUNCATE, found %', t, n;
+        'the trigger on % fires for TRUNCATE again: that inverts the lock ordering, because the relation lock is taken before any trigger runs', t;
     end if;
   end loop;
 end $$;
+
+-- The numbering survives a row losing its number.
+--
+-- admin_update_entry writes entry_name and is_free_entry in one statement, so
+-- renaming the highest free entry AND unticking "free" creates the shortage
+-- and erases the evidence together. Keying the history on names still present
+-- in `entries` was not enough: observed, AAA #4 renamed away and a fresh live
+-- AAA #4 minted in its place, while Lynne may still hold the original.
+--
+-- audit_log carries every mint, in the same transaction as the mint, and is
+-- append-only by project rule -- so it is the store that outlives the row.
+begin;
+do $$
+declare
+  runner uuid;
+  victim uuid;
+  highest int;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  select coalesce(max((regexp_match(entry_name,'^AAA #?(\d+)$'))[1]::int), 0)
+    into highest from entries where owner_id = runner and is_free_entry;
+  if highest < 1 then raise exception 'setup: expected a minted backlog'; end if;
+
+  select id into victim from entries
+   where owner_id = runner and entry_name = 'AAA #' || highest;
+  -- Rename it away AND untick free, in one call, as the dialog does.
+  perform admin_update_entry(victim, 'Anthony bought this one', null, false, 'test');
+
+  if exists (select 1 from entries
+              where entry_name = 'AAA #' || highest) then
+    raise exception
+      'AAA #% was minted again after the row carrying it was renamed away', highest;
+  end if;
+  -- ...and the replacement continues past it, rather than reusing it.
+  if not exists (select 1 from entries
+                  where owner_id = runner and is_free_entry
+                    and entry_name = 'AAA #' || (highest + 1)) then
+    raise exception 'expected the re-mint to continue at AAA #%', highest + 1;
+  end if;
+end $$;
+rollback;
