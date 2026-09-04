@@ -514,6 +514,17 @@ Two standing facts that are NOT snapshots and must survive:
   the off-season — ripping out working machinery before Week 1 is the same
   mistake pointed the other way.
 
+  **Deferred to that same off-season pass:** a data backup names every column
+  that was live when it was taken, so a later column drop breaks an older
+  backup and — because the restore is one transaction — the WHOLE restore
+  rolls back. Real, and it will recur, because migrations here are
+  append-only and columns will be dropped again. The fix belongs in the dump
+  format (`src/lib/backup.ts`) and is queued as its own task. Changing
+  disaster-recovery machinery the week the season opens is the wrong risk.
+  The one instance that exists — `owners.cc_email`, a closed 13-hour window
+  on 2026-09-04 — carries its two-line remedy in migration
+  `20260904000062`.
+
 - **Never invent data.** No placeholder owners, no guessed amounts, no
   fabricated picks. If something is unknown, say it is unknown.
 - **Names verbatim** (above).
@@ -527,6 +538,23 @@ Two standing facts that are NOT snapshots and must survive:
 - **Matching is exact, then case-insensitive. Never fuzzy.** Applies to entry
   names, Lynne-number imports, and weekly result imports. Unmatched rows are
   reported, never guessed.
+- **A green test proves nothing until it has been made to fail.** Write the
+  guard, then break the thing it guards and watch it fail, then restore it.
+  A test that passes both ways is not coverage — it is a comment that costs
+  CI time, and it is worse than no test because it reads as protection.
+
+  Set 2026-09-04, when **four separate guards in one PR passed against the
+  exact regression each was written for**: a parameter pattern that could not
+  read `p_sha256`; a line-based scan that took only the first key on
+  single-line calls; a `startsWith` check that never matched because a JSX
+  ternary's `"}` sat between the two words; and a copy assertion that matched
+  the comment explaining the mistake instead of the mistake. Every one looked
+  like coverage in a green run. Every one was caught only by breaking its
+  subject on purpose.
+
+  This is why the verification notes in this repo's commits say "confirmed to
+  FAIL when broken" rather than "tests pass".
+
 - **Wait for the review to finish before merging.** Every review pass on this
   repo has found something real. Marking a PR ready and merging inside the
   review window costs nothing to wait for and has already cost one live P1 —
