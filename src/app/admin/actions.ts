@@ -33,49 +33,15 @@ function revalidateAll() {
   }
 }
 
-/**
- * The free-entry rule, applied automatically: FLOOR(recruited / ratio)
- * free entries under the runner's participant row, named "AAA n". Runs
- * after every action that changes the entry population. Only ever
- * CREATES — a downward threshold crossing is surfaced on /admin, never
- * auto-deleted. Failures never break the triggering action; the /admin
- * entitlement check is the backstop.
- */
-async function syncFreeEntries(actor: string): Promise<void> {
-  try {
-    const { freeEntitlement, nextFreeNames, FREE_ENTRY_OWNER_EMAIL } =
-      await import("@/lib/free-entries");
-    const admin = getAdminData();
-    const [owners, entries, config] = await Promise.all([
-      admin.listOwners(),
-      admin.listEntries(),
-      admin.getConfig(),
-    ]);
-    const me = owners.find(
-      (o) =>
-        o.email?.toLowerCase() === FREE_ENTRY_OWNER_EMAIL &&
-        o.participationStatus === "confirmed",
-    );
-    if (!me) return;
-    const live = entries.filter((e) => !e.voidedAt);
-    const recruited = live.filter((e) => !e.isFreeEntry).length;
-    const target = freeEntitlement(recruited, config.freeEntryRatio);
-    const mine = live
-      .filter((e) => e.ownerId === me.id && e.isFreeEntry)
-      .map((e) => e.entryName);
-    const names = nextFreeNames(mine, target);
-    if (names.length === 0) return;
-    await admin.addEntries({
-      ownerId: me.id,
-      entryNames: names,
-      nameIsDefault: false,
-      isFree: true,
-      actor: `${actor} (free-entry rule)`,
-    });
-  } catch (err) {
-    console.error("free-entry sync failed:", err);
-  }
-}
+// The free-entry rule used to be applied here, after every action that
+// changed the entry population. It is now the `mint_free_entries` trigger,
+// running on every table the entitlement reads from — `entries`, `owners` and
+// `config` — so it holds for RPC calls, imports and hand-applied SQL as well,
+// every one of which this file could only ever miss. Removing the copy here is
+// the point: two implementations of one entitlement is the drift that
+// under-minted AAA #9 on 2026-09-03. The mint commits inside the same
+// transaction as the write that earned it, so it is already visible by the
+// time revalidateAll runs.
 
 export async function createOwnerAction(input: {
   firstName: string;
@@ -89,7 +55,6 @@ export async function createOwnerAction(input: {
 }): Promise<ActionResult> {
   return guarded(async (actor) => {
     const id = await getAdminData().createOwner({ ...input, actor });
-    await syncFreeEntries(actor);
     revalidateAll();
     return { ok: true, id };
   });
@@ -119,7 +84,6 @@ export async function addEntriesAction(input: {
 }): Promise<ActionResult> {
   return guarded(async (actor) => {
     await getAdminData().addEntries({ ...input, actor });
-    await syncFreeEntries(actor);
     revalidateAll();
     return { ok: true };
   });
@@ -144,7 +108,6 @@ export async function removeEntryAction(input: {
 }): Promise<ActionResult> {
   return guarded(async (actor) => {
     await getAdminData().removeEntry({ ...input, actor });
-    await syncFreeEntries(actor);
     revalidateAll();
     return { ok: true };
   });
@@ -155,7 +118,6 @@ export async function voidEntryAction(input: {
 }): Promise<ActionResult> {
   return guarded(async (actor) => {
     await getAdminData().voidEntry({ ...input, actor });
-    await syncFreeEntries(actor);
     revalidateAll();
     return { ok: true };
   });
@@ -253,7 +215,6 @@ export async function mergeOwnerAction(input: {
 > {
   return guarded(async (actor) => {
     const summary = await getAdminData().mergeOwner({ ...input, actor });
-    await syncFreeEntries(actor);
     revalidateAll();
     return { ok: true, summary };
   });
@@ -264,7 +225,6 @@ export async function deleteOwnerAction(input: {
 }): Promise<ActionResult> {
   return guarded(async (actor) => {
     await getAdminData().deleteOwner({ ...input, actor });
-    await syncFreeEntries(actor);
     revalidateAll();
     return { ok: true };
   });

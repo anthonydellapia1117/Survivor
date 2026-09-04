@@ -149,14 +149,54 @@ those rows — via /admin/audit — before re-raising anything.**
 - Count is **FLOOR(recruited / 10)**.
 - Named **"AAA #1"** through **"AAA #n"** — the same separator as every
   other multi-entry owner, per [the numbering convention](#the-numbering-convention).
-  `FREE_ENTRY_NAME_PREFIX` in `src/lib/free-entries.ts` is `"AAA #"`; the
-  parser accepts both forms so the pre-2026-09-01 names still read, but
-  anything newly minted carries the hash.
+  `FREE_ENTRY_NAME_PREFIX` in `src/lib/free-entries.ts` is `"AAA #"`, and the
+  trigger's pattern `^AAA #?(\d+)$` accepts both forms so the pre-2026-09-01
+  names still read; anything newly minted carries the hash.
 - **Nobody else ever gets one.**
 - They **never count toward earning more** — the ratio is computed from
   recruited entries only.
 - They **still get Lynne numbers and appear in the roster export** — they
   just do not bill.
+
+**The mint is enforced in the DATABASE, not in the app.** The
+`mint_free_entries` trigger tops the count up to FLOOR(recruited / ratio) in the
+**same transaction** as whatever write earned it — so it holds for an RPC call,
+a bulk import, or SQL applied by hand, not only for a change that happened to go
+through the admin UI.
+
+It runs on **all three tables the entitlement reads from** — `entries` (the
+recruited count), `owners` (who the runner is, and whose entries count) and
+`config` (the ratio). Those are the complete set of inputs. A trigger on
+`entries` alone let the other two drift silently: creating the runner *after*
+importing the roster writes only `owners`, so the whole backlog stayed unminted
+until some unrelated entry write happened along.
+
+It takes an advisory lock **before reading anything**. There is deliberately no
+"nothing is owed, skip the lock" shortcut, because that decision is itself made
+from an unlocked read: two transactions each adding one recruit to a roster of
+8 both saw 9, both concluded nothing was owed, and committed 10 recruits with no
+free entry.
+
+That is why it moved. The rule used to live in `syncFreeEntries` in
+`src/app/admin/actions.ts`, which enforced it **only where the UI happened to
+run.** On 2026-09-03 adding Joe Didonato and Kris Tomasco by RPC took
+recruited from 86 to 94 — entitlement 8 to 9 — and no `AAA #9` appeared; it
+had to be minted by hand. **Do not reintroduce an app-layer mint.**
+`src/lib/free-entries.ts` is read-only on this now: `freeEntitlement` is a
+number `/admin` displays, and there is no `nextFreeNames`.
+
+Two things the trigger deliberately does NOT do:
+
+- **It never un-mints.** Voiding recruits lowers the entitlement; the surplus
+  is surfaced on `/admin` and left alone, because taking away an entry Lynne
+  may already hold a number against is Anthony's call, not a trigger's.
+- **It never reuses a number.** The next name continues past the highest ever
+  used, counting voided rows, in either separator form.
+
+Coverage: `tests/sql/12_free_entries.sql` exercises it by RPC and raw SQL with
+no app layer anywhere; `tests/unit/free-entry-enforcement.test.ts` guards the
+constants baked into the SQL against the ones the app reads back — the one
+seam a SQL test cannot see.
 
 ### Remittance to Lynne
 
@@ -361,6 +401,7 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
 | What                                | Path                                         |
 | ----------------------------------- | -------------------------------------------- |
 | Pricing, free-entry and margin math | `src/lib/free-entries.ts`, `src/lib/pool.ts` |
+| Free-entry mint (DB-enforced)       | `mint_free_entries` trigger                  |
 | Lynne import / roster / numbers     | `src/lib/lynne/`                             |
 | Entry-name collision detection      | `src/lib/names.ts`                           |
 | Audit rendering                     | `src/lib/audit-format.ts`, `/admin/audit`    |

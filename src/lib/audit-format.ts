@@ -24,6 +24,8 @@ export const ACTION_LABEL: Record<string, string> = {
   delete_owner: "Owner deleted",
   merge_owner: "Owners merged",
   add_entries: "Entries added",
+  mint_free_entries: "Free entries earned",
+  free_entry_numbers_backfill: "Free-entry numbering history seeded",
   update_entry: "Entry updated",
   remove_entry: "Entry removed",
   void_entry: "Entry voided",

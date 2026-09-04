@@ -190,31 +190,6 @@ describe("free-entry rule (the runner's words)", () => {
     expect(freeEntitlement(9)).toBe(0);
   });
 
-  it("AAA names continue past the highest existing, never reusing", async () => {
-    const { nextFreeNames } = await import("@/lib/free-entries");
-    expect(nextFreeNames([], 2)).toEqual(["AAA #1", "AAA #2"]);
-    expect(nextFreeNames(["AAA #1", "AAA #2"], 3)).toEqual(["AAA #3"]);
-    // AAA #2 was voided out of the list; numbering still moves past AAA #3.
-    expect(nextFreeNames(["AAA #1", "AAA #3"], 3)).toEqual(["AAA #4"]);
-    expect(nextFreeNames(["AAA #1"], 1)).toEqual([]);
-  });
-
-  it("reads the pre-convention 'AAA n' form so it never restarts at 1", () => {
-    // The seven live free entries went to Lynne as "AAA 1".."AAA 7" and were
-    // converted to "AAA #1".."#7" in place. Crossing 80 recruited must mint
-    // "AAA #8" — a reader blind to either form would mint a duplicate.
-    return import("@/lib/free-entries").then(({ nextFreeNames }) => {
-      const converted = Array.from({ length: 7 }, (_, i) => `AAA #${i + 1}`);
-      expect(nextFreeNames(converted, 8)).toEqual(["AAA #8"]);
-      const legacy = Array.from({ length: 7 }, (_, i) => `AAA ${i + 1}`);
-      expect(nextFreeNames(legacy, 8)).toEqual(["AAA #8"]);
-      // Mixed, mid-conversion: still continues past the highest.
-      expect(nextFreeNames(["AAA 1", "AAA #2", "AAA 3"], 4)).toEqual([
-        "AAA #4",
-      ]);
-    });
-  });
-
   it("margin: worked example — 69 recruited, 13 at $30 tier, 6 free", async () => {
     const { computeMargin } = await import("@/lib/free-entries");
     // 3 owners x 2 entries + 1 owner x 3 + 1 x 4 = 13 spread-tier of 69.
