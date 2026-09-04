@@ -46,14 +46,16 @@ async function copyPlain(text: string): Promise<boolean> {
  *
  * Both flavours of the whole-batch copy render these — the HTML paste and the
  * plain-text paste have to agree about what was sent, and they stop agreeing
- * the moment the list is written out twice with its own conditional for the
- * optional Cc.
+ * the moment the list is written out twice.
+ *
+ * There is no Cc any more: a giftee gets their own message listing their own
+ * entries, rather than riding along on the buyer's.
  */
 function headerLines(b: BuiltEmail): { label: string; value: string }[] {
-  const lines = [{ label: "To", value: b.to }];
-  if (b.cc) lines.push({ label: "Cc", value: b.cc });
-  lines.push({ label: "Subject", value: b.subject });
-  return lines;
+  return [
+    { label: "To", value: b.to },
+    { label: "Subject", value: b.subject },
+  ];
 }
 
 type Flash = { id: string; ok: boolean } | null;
@@ -63,21 +65,32 @@ export function PickEmailsClient({
   weeks,
   built,
   skippedNoEmail,
-  droppedCc,
+  giftedWithoutEmail,
 }: {
   week: number;
   weeks: number[];
   built: BuiltEmail[];
-  skippedNoEmail: { id: string; name: string; entryCount: number }[];
-  droppedCc: { id: string; name: string; address: string }[];
+  skippedNoEmail: {
+    id: string;
+    name: string;
+    entryCount: number;
+    entryNames: string[];
+  }[];
+  giftedWithoutEmail: {
+    entryId: string;
+    entryName: string;
+    ownerId: string;
+    ownerName: string;
+  }[];
 }) {
   const router = useRouter();
+  // Keyed on the MESSAGE, not the owner: one owner can now produce several.
   const [selected, setSelected] = useState<string | null>(
-    built[0]?.ownerId ?? null,
+    built[0]?.key ?? null,
   );
   const [flash, setFlash] = useState<Flash>(null);
 
-  const current = built.find((b) => b.ownerId === selected) ?? built[0] ?? null;
+  const current = built.find((b) => b.key === selected) ?? built[0] ?? null;
 
   const note = (id: string, ok: boolean) => {
     setFlash({ id, ok });
@@ -136,10 +149,10 @@ export function PickEmailsClient({
         <div>
           <h1 className="text-2xl">Pick emails</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            One message per owner, listing only their entries so a four-entry
-            owner does not have to remember their own names to reply. Copy
-            carries styled HTML — paste straight into Gmail. Nothing here sends
-            anything.
+            One message per PERSON, listing only the entries they play. A
+            gifted entry goes to whoever plays it, not to the buyer, so replies
+            come back one to one. Copy carries styled HTML — paste straight into
+            Gmail. Nothing here sends anything.
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -161,7 +174,10 @@ export function PickEmailsClient({
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5">
         <span className="text-sm tabular-nums text-muted-foreground">
-          {built.length} {built.length === 1 ? "owner" : "owners"}
+          {built.length} {built.length === 1 ? "message" : "messages"}
+          {built.some((b) => b.kind === "player")
+            ? ` · ${built.filter((b) => b.kind === "player").length} to players`
+            : ""}
         </span>
         <span className="text-border">·</span>
         <Button
@@ -204,21 +220,25 @@ export function PickEmailsClient({
           </p>
           <p className="mt-1 text-xs">
             {skippedNoEmail
-              .map((o) => `${o.name} (${o.entryCount})`)
+              .map((o) => `${o.name} (${o.entryCount}: ${o.entryNames.join(", ")})`)
               .join(" · ")}
           </p>
         </div>
       ) : null}
 
-      {droppedCc.length > 0 ? (
+      {giftedWithoutEmail.length > 0 ? (
         <div className="rounded-md border border-tie bg-tie/15 px-4 py-3 text-sm text-tie">
           <p className="font-semibold">
-            {droppedCc.length} CC {droppedCc.length === 1 ? "address" : "addresses"}{" "}
-            {droppedCc.length === 1 ? "was" : "were"} dropped for matching the
-            owner&apos;s own address, so nobody extra is copied:
+            {giftedWithoutEmail.length} gifted{" "}
+            {giftedWithoutEmail.length === 1 ? "entry has" : "entries have"} no
+            player address, so{" "}
+            {giftedWithoutEmail.length === 1 ? "it stays" : "they stay"} on the
+            buyer&apos;s message — ask for the address:
           </p>
           <p className="mt-1 text-xs">
-            {droppedCc.map((o) => `${o.name} (${o.address})`).join(" · ")}
+            {giftedWithoutEmail
+              .map((g) => `${g.entryName} (bought by ${g.ownerName})`)
+              .join(" · ")}
           </p>
         </div>
       ) : null}
@@ -226,12 +246,12 @@ export function PickEmailsClient({
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
         <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface">
           {built.map((b) => {
-            const active = current?.ownerId === b.ownerId;
+            const active = current?.key === b.key;
             return (
               <button
-                key={b.ownerId}
+                key={b.key}
                 type="button"
-                onClick={() => setSelected(b.ownerId)}
+                onClick={() => setSelected(b.key)}
                 className={cn(
                   "block w-full border-b border-border/60 px-3 py-2.5 text-left transition-colors duration-150 last:border-0",
                   active ? "bg-primary/10" : "hover:bg-surface-2",
@@ -243,8 +263,12 @@ export function PickEmailsClient({
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {b.to}
-                  {b.cc ? ` · cc ${b.cc}` : ""}
                 </span>
+                {b.kind === "player" ? (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    plays entries bought by {b.ownerName}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -256,17 +280,12 @@ export function PickEmailsClient({
               <code className="text-xs text-muted-foreground">
                 {current.to}
               </code>
-              {current.cc ? (
-                <code className="text-xs text-muted-foreground">
-                  cc {current.cc}
-                </code>
-              ) : null}
               <span className="text-border">·</span>
               <Button
                 size="sm"
                 onClick={async () =>
                   note(
-                    current.ownerId,
+                    current.key,
                     await copyRich(current.html, current.text),
                   )
                 }
@@ -277,7 +296,7 @@ export function PickEmailsClient({
                 size="sm"
                 variant="outline"
                 onClick={async () =>
-                  note(`${current.ownerId}-t`, await copyPlain(current.text))
+                  note(`${current.key}-t`, await copyPlain(current.text))
                 }
               >
                 Plain text
@@ -286,7 +305,7 @@ export function PickEmailsClient({
                 size="sm"
                 variant="outline"
                 onClick={async () =>
-                  note(`${current.ownerId}-a`, await copyPlain(current.to))
+                  note(`${current.key}-a`, await copyPlain(current.to))
                 }
               >
                 To address
@@ -295,23 +314,12 @@ export function PickEmailsClient({
                 size="sm"
                 variant="outline"
                 onClick={async () =>
-                  note(`${current.ownerId}-s`, await copyPlain(current.subject))
+                  note(`${current.key}-s`, await copyPlain(current.subject))
                 }
               >
                 Subject
               </Button>
-              {current.cc ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={async () =>
-                    note(`${current.ownerId}-c`, await copyPlain(current.cc))
-                  }
-                >
-                  Cc address
-                </Button>
-              ) : null}
-              {flash && flash.id.startsWith(current.ownerId) ? (
+              {flash && flash.id.startsWith(current.key) ? (
                 <span
                   className={cn("text-sm", flash.ok ? "text-win" : "text-loss")}
                   role="status"
@@ -327,7 +335,7 @@ export function PickEmailsClient({
               and sandbox with no allow-* keeps it inert.
             */}
             <iframe
-              key={current.ownerId}
+              key={current.key}
               title={`Preview — ${current.to}`}
               srcDoc={`<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0b0d0f">${current.html}</body>`}
               sandbox=""

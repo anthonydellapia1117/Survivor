@@ -1,9 +1,14 @@
-// One owner's pick request for one week.
+// One RECIPIENT's pick request for one week.
 //
-// The point of sending these per owner rather than one group mail: a
+// The point of sending these per person rather than one group mail: a
 // four-entry owner should not have to remember their own entry names to reply.
 // Each entry is named, with a line to write the pick on, so a reply is
 // unambiguous about which entry took which team.
+//
+// The unit is the recipient, not the owner — see recipients.ts. A giftee gets
+// their own message listing only the entries they play, so nobody reads a list
+// of four and works out which half is theirs, and replies come back one to
+// one instead of two people answering on the same thread.
 //
 // Deadlines are listed as the tiers the week ACTUALLY has, derived from the
 // schedule — not a fixed three. Week 1 has three (Wednesday, Thursday,
@@ -13,11 +18,16 @@
 
 import type { GameDay, GameRow, WeekRow } from "@/lib/data/types";
 import {
+  recipientsForPicks,
+  type Recipient,
+  type RecipientOwner,
+  type RecipientSplit,
+} from "./recipients";
+import {
   deadlineTier,
   pickDeadlineIso,
   type DeadlineTier,
 } from "@/lib/deadlines";
-import { normalizeAddress, sameAddress } from "./address";
 import {
   renderEmailHtml,
   renderEmailText,
@@ -67,39 +77,18 @@ const TIER_DESCRIPTION: Record<DeadlineTier, string> = {
   late: "If your team plays Sat, Sun or Mon",
 };
 
-export interface PickRequestOwner {
-  id: string;
-  /** How they are addressed — first name where there is one. */
-  greetingName: string;
-  email: string;
-  /** Second address to copy, where somebody else plays entries this owner
-   *  pays for. Null for nearly everyone. */
-  ccEmail: string | null;
-  entryNames: string[];
-}
-
 export interface BuiltEmail {
+  /** Stable id for this MESSAGE. One owner can now produce several. */
+  key: string;
   ownerId: string;
+  /** Who pays for the entries listed. Shown so the admin can see at a glance
+   *  that Chas's message hangs off Kris's row. */
+  ownerName: string;
+  kind: "owner" | "player";
   to: string;
-  /** Empty when there is nobody to copy — the header is then omitted. */
-  cc: string;
   subject: string;
   html: string;
   text: string;
-}
-
-/**
- * The address to copy, or "" for none.
- *
- * An address equal to the recipient's is dropped rather than sent twice: the
- * owner's own address turning up here is a typo, and honouring it would put
- * two copies of the same mail in one inbox with no way to tell them apart.
- * Compared case-insensitively because mailbox case is not significant to any
- * provider this pool uses, and "Kris@" beside "kris@" is the same typo.
- */
-export function ccAddress(email: string, ccEmail: string | null): string {
-  const cc = normalizeAddress(ccEmail);
-  return sameAddress(cc, email) ? "" : cc;
 }
 
 /**
@@ -130,18 +119,20 @@ export function deadlineRows(
 }
 
 export function buildPickRequest(
-  owner: PickRequestOwner,
+  recipient: Recipient,
   week: WeekRow,
   games: Pick<GameRow, "week" | "dayOfWeek">[],
 ): BuiltEmail {
-  const n = owner.entryNames.length;
+  const names = recipient.entries.map((e) => e.entryName);
+  const n = names.length;
+  const gifted = recipient.kind === "player";
   const doc: EmailDoc = {
-    subject: `Week ${week.week} pick${n === 1 ? "" : "s"} — ${owner.greetingName} (${n} ${
+    subject: `Week ${week.week} pick${n === 1 ? "" : "s"} — ${recipient.greetingName} (${n} ${
       n === 1 ? "entry" : "entries"
     })`,
     eyebrow: "AD Survivor Pool",
     title: `Week ${week.week} picks`,
-    greeting: `${owner.greetingName} —`,
+    greeting: `${recipient.greetingName} —`,
     blocks: [
       {
         kind: "lead",
@@ -153,7 +144,7 @@ export function buildPickRequest(
       {
         kind: "fill",
         caption: n === 1 ? "Your entry" : `Your entries (${n})`,
-        items: owner.entryNames,
+        items: names,
       },
       {
         kind: "rows",
@@ -168,14 +159,25 @@ export function buildPickRequest(
         phone: CONTACT_PHONE,
       },
     ],
-    footer:
-      "You are getting this because you have an entry in Anthony's group. Reply to this address — picks are not accepted anywhere else.",
+    // A giftee is told whose entries these are, because otherwise a mail
+    // listing two names they recognise arrives from someone they may not have
+    // heard from about this pool. The owner's own message keeps the original
+    // wording — nothing about their experience changed.
+    footer: gifted
+      ? `You are getting this because ${recipient.ownerName} put ${
+          n === 1 ? "an entry" : "these entries"
+        } in your name in Anthony's group — ${
+          n === 1 ? "the pick is" : "the picks are"
+        } yours to make. Reply to this address; picks are not accepted anywhere else.`
+      : "You are getting this because you have an entry in Anthony's group. Reply to this address — picks are not accepted anywhere else.",
   };
 
   return {
-    ownerId: owner.id,
-    to: owner.email,
-    cc: ccAddress(owner.email, owner.ccEmail),
+    key: recipient.key,
+    ownerId: recipient.ownerId,
+    ownerName: recipient.ownerName,
+    kind: recipient.kind,
+    to: recipient.email,
     subject: doc.subject,
     html: renderEmailHtml(doc),
     text: renderEmailText(doc),
@@ -184,68 +186,29 @@ export function buildPickRequest(
 
 export interface PickRequestBatch {
   built: BuiltEmail[];
-  /** Owners with entries but no address — they cannot be mailed at all. */
-  skippedNoEmail: { id: string; name: string; entryCount: number }[];
-  /**
-   * Owners whose CC was dropped because it matched their own address.
-   *
-   * Reported rather than resolved in silence: the admin's only other evidence
-   * would be the absence of a Cc line, and the person who was meant to be
-   * copied finds out by never receiving anything. The batch already reports
-   * "we could not do what you asked" for a missing owner address; a dropped
-   * CC is the same kind of fact.
-   */
-  droppedCc: { id: string; name: string; address: string }[];
+  /** Owners who play entries themselves but have no address. */
+  skippedNoEmail: RecipientSplit["ownersWithoutEmail"];
+  /** Gifted entries with no player address — somebody else plays them and
+   *  the roster cannot reach them. The gap to chase. */
+  giftedWithoutEmail: RecipientSplit["giftedWithoutEmail"];
 }
 
 /**
- * Build the whole run. An owner with no email is reported, never guessed at:
- * the roster is the authority on addresses and inventing one is worse than
- * telling Anthony to go and ask.
+ * Build the whole run, one message per RECIPIENT.
+ *
+ * Nothing here guesses at an address: an owner with none is reported, and a
+ * gifted entry with none is reported separately, because the person to go and
+ * ask is a different person.
  */
 export function buildPickRequests(
-  owners: (Omit<PickRequestOwner, "email" | "greetingName"> & {
-    email: string | null;
-    greetingName: string;
-    fullName: string;
-  })[],
+  owners: RecipientOwner[],
   week: WeekRow,
   games: Pick<GameRow, "week" | "dayOfWeek">[],
 ): PickRequestBatch {
-  const built: BuiltEmail[] = [];
-  const skippedNoEmail: PickRequestBatch["skippedNoEmail"] = [];
-  const droppedCc: PickRequestBatch["droppedCc"] = [];
-  for (const o of owners) {
-    if (o.entryNames.length === 0) continue;
-    const email = o.email?.trim() ?? "";
-    if (email === "") {
-      skippedNoEmail.push({
-        id: o.id,
-        name: o.fullName,
-        entryCount: o.entryNames.length,
-      });
-      continue;
-    }
-    // An address that survives trim() but not ccAddress() was dropped for
-    // being the recipient's own. Recorded before the message is built so the
-    // report does not depend on reading it back out of the result.
-    const asked = normalizeAddress(o.ccEmail);
-    if (asked !== "" && ccAddress(email, o.ccEmail) === "") {
-      droppedCc.push({ id: o.id, name: o.fullName, address: asked });
-    }
-    built.push(
-      buildPickRequest(
-        {
-          id: o.id,
-          greetingName: o.greetingName,
-          email,
-          ccEmail: o.ccEmail,
-          entryNames: o.entryNames,
-        },
-        week,
-        games,
-      ),
-    );
-  }
-  return { built, skippedNoEmail, droppedCc };
+  const split = recipientsForPicks(owners);
+  return {
+    built: split.recipients.map((r) => buildPickRequest(r, week, games)),
+    skippedNoEmail: split.ownersWithoutEmail,
+    giftedWithoutEmail: split.giftedWithoutEmail,
+  };
 }

@@ -3,10 +3,6 @@ export interface AdminOwner {
   firstName: string;
   lastName: string;
   email: string | null;
-  /** Second contact address, CC'd on this owner's pick email. Null for
-   *  almost everyone — it exists for an owner who pays for entries somebody
-   *  else plays, so both people see the same message. Admin-only. */
-  ccEmail: string | null;
   phone: string | null;
   source: string;
   participationStatus: "confirmed" | "declined" | "pending";
@@ -27,6 +23,12 @@ export interface AdminEntry {
   lynneLabel: string | null;
   lynneNumber: number | null;
   isFreeEntry: boolean;
+  /** Somebody other than the owner plays this entry. The giftee owns the
+   *  pick; the owner keeps the money and the tier. True with a null
+   *  playerEmail is a real state — gifted, address not yet known. */
+  isGifted: boolean;
+  /** Where THIS entry's pick request goes. Null means the owner plays it. */
+  playerEmail: string | null;
   voidedAt: string | null;
   pickCount: number;
   /** Owned by the pool runner — sorts first by default. */
@@ -93,7 +95,6 @@ export interface AdminBackend {
     firstName: string;
     lastName: string;
     email: string;
-    ccEmail: string;
     phone: string;
     participationStatus: string;
     notes: string;
@@ -112,6 +113,8 @@ export interface AdminBackend {
     lynneLabel: string;
     isFree: boolean | null;
     lynneNumber: number | null;
+    isGifted: boolean | null;
+    playerEmail: string;
     actor: string;
   }): Promise<void>;
   mergeOwner(args: {

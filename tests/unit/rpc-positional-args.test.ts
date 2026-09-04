@@ -190,7 +190,7 @@ describe("the local backend's positional args match the RPC signature", () => {
     );
   });
 
-  it("checks the owner path by NAME too — ccEmail sits beside phone", () => {
+  it("checks the owner path by NAME too", () => {
     const call = CALLS.find((c) => c.fn === "admin_update_owner");
     expect(call).toBeDefined();
     expect(call!.args.map((a) => a.replace(/^a\./, ""))).toEqual(
@@ -198,9 +198,25 @@ describe("the local backend's positional args match the RPC signature", () => {
     );
   });
 
+  it("and the entry path, where the gift fields sit after lynneNumber", () => {
+    const call = CALLS.find((c) => c.fn === "admin_update_entry");
+    expect(call).toBeDefined();
+    expect(call!.args.map((a) => a.replace(/^a\./, ""))).toEqual(
+      liveParams("admin_update_entry").map(toCamel),
+    );
+  });
+
   it("reads the LAST definition, so a replaced signature is what is checked", () => {
-    // admin_update_owner was replaced twice on 2026-09-04 (58 added
-    // p_cc_email, 59 restored the grant). Whichever lands last is live.
-    expect(liveParams("admin_update_owner")).toContain("p_cc_email");
+    // admin_update_owner has been redefined four times: 58 added p_cc_email,
+    // 59 restored the grant it dropped, 62 retired the column again. Reading
+    // any definition but the last would still see p_cc_email, so its ABSENCE
+    // is the proof — and it is the stronger direction, because a stale read
+    // here means every name-order assertion above is checking a dead shape.
+    expect(liveParams("admin_update_owner")).not.toContain("p_cc_email");
+    expect(liveParams("admin_update_owner")).toContain("p_phone");
+
+    // Same for entries: 60 introduced the gift fields, 61 replaced the whole
+    // function again to fix name_is_default.
+    expect(liveParams("admin_update_entry")).toContain("p_player_email");
   });
 });

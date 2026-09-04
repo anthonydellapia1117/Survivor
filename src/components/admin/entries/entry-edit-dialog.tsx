@@ -39,6 +39,10 @@ export function EntryEditDialog({
     entry.lynneNumber === null ? "" : String(entry.lynneNumber),
   );
   const [isFree, setIsFree] = useState(entry.isFreeEntry);
+  // Who plays it. Empty is a real, meaningful state when isGifted is on:
+  // somebody else plays this entry and we do not have their address yet.
+  const [isGifted, setIsGifted] = useState(entry.isGifted);
+  const [playerEmail, setPlayerEmail] = useState(entry.playerEmail ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -49,6 +53,8 @@ export function EntryEditDialog({
       setLynneLabel(entry.lynneLabel ?? "");
       setLynneNumber(entry.lynneNumber === null ? "" : String(entry.lynneNumber));
       setIsFree(entry.isFreeEntry);
+      setIsGifted(entry.isGifted);
+      setPlayerEmail(entry.playerEmail ?? "");
       setError(null);
     }
     onOpenChange(next);
@@ -70,6 +76,10 @@ export function EntryEditDialog({
       lynneNumber: parsedNum,
       // Pass null when the flag is untouched so the action leaves it alone.
       isFree: isFree === entry.isFreeEntry ? null : isFree,
+      // An address is proof of the arrangement, so entering one turns the
+      // flag on; the RPC applies the same rule, so the two cannot disagree.
+      isGifted: isGifted || playerEmail.trim() !== "",
+      playerEmail,
     });
     setBusy(false);
     if (!result.ok) {
@@ -143,6 +153,54 @@ export function EntryEditDialog({
             />
             Free entry
           </Label>
+
+          {/*
+            Who plays it. The buyer keeps the money and the tier — nothing
+            here touches billing. What it changes is where this one entry's
+            pick request goes, and who Anthony acts on a reply from.
+          */}
+          <div className="space-y-2 rounded-md border border-border px-3 py-2.5">
+            <Label htmlFor={`is-gifted-${entry.id}`} className="font-normal">
+              <Checkbox
+                id={`is-gifted-${entry.id}`}
+                checked={isGifted || playerEmail.trim() !== ""}
+                onCheckedChange={(v) => {
+                  const on = v === true;
+                  setIsGifted(on);
+                  // Turning it off drops the address with it — leaving one
+                  // behind would be an arrangement the roster no longer
+                  // records but the mail still honours.
+                  if (!on) setPlayerEmail("");
+                }}
+              />
+              Played by someone else
+            </Label>
+            {isGifted || playerEmail.trim() !== "" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor={`player-email-${entry.id}`}>
+                  Player&apos;s email
+                </Label>
+                <Input
+                  id={`player-email-${entry.id}`}
+                  type="email"
+                  value={playerEmail}
+                  onChange={(e) => setPlayerEmail(e.target.value)}
+                  placeholder="they@example.com"
+                  aria-describedby={`player-email-hint-${entry.id}`}
+                />
+                <p
+                  id={`player-email-hint-${entry.id}`}
+                  className="text-xs text-muted-foreground"
+                >
+                  This entry&apos;s pick request goes here instead of to{" "}
+                  {entry.ownerName}, and a reply from this address is acted on.
+                  Billing is unaffected — {entry.ownerName} still pays and keeps
+                  the tier. Leave blank if you do not have it yet; the entry is
+                  then listed as a gap to chase.
+                </p>
+              </div>
+            ) : null}
+          </div>
 
           {error ? <p className="text-sm text-loss">{error}</p> : null}
         </div>

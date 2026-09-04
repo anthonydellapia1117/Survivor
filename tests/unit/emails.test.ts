@@ -1,13 +1,8 @@
 import { describe, it, expect } from "vitest";
-import {
-  buildPickRequest,
-  buildPickRequests,
-  ccAddress,
-  deadlineRows,
-  CONTACT_PHONE,
-} from "@/lib/emails/pick-request";
+import { buildPickRequests, CONTACT_PHONE } from "@/lib/emails/pick-request";
 import { renderEmailHtml, escapeHtml } from "@/lib/emails/template";
 import { groupSendList } from "@/lib/emails/group-send";
+import { recipientsForPicks } from "@/lib/emails/recipients";
 import type { GameRow, WeekRow } from "@/lib/data/types";
 
 // Week 1 as seeded: early = Wed 09-09 noon ET, late = Fri 09-11 noon ET.
@@ -33,50 +28,36 @@ const WEEK1_GAMES = [
   g(1, "Monday"),
 ];
 
-const owner = (entryNames: string[], ccEmail: string | null = null) => ({
+const entry = (
+  entryName: string,
+  opts: { gifted?: boolean; player?: string | null } = {},
+) => ({
+  id: `e-${entryName}`,
+  entryName,
+  isGifted: opts.gifted ?? opts.player != null,
+  playerEmail: opts.player ?? null,
+});
+
+const ownerRow = (
+  entries: ReturnType<typeof entry>[],
+  email: string | null = "owner@example.com",
+) => ({
   id: "o1",
   greetingName: "Caroline",
-  email: "owner@example.com",
-  ccEmail,
-  entryNames,
+  fullName: "Caroline Reichenback",
+  email,
+  entries,
 });
 
-describe("deadline rows follow the schedule, not a fixed count", () => {
-  it("Week 1 shows three tiers — it has no Friday game", () => {
-    const rows = deadlineRows(WEEK1, WEEK1_GAMES);
-    expect(rows.map((r) => r.value)).toEqual([
-      "Tue Sep 8, 12:00 PM ET",
-      "Wed Sep 9, 12:00 PM ET",
-      "Fri Sep 11, 12:00 PM ET",
-    ]);
-  });
+/** The single message an ungifted roster produces. */
+const only = (entries: ReturnType<typeof entry>[]) =>
+  buildPickRequests([ownerRow(entries)], WEEK1, WEEK1_GAMES).built[0];
 
-  it("a week with a Friday game shows four, in order", () => {
-    const rows = deadlineRows(WEEK1, [...WEEK1_GAMES, g(1, "Friday")]);
-    expect(rows).toHaveLength(4);
-    expect(rows[2].value).toBe("Thu Sep 10, 12:00 PM ET");
-    // Strictly ascending: a later tier must never be listed before an earlier.
-    const times = rows.map((r) => Date.parse(r.value.replace(" ET", " 2026")));
-    expect([...times].sort((a, b) => a - b)).toEqual(times);
-  });
-
-  it("always offers the Sat-Mon lock, even for a week with no games listed", () => {
-    expect(deadlineRows(WEEK1, [])).toHaveLength(1);
-  });
-
-  it("names the weekday — a date alone makes a player go and look", () => {
-    for (const r of deadlineRows(WEEK1, WEEK1_GAMES)) {
-      expect(r.value).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) /);
-    }
-  });
-});
-
-describe("a pick request carries what the owner needs to reply", () => {
-  const built = buildPickRequest(
-    owner(["Caroline Reichenback #1", "Caroline Reichenback #2"]),
-    WEEK1,
-    WEEK1_GAMES,
-  );
+describe("a pick request carries what the recipient needs to reply", () => {
+  const built = only([
+    entry("Caroline Reichenback #1"),
+    entry("Caroline Reichenback #2"),
+  ]);
 
   it("lists every entry by name, in both flavours", () => {
     for (const name of ["Caroline Reichenback #1", "Caroline Reichenback #2"]) {
@@ -96,7 +77,7 @@ describe("a pick request carries what the owner needs to reply", () => {
   });
 
   it("says entry, singular, for a one-entry owner", () => {
-    const one = buildPickRequest(owner(["Pumpy321"]), WEEK1, WEEK1_GAMES);
+    const one = only([entry("Pumpy321")]);
     expect(one.subject).toBe("Week 1 pick — Caroline (1 entry)");
     expect(one.html).toContain("Your entry");
     expect(one.html).not.toContain("Your entries");
@@ -108,7 +89,11 @@ describe("a pick request carries what the owner needs to reply", () => {
   it("names the selected week in the body, not just the subject", () => {
     const w5 = { ...WEEK1, week: 5 };
     for (const names of [["Solo"], ["A #1", "A #2"]]) {
-      const b = buildPickRequest(owner(names), w5, [g(5, "Sunday")]);
+      const b = buildPickRequests(
+        [ownerRow(names.map((n) => entry(n)))],
+        w5,
+        [g(5, "Sunday")],
+      ).built[0];
       expect(b.subject).toContain("Week 5");
       expect(b.html).not.toContain("Week 1");
       expect(b.text).not.toContain("Week 1");
@@ -117,7 +102,7 @@ describe("a pick request carries what the owner needs to reply", () => {
 });
 
 describe("the HTML survives Gmail", () => {
-  const built = buildPickRequest(owner(["A #1"]), WEEK1, WEEK1_GAMES);
+  const built = only([entry("A #1")]);
 
   // Gmail strips <style> and class attributes, so a rule that lives in either
   // is a rule that does not arrive. Everything must be inline.
@@ -127,8 +112,6 @@ describe("the HTML survives Gmail", () => {
   });
 
   it("paints its own dark background rather than inheriting one", () => {
-    // Pasting into a compose window drops the page behind the content, so a
-    // message that relies on a body colour arrives dark-on-white.
     expect(built.html).toMatch(/background-color:#0b0d0f/);
   });
 
@@ -138,26 +121,18 @@ describe("the HTML survives Gmail", () => {
 });
 
 describe("owner-supplied names cannot inject markup", () => {
-  // Entry names are stored verbatim by policy and are owner-supplied, so they
-  // reach the renderer as untrusted text.
   it("escapes angle brackets and ampersands in an entry name", () => {
-    const built = buildPickRequest(
-      owner(["<script>alert(1)</script>", "Maria & Mary #1"]),
-      WEEK1,
-      WEEK1_GAMES,
-    );
+    const built = only([
+      entry("<script>alert(1)</script>"),
+      entry("Maria & Mary #1"),
+    ]);
     expect(built.html).not.toContain("<script>");
     expect(built.html).toContain("&lt;script&gt;");
     expect(built.html).toContain("Maria &amp; Mary #1");
   });
 
   it("leaves the plain-text flavour verbatim", () => {
-    const built = buildPickRequest(
-      owner(["Maria & Mary #1"]),
-      WEEK1,
-      WEEK1_GAMES,
-    );
-    expect(built.text).toContain("Maria & Mary #1");
+    expect(only([entry("Maria & Mary #1")]).text).toContain("Maria & Mary #1");
   });
 
   it("escapeHtml covers quotes as well as brackets", () => {
@@ -165,35 +140,114 @@ describe("owner-supplied names cannot inject markup", () => {
   });
 });
 
-describe("the batch reports rather than guesses", () => {
-  const base = {
-    greetingName: "X",
-    fullName: "X Y",
-    ccEmail: null,
-    entryNames: ["X #1"],
-  };
-
-  it("skips an owner with no email and names them", () => {
-    const { built, skippedNoEmail } = buildPickRequests(
+// The unit is the recipient, not the owner. Kris Tomasco buys four and gives
+// two to Chas Flaster; Chas gets his own message about his own two.
+describe("a gifted entry goes to whoever plays it", () => {
+  const KRIS = () =>
+    ownerRow(
       [
-        { ...base, id: "a", email: "a@x.com" },
-        { ...base, id: "b", email: null, fullName: "No Address" },
-        { ...base, id: "c", email: "   ", fullName: "Blank Address" },
+        entry("Kris Tomasco #1"),
+        entry("Kris Tomasco #2"),
+        entry("Chas Flaster #1", { player: "chas@example.com" }),
+        entry("Chas Flaster #2", { player: "chas@example.com" }),
+      ],
+      "kris@example.com",
+    );
+
+  it("splits one owner into two messages, each listing only its own entries", () => {
+    const { built } = buildPickRequests([KRIS()], WEEK1, WEEK1_GAMES);
+    expect(built).toHaveLength(2);
+
+    const [toKris, toChas] = built;
+    expect(toKris.kind).toBe("owner");
+    expect(toKris.to).toBe("kris@example.com");
+    expect(toKris.text).toContain("Kris Tomasco #1");
+    expect(toKris.text).not.toContain("Chas Flaster");
+
+    expect(toChas.kind).toBe("player");
+    expect(toChas.to).toBe("chas@example.com");
+    expect(toChas.text).toContain("Chas Flaster #1");
+    expect(toChas.text).toContain("Chas Flaster #2");
+    expect(toChas.text).not.toContain("Kris Tomasco #1");
+  });
+
+  it("gives one giftee ONE message for both their entries", () => {
+    const { built } = buildPickRequests([KRIS()], WEEK1, WEEK1_GAMES);
+    const player = built.filter((b) => b.kind === "player");
+    expect(player).toHaveLength(1);
+    expect(player[0].subject).toContain("(2 entries)");
+  });
+
+  it("keys the giftee case-insensitively — one mailbox is one person", () => {
+    const { built } = buildPickRequests(
+      [
+        ownerRow(
+          [
+            entry("A #1", { player: "chas@example.com" }),
+            entry("A #2", { player: "Chas@Example.COM" }),
+          ],
+          "kris@example.com",
+        ),
       ],
       WEEK1,
       WEEK1_GAMES,
     );
     expect(built).toHaveLength(1);
-    expect(skippedNoEmail.map((s) => s.name)).toEqual([
-      "No Address",
-      "Blank Address",
-    ]);
-    expect(skippedNoEmail[0].entryCount).toBe(1);
+    expect(built[0].subject).toContain("(2 entries)");
   });
 
-  it("ignores an owner with no live entries entirely — not a skip, just nothing to say", () => {
+  it("tells the giftee whose entries these are, and the owner nothing new", () => {
+    const { built } = buildPickRequests([KRIS()], WEEK1, WEEK1_GAMES);
+    const [toKris, toChas] = built;
+    expect(toChas.text).toContain("Caroline Reichenback");
+    expect(toChas.text).toContain("yours to make");
+    expect(toKris.text).toContain("you have an entry in Anthony's group");
+  });
+
+  it("names the buyer on every message, so the admin can see the pairing", () => {
+    const { built } = buildPickRequests([KRIS()], WEEK1, WEEK1_GAMES);
+    for (const b of built) {
+      expect(b.ownerId).toBe("o1");
+      expect(b.ownerName).toBe("Caroline Reichenback");
+    }
+    // Keys are distinct, or the screen cannot tell the messages apart.
+    expect(new Set(built.map((b) => b.key)).size).toBe(built.length);
+  });
+
+  // A gifted entry whose player address IS the owner's is the owner's to
+  // play. Same rule sameAddress applies everywhere else.
+  it("keeps an entry gifted back to the owner on the owner's message", () => {
+    const { built } = buildPickRequests(
+      [
+        ownerRow(
+          [entry("A #1"), entry("A #2", { player: "  Kris@Example.com " })],
+          "kris@example.com",
+        ),
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built).toHaveLength(1);
+    expect(built[0].kind).toBe("owner");
+    expect(built[0].subject).toContain("(2 entries)");
+  });
+});
+
+describe("the batch reports rather than guesses", () => {
+  it("skips an owner with no email, and names the entries nobody can be asked for", () => {
     const { built, skippedNoEmail } = buildPickRequests(
-      [{ ...base, id: "a", email: null, entryNames: [] }],
+      [ownerRow([entry("X #1")], null), ownerRow([entry("Y #1")], "   ")],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built).toHaveLength(0);
+    expect(skippedNoEmail).toHaveLength(2);
+    expect(skippedNoEmail[0].entryNames).toEqual(["X #1"]);
+  });
+
+  it("ignores an owner with no live entries entirely — not a skip", () => {
+    const { built, skippedNoEmail } = buildPickRequests(
+      [ownerRow([], null)],
       WEEK1,
       WEEK1_GAMES,
     );
@@ -203,11 +257,109 @@ describe("the batch reports rather than guesses", () => {
 
   it("trims a padded address rather than mailing whitespace", () => {
     const { built } = buildPickRequests(
-      [{ ...base, id: "a", email: "  a@x.com  " }],
+      [ownerRow([entry("A #1")], "  a@x.com  ")],
       WEEK1,
       WEEK1_GAMES,
     );
     expect(built[0].to).toBe("a@x.com");
+  });
+
+  // Lou Direnzo #1-#2: gifted, address unknown. The gap worth chasing, and
+  // the reason is_gifted is its own column rather than derived from the
+  // address being present.
+  it("reports a gifted entry with no player address as a gap", () => {
+    const { built, giftedWithoutEmail } = buildPickRequests(
+      [
+        ownerRow(
+          [entry("Nick #1"), entry("Lou Direnzo #1", { gifted: true })],
+          "nick@example.com",
+        ),
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(giftedWithoutEmail).toEqual([
+      {
+        entryId: "e-Lou Direnzo #1",
+        entryName: "Lou Direnzo #1",
+        ownerId: "o1",
+        ownerName: "Caroline Reichenback",
+      },
+    ]);
+    // It stays on the buyer's message meanwhile — the pick still has to be
+    // asked for by somebody.
+    expect(built).toHaveLength(1);
+    expect(built[0].text).toContain("Lou Direnzo #1");
+  });
+
+  // A giftee is reachable on their own address whatever the buyer's state.
+  it("still mails the giftee when the buyer has no address", () => {
+    const { built, skippedNoEmail } = buildPickRequests(
+      [
+        ownerRow(
+          [entry("A #1"), entry("B #1", { player: "player@example.com" })],
+          null,
+        ),
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built).toHaveLength(1);
+    expect(built[0].to).toBe("player@example.com");
+    expect(skippedNoEmail[0].entryNames).toEqual(["A #1"]);
+  });
+
+  it("does not report an owner as unmailable when every entry is gifted away", () => {
+    const { built, skippedNoEmail } = buildPickRequests(
+      [ownerRow([entry("B #1", { player: "player@example.com" })], null)],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built).toHaveLength(1);
+    expect(skippedNoEmail).toEqual([]);
+  });
+});
+
+describe("recipientsForPicks is the one place the unit is decided", () => {
+  it("returns nothing for an empty roster", () => {
+    expect(recipientsForPicks([])).toEqual({
+      recipients: [],
+      ownersWithoutEmail: [],
+      giftedWithoutEmail: [],
+    });
+  });
+
+  it("greets a giftee by the entries they play, since no name is stored", () => {
+    const { recipients } = recipientsForPicks([
+      ownerRow(
+        [
+          entry("Chas Flaster #1", { player: "chas@example.com" }),
+          entry("Chas Flaster #2", { player: "chas@example.com" }),
+        ],
+        "kris@example.com",
+      ),
+    ]);
+    expect(recipients[0].greetingName).toBe(
+      "Chas Flaster #1 and Chas Flaster #2",
+    );
+  });
+});
+
+// The group send is owner addresses. A person who only plays entries somebody
+// else bought is reached on their own pick email now, not here.
+describe("a group send is owner-addressed", () => {
+  it("lists owner addresses, deduplicated, naming the row that repeated one", () => {
+    const list = groupSendList([
+      { id: "a", name: "A", email: "shared@example.com" },
+      { id: "b", name: "B", email: "SHARED@example.com" },
+      { id: "c", name: "C", email: "  c@example.com  " },
+      { id: "d", name: "D", email: "   " },
+    ]);
+    expect(list.addresses).toEqual(["shared@example.com", "c@example.com"]);
+    expect(list.duplicates).toEqual([
+      { ownerId: "b", ownerName: "B", address: "SHARED@example.com" },
+    ]);
+    expect(list.missingEmail.map((o) => o.name)).toEqual(["D"]);
   });
 });
 
@@ -231,252 +383,5 @@ describe("the shell is reusable, not pick-specific", () => {
     expect(html).toContain("Week 1 results");
     expect(html).toContain("Still alive");
     expect(html).not.toMatch(/\sclass=/i);
-  });
-});
-
-// A second contact address, for the case that produced it: Kris Tomasco owns
-// and pays for four entries, two of which Chas Flaster plays. One message, the
-// owner as recipient, the player copied.
-describe("a second contact address is copied, not substituted", () => {
-  const KRIS = [
-    "Kris Tomasco #1",
-    "Kris Tomasco #2",
-    "Chas Flaster #1",
-    "Chas Flaster #2",
-  ];
-
-  it("carries the CC address when one is on file", () => {
-    const b = buildPickRequest(
-      owner(KRIS, "second@example.com"),
-      WEEK1,
-      WEEK1_GAMES,
-    );
-    expect(b.to).toBe("owner@example.com");
-    expect(b.cc).toBe("second@example.com");
-  });
-
-  it("leaves the CC empty when there is none — the header is then omitted", () => {
-    expect(buildPickRequest(owner(KRIS), WEEK1, WEEK1_GAMES).cc).toBe("");
-  });
-
-  // The owner is still the one asked for the picks, and the message still
-  // lists every entry: the CC changes who SEES it, never who owns it or what
-  // it says. If this ever fails, a CC has started editing the message.
-  it("does not change the message the owner receives", () => {
-    const plain = buildPickRequest(owner(KRIS), WEEK1, WEEK1_GAMES);
-    const copied = buildPickRequest(
-      owner(KRIS, "second@example.com"),
-      WEEK1,
-      WEEK1_GAMES,
-    );
-    expect(copied.subject).toBe(plain.subject);
-    expect(copied.html).toBe(plain.html);
-    expect(copied.text).toBe(plain.text);
-    for (const name of KRIS) expect(copied.text).toContain(name);
-  });
-
-  it("drops a CC that is the recipient, whatever its case or padding", () => {
-    for (const same of [
-      "owner@example.com",
-      "  Owner@Example.COM  ",
-    ]) {
-      expect(buildPickRequest(owner(KRIS, same), WEEK1, WEEK1_GAMES).cc).toBe(
-        "",
-      );
-    }
-  });
-
-  it("treats a blank CC as none rather than mailing whitespace", () => {
-    expect(ccAddress("a@x.com", "   ")).toBe("");
-    expect(ccAddress("a@x.com", "")).toBe("");
-    expect(ccAddress("a@x.com", null)).toBe("");
-    expect(ccAddress("a@x.com", "  b@x.com  ")).toBe("b@x.com");
-  });
-
-  it("carries the CC through the batch builder", () => {
-    const { built } = buildPickRequests(
-      [
-        {
-          id: "a",
-          greetingName: "Kris",
-          fullName: "Kris Tomasco",
-          email: "owner@example.com",
-          ccEmail: "second@example.com",
-          entryNames: KRIS,
-        },
-        {
-          id: "b",
-          greetingName: "Solo",
-          fullName: "Solo Owner",
-          email: "solo@x.com",
-          ccEmail: null,
-          entryNames: ["Solo"],
-        },
-      ],
-      WEEK1,
-      WEEK1_GAMES,
-    );
-    expect(built.map((b) => b.cc)).toEqual(["second@example.com", ""]);
-  });
-
-  // A CC is a copy, never a fallback. An owner with no address of their own is
-  // still reported as unmailable even when somebody else could be copied —
-  // sending only to the CC would ask the wrong person for the picks.
-  it("does not let a CC stand in for a missing owner address", () => {
-    const { built, skippedNoEmail } = buildPickRequests(
-      [
-        {
-          id: "a",
-          greetingName: "X",
-          fullName: "No Address",
-          email: null,
-          ccEmail: "someone@x.com",
-          entryNames: ["X #1"],
-        },
-      ],
-      WEEK1,
-      WEEK1_GAMES,
-    );
-    expect(built).toHaveLength(0);
-    expect(skippedNoEmail.map((s) => s.name)).toEqual(["No Address"]);
-  });
-});
-
-// A dropped CC is reported, not resolved in silence.
-describe("the batch says when it could not copy who it was asked to", () => {
-  it("reports a CC that matched the owner's own address", () => {
-    const { built, droppedCc } = buildPickRequests(
-      [
-        {
-          id: "a",
-          greetingName: "Kris",
-          fullName: "Kris Tomasco",
-          email: "owner@example.com",
-          ccEmail: "  Owner@Example.COM ",
-          entryNames: ["A #1"],
-        },
-      ],
-      WEEK1,
-      WEEK1_GAMES,
-    );
-    // The message still goes out — only the copy was impossible.
-    expect(built).toHaveLength(1);
-    expect(built[0].cc).toBe("");
-    expect(droppedCc).toEqual([
-      { id: "a", name: "Kris Tomasco", address: "Owner@Example.COM" },
-    ]);
-  });
-
-  it("reports nothing when the CC is a different person, or absent", () => {
-    const { droppedCc } = buildPickRequests(
-      [
-        {
-          id: "a",
-          greetingName: "Kris",
-          fullName: "Kris Tomasco",
-          email: "owner@example.com",
-          ccEmail: "second@example.com",
-          entryNames: ["A #1"],
-        },
-        {
-          id: "b",
-          greetingName: "Solo",
-          fullName: "Solo Owner",
-          email: "solo@example.com",
-          ccEmail: null,
-          entryNames: ["Solo"],
-        },
-        // Whitespace is not an address, so there was nothing to drop.
-        {
-          id: "c",
-          greetingName: "Blank",
-          fullName: "Blank CC",
-          email: "blank@example.com",
-          ccEmail: "   ",
-          entryNames: ["Blank"],
-        },
-      ],
-      WEEK1,
-      WEEK1_GAMES,
-    );
-    expect(droppedCc).toEqual([]);
-  });
-});
-
-// The group-send list is the one that loses a person quietly: a second
-// contact is on the roster only through somebody else's row.
-describe("a group send reaches second contacts too", () => {
-  const ROSTER = [
-    { id: "k", name: "Kris Tomasco", email: "owner@example.com", ccEmail: "second@example.com" },
-    { id: "s", name: "Solo Owner", email: "solo@example.com", ccEmail: null },
-  ];
-
-  it("puts the CC contact on the list, attributed to the owner it came from", () => {
-    const list = groupSendList(ROSTER);
-    expect(list.addresses).toEqual([
-      "owner@example.com",
-      "second@example.com",
-      "solo@example.com",
-    ]);
-    expect(list.ccContacts).toEqual([
-      { ownerId: "k", ownerName: "Kris Tomasco", address: "second@example.com" },
-    ]);
-    expect(list.duplicates).toEqual([]);
-  });
-
-  it("still includes the CC contact when the owner has no address", () => {
-    // The owner misses the send; the person who plays their entries does not.
-    const list = groupSendList([
-      { id: "k", name: "No Address", email: null, ccEmail: "second@example.com" },
-    ]);
-    expect(list.addresses).toEqual(["second@example.com"]);
-    expect(list.missingEmail.map((o) => o.name)).toEqual(["No Address"]);
-  });
-
-  it("emits a shared address once, and names the row that repeated it", () => {
-    const list = groupSendList([
-      { id: "a", name: "A", email: "shared@example.com", ccEmail: null },
-      { id: "b", name: "B", email: "SHARED@example.com", ccEmail: null },
-      { id: "c", name: "C", email: "c@example.com", ccEmail: "shared@example.com" },
-    ]);
-    expect(list.addresses).toEqual(["shared@example.com", "c@example.com"]);
-    // One mailbox, reported once — keyed the same way the send list is, so a
-    // casing variant cannot show up as a second "duplicate". The row that
-    // repeated it is named, because that is what fixing the intake needs.
-    expect(list.duplicates).toEqual([
-      { ownerId: "b", ownerName: "B", address: "SHARED@example.com" },
-    ]);
-  });
-
-  // The two screens have to agree about the same row. The pick-email screen
-  // calls a CC that reaches the owner's own mailbox a dropped self-CC; if the
-  // group-send list counted it as a second contact, one row would be a second
-  // person on one screen and nobody on the other.
-  it("does not count a CC that reaches the owner's own mailbox", () => {
-    const list = groupSendList([
-      { id: "a", name: "A", email: "owner@example.com", ccEmail: "Owner@Example.COM" },
-    ]);
-    expect(list.addresses).toEqual(["owner@example.com"]);
-    expect(list.ccContacts).toEqual([]);
-    expect(list.duplicates).toEqual([]);
-  });
-
-  // A send about ONE person's money must not copy the person who does not owe
-  // it: Chas plays two entries Kris pays for, so a note about Kris's balance
-  // is not Chas's business.
-  it("leaves second contacts off when asked, for the money filters", () => {
-    const list = groupSendList(ROSTER, { includeCcContacts: false });
-    expect(list.addresses).toEqual(["owner@example.com", "solo@example.com"]);
-    expect(list.ccContacts).toEqual([]);
-  });
-
-  it("treats a whitespace-only address as none, on both columns", () => {
-    const list = groupSendList([
-      { id: "a", name: "A", email: "   ", ccEmail: "  " },
-      { id: "b", name: "B", email: "  b@example.com  ", ccEmail: " cc@example.com " },
-    ]);
-    expect(list.addresses).toEqual(["b@example.com", "cc@example.com"]);
-    expect(list.missingEmail.map((o) => o.name)).toEqual(["A"]);
-    expect(list.ccContacts.map((c) => c.address)).toEqual(["cc@example.com"]);
   });
 });

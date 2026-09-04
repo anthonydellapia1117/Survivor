@@ -21,7 +21,6 @@ interface Row {
   id: string;
   name: string;
   email: string | null;
-  ccEmail: string | null;
   status: string;
   paid: boolean;
 }
@@ -54,30 +53,12 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
   // The filter chooses the ROWS; groupSendList chooses the addresses those
   // rows contribute.
   //
-  // Second contacts ride along on ALL, which is the announcement view. They
-  // are deliberately OFF for the money filters and for Missing email: a CC is
-  // on the roster to see announcements, not to be BCC'd on a note about the
-  // balance of the owner who pays for their entries, and "who can I not
-  // reach" is a diagnostic that should not hand back a live address list of
-  // different people.
-  const includeCcContacts = filter === "all";
-  const list = useMemo(
-    () => groupSendList(filtered, { includeCcContacts }),
-    [filtered, includeCcContacts],
-  );
+  const list = useMemo(() => groupSendList(filtered), [filtered]);
   const missing = useMemo(
     () => groupSendList(confirmed).missingEmail,
     [confirmed],
   );
   const emails = list.addresses;
-  // Render the rows from the LIST, not from the raw row. Reading o.ccEmail
-  // directly puts a "+ address" on a row whose CC groupSendList deliberately
-  // left off — a whitespace value, or a self-CC — so the row would claim a
-  // second contact the BCC string and the count both deny.
-  const ccByOwner = useMemo(
-    () => new Map(list.ccContacts.map((c) => [c.ownerId, c.address])),
-    [list],
-  );
   const bcc = emails.join(", ");
 
   async function copyAll() {
@@ -98,9 +79,9 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
       <div>
         <h1 className="text-2xl">Emails</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          BCC-ready address list for group sends. <strong>All</strong> includes
-          second contacts, so somebody who plays entries another owner pays for
-          is on it too; the money filters are owners only.
+          BCC-ready address list for group sends — owner addresses. Somebody
+          who only plays entries another owner bought is reached on their own
+          pick email, not here.
         </p>
       </div>
 
@@ -124,11 +105,6 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
           {emails.length} {emails.length === 1 ? "address" : "addresses"}
-          {list.ccContacts.length > 0
-            ? ` · ${list.ccContacts.length} second contact${
-                list.ccContacts.length === 1 ? "" : "s"
-              }`
-            : ""}
         </span>
         <Button size="sm" onClick={copyAll} disabled={emails.length === 0}>
           {copied ? "Copied" : "COPY ALL"}
@@ -169,11 +145,6 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
             ) : (
               <span className="font-semibold text-tie">NO EMAIL ON FILE</span>
             )}
-            {ccByOwner.has(o.id) ? (
-              <span className="truncate text-xs text-muted-foreground">
-                + {ccByOwner.get(o.id)}
-              </span>
-            ) : null}
             <span
               className={cn(
                 "ml-auto text-xs font-medium",

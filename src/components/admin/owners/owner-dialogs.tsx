@@ -372,7 +372,6 @@ export function EditOwnerDialog({
   const [firstName, setFirstName] = useState(owner.firstName);
   const [lastName, setLastName] = useState(owner.lastName);
   const [email, setEmail] = useState(owner.email ?? "");
-  const [ccEmail, setCcEmail] = useState(owner.ccEmail ?? "");
   const [phone, setPhone] = useState(owner.phone ?? "");
   const [status, setStatus] = useState<string>(owner.participationStatus);
   const [notes, setNotes] = useState(owner.notes ?? "");
@@ -390,7 +389,6 @@ export function EditOwnerDialog({
       firstName,
       lastName,
       email,
-      ccEmail,
       phone,
       participationStatus: status,
       notes,
@@ -453,33 +451,6 @@ export function EditOwnerDialog({
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
-          </div>
-          {/*
-            Full width, below the pair: it is not a second identity for this
-            owner, it is a second person who should see the same email. The
-            hint says so, because a blank field with the label "CC" invites
-            someone to put an alternative address for the SAME person in it,
-            and then two copies go to one inbox.
-          */}
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-cc-email">CC email (optional)</Label>
-            <Input
-              id="edit-cc-email"
-              type="email"
-              value={ccEmail}
-              onChange={(e) => setCcEmail(e.target.value)}
-              placeholder="someone.else@example.com"
-              aria-describedby="edit-cc-email-hint"
-            />
-            <p
-              id="edit-cc-email-hint"
-              className="text-xs text-muted-foreground"
-            >
-              For when someone else plays entries this owner pays for. They are
-              CC&apos;d on this owner&apos;s pick email — the owner stays the
-              recipient — and they are on the BCC list for group announcements.
-              They are NOT on the paid/unpaid lists, which stay owners only.
-            </p>
           </div>
           <div className="space-y-1.5">
             <Label>Participation status</Label>

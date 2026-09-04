@@ -65,7 +65,6 @@ export async function updateOwnerAction(input: {
   firstName: string;
   lastName: string;
   email: string;
-  ccEmail: string;
   phone: string;
   participationStatus: string;
   notes: string;
@@ -96,6 +95,8 @@ export async function updateEntryAction(input: {
   lynneLabel: string;
   isFree: boolean | null;
   lynneNumber: number | null;
+  isGifted: boolean | null;
+  playerEmail: string;
 }): Promise<ActionResult> {
   return guarded(async (actor) => {
     await getAdminData().updateEntry({ ...input, actor });
@@ -286,6 +287,10 @@ export async function bulkSetLynneNumbersAction(input: {
           lynneLabel: e.lynneLabel ?? "",
           isFree: e.isFreeEntry,
           lynneNumber: row.lynneNumber,
+          // A number import is about Lynne's sheet; carry the gift fields
+          // through unchanged so it cannot quietly un-gift an entry.
+          isGifted: e.isGifted,
+          playerEmail: e.playerEmail ?? "",
           actor,
         });
         applied++;

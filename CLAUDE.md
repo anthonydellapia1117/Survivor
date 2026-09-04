@@ -120,7 +120,8 @@ and the fix for that would have been a rate field. A per-owner rate invites the
 next person to ask why one owner pays differently, and hardcoding $50/$50 to
 make a screen look right is the same shape as storing a derived value. **The
 four tier prices are the only prices.** Where an arrangement does not fit
-ownership, fix contact, not price — that is what `owners.cc_email` is for.
+ownership, fix contact, not price — that is what `entries.player_email` is
+for.
 
 ### Payment sweeps — match on AMOUNT first
 
@@ -302,6 +303,54 @@ the old names**. It preserves `name_is_default`, `submitted_as_name`,
 supplying a real name, and the generic `admin_update_entry` would have
 cleared the still-need-to-ask flag.
 
+## Gifted entries
+
+Set by Anthony on 2026-09-04.
+
+Three times the same shape has turned up: one buyer, one payment at the bulk
+tier, some of the entries named for **other people**. Kris Tomasco bought four
+and gave two to Chas Flaster; Ray Vassallo bought four and two are his brother
+John's; Nick DiVirgilio bought four and two are Lou Direnzo's.
+
+**Once an entry is gifted, the giftee owns the pick.** Chas replying to change
+his own pick is legitimate and **is acted on**. Ray for `Rayvas`, John for
+`Johnvas`, Kris for his two, Chas for his two. The payer gave up that authority
+when he designated the entries.
+
+**What the giftee does NOT get is the money or the tier.** Those stay with the
+buyer, which is why this is a column on `entries` and not a second owner row.
+Ownership, billing, the 4+ tier and the remittance are all untouched by a gift
+— a gifted entry bills its buyer exactly as before.
+
+Two columns, not one:
+
+- `entries.is_gifted` — somebody else plays this.
+- `entries.player_email` — where its pick request goes. Requires `is_gifted`,
+  enforced by a check constraint, so an address can never imply an arrangement
+  the roster does not otherwise record.
+
+**`is_gifted` with no address is a real state, not an error.** It says "somebody
+else is playing this and I do not have their address yet" — where
+`Lou Direnzo #1`–`#2` sit right now. That is the gap worth chasing, and the
+pick-emails screen surfaces it as one. A single column could not express it.
+
+**There is no `player_name`.** The entry name already carries the identity, and
+a second name field drifts against it. A giftee is greeted by their entry names.
+
+**The generator groups by RECIPIENT, not by owner.** Kris gets a message listing
+his two; Chas gets his own listing only his two, with his own reply line. One
+person, one message, one conversation — nobody reads a list of four and works
+out which half is theirs. `recipientsForPicks` in `src/lib/emails/recipients.ts`
+is the single place that decides this, and the screen, copy-all, address list
+and skip reporting are all built on what it returns.
+
+**`owners.cc_email` was the first attempt and is retired.** It was a property of
+the OWNER when the thing being modelled is a property of the ENTRY, so it broke
+at the second giftee on one owner. **Do not reintroduce it, and do not add a
+second contact mechanism beside `player_email`** — two columns meaning almost
+the same thing drift, and the day they disagree somebody does not get their
+pick request.
+
 ## Roster state — snapshot, not a rule
 
 These move. The app is authoritative; this is here so a new session starts
@@ -361,9 +410,10 @@ Two standing facts that are NOT snapshots and must survive:
   of that misrecording, not a missing address.
 - **Kris Tomasco owns four entries; Chas Flaster plays two of them.** One
   owner, one payment, one 4+ tier — `Kris Tomasco #1`–`#2` are Kris's and
-  `Chas Flaster #1`–`#2` are Chas's, all four under Kris. Chas could not be
-  reached directly, so his address sits in Kris's `cc_email` and he is copied
-  on the one pick email. **Do not split this into two owners** — see
+  `Chas Flaster #1`–`#2` are Chas's, all four under Kris. Chas's two carry
+  `player_email = chas.flaster@gmail.com`, so **he gets his own pick request
+  listing only his two** — see [gifted entries](#gifted-entries). **Do not
+  split this into two owners** — see
   [why the tiers exist](#why-the-tiers-exist--admin-only). All four names are
   still `name_is_default`; nobody has supplied a real one.
 - **There are three Tropeas and they are three people.** `mariohockey97@yahoo.com`
@@ -384,7 +434,9 @@ Two standing facts that are NOT snapshots and must survive:
   and **not deleted**: Lynne received them on 2026-08-24 and the rows have to
   survive to carry `submitted_as_name` into the removal bucket. What remains
   true is the naming: `Johnvas` is Ray's wording for entries he pays for, not
-  evidence of a second owner.
+  evidence of a second owner. **John plays those two** — they carry
+  `player_email = jmvas731@msn.com` and he is mailed for them directly, which
+  is a gift on Ray's entries and not a second owner row.
 
 ## Working rules
 
@@ -493,6 +545,13 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
   right to exclude quarantined rows rather than sweep them in. Do not spread
   `is not distinct from` across ordinary owner lookups.
 
+- **`name_is_default` clears only when the name actually changes.** It means
+  *nobody has supplied a real name yet* and drives the "Default name" filter on
+  `/admin/entries` — the list Anthony works when chasing owners for their real
+  wording. `admin_update_entry` used to clear it on every call, so the
+  Lynne-number paste import, which re-submits each entry's existing name to
+  write a number, silently emptied that list. Comparison is byte-exact:
+  `tommybrads` arriving over `Tommybrads` is a real rename.
 - Tests are required for pick validation, elimination rules, and any money
   calculation.
 - Bye weeks and Thursday/Saturday/Monday games are normal — never assume all
@@ -511,4 +570,5 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
 | Audit rendering                     | `src/lib/audit-format.ts`, `/admin/audit`    |
 | Data backup (one-step restore)      | `src/lib/backup.ts`, `/api/admin/backup`     |
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |
-| Pick emails (owner + optional CC)    | `src/lib/emails/pick-request.ts`             |
+| Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
+| Pick email bodies                   | `src/lib/emails/pick-request.ts`             |

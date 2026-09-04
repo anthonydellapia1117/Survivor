@@ -12,7 +12,6 @@ export default async function EmailsPage() {
         id: o.id,
         name: `${o.firstName} ${o.lastName}`,
         email: o.email,
-        ccEmail: o.ccEmail,
         status: o.participationStatus,
         // dueCents 0 (the runner's free-entry row) owes nothing.
         paid: o.dueCents === 0 || o.paidCents >= o.dueCents,

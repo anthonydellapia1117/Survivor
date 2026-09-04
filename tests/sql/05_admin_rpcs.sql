@@ -28,10 +28,74 @@ begin
   select id into v_entry2 from entries where owner_id = v_owner and entry_index = 2;
 
   -- Verbatim rename.
-  perform admin_update_entry(v_entry, 'wEiRd cAsE 7', 'Lynne Calls It This', null, 'test');
+  perform admin_update_entry(v_entry, 'wEiRd cAsE 7', 'Lynne Calls It This',
+                             null, null, null, null, 'test');
   if (select entry_name from entries where id = v_entry) <> 'wEiRd cAsE 7' then
     raise exception 'rename altered the name';
   end if;
+
+  -- A real rename supplies a real name, so the still-need-to-ask flag clears.
+  if (select name_is_default from entries where id = v_entry) then
+    raise exception 'a rename should clear name_is_default';
+  end if;
+
+  -- ...but re-submitting the STORED name supplies nothing, so the flag holds.
+  -- bulkSetLynneNumbersAction writes a lynne_number by passing the entry's
+  -- existing name straight back through this RPC. Before 20260904000061 that
+  -- stamped "a real name was supplied" across every row a Lynne-number import
+  -- touched, silently emptying the "Default name" list on /admin/entries that
+  -- Anthony works when chasing owners for their real wording.
+  if not (select name_is_default from entries where id = v_entry2) then
+    raise exception 'fixture wrong: TP 2 should still carry a default name';
+  end if;
+  perform admin_update_entry(v_entry2, 'TP 2', null, null, 41, null, null, 'test');
+  if not (select name_is_default from entries where id = v_entry2) then
+    raise exception 'an unchanged name cleared name_is_default';
+  end if;
+  if (select lynne_number from entries where id = v_entry2) <> 41 then
+    raise exception 'lynne_number did not write';
+  end if;
+
+  -- player_email is who PLAYS the entry, as against who paid for it. An
+  -- address implies the gift, so a contact can never be recorded for an
+  -- arrangement the roster does not otherwise carry. Edge whitespace comes
+  -- off; mailbox case is the owner's and is kept verbatim.
+  perform admin_update_entry(v_entry2, 'TP 2', null, null, 41, null,
+                             '  Chas@Example.COM  ', 'test');
+  select count(*) into n from entries
+   where id = v_entry2 and is_gifted and player_email = 'Chas@Example.COM';
+  if n <> 1 then raise exception 'player_email did not round-trip trimmed'; end if;
+  if not (select name_is_default from entries where id = v_entry2) then
+    raise exception 'setting player_email cleared name_is_default';
+  end if;
+
+  -- Whitespace-only is blank, on the same Unicode set JS trim() uses -- else a
+  -- " " is a player the database believes in and the mail never reaches.
+  -- is_gifted survives on its own: gifted with no address yet is a real state,
+  -- the one Lou Direnzo #1-#2 are in, and the gap the screen exists to chase.
+  perform admin_update_entry(v_entry2, 'TP 2', null, null, 41, true,
+                             E' \u00A0 ', 'test');
+  select count(*) into n from entries
+   where id = v_entry2 and is_gifted and player_email is null;
+  if n <> 1 then
+    raise exception 'whitespace-only player_email stored as a real address';
+  end if;
+
+  -- The check constraint is the backstop under every route, not just the RPC.
+  begin
+    update entries set is_gifted = false, player_email = 'x@example.com'
+     where id = v_entry2;
+    raise exception 'player_email without is_gifted was accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  -- and the designation is audited like every other entry write.
+  select count(*) into n from audit_log
+   where action = 'update_entry' and target_id = v_entry2::text
+     and before -> 'player_email' = 'null'::jsonb
+     and after ->> 'player_email' = 'Chas@Example.COM';
+  if n <> 1 then raise exception 'player_email change not audited'; end if;
 
   -- submit_pick then override -> supersession, never an edit.
   v_pick1 := admin_submit_pick(v_entry, 1, 'KC', 'admin', 'test');
@@ -109,7 +173,7 @@ begin
   end;
 
   -- participation change is audited with before/after.
-  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com', null,
+  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com',
                              null, 'declined', null, 'test');
   select count(*) into n from audit_log
    where action = 'update_owner' and target_id = v_owner::text
@@ -117,54 +181,26 @@ begin
      and after ->> 'participation_status' = 'declined';
   if n <> 1 then raise exception 'status change not audited with before/after'; end if;
 
-  -- cc_email round-trips, and an empty string means "none" the same way the
-  -- primary address does. It is a second contact for an owner who pays for
-  -- entries somebody else plays -- never a second identity, so nothing else
-  -- about the owner moves with it.
-  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com',
-                             'second@example.com', null, 'declined', null, 'test');
-  select count(*) into n from owners
-   where id = v_owner and cc_email = 'second@example.com'
-     and email = 'x@example.com';
-  if n <> 1 then raise exception 'cc_email did not round-trip'; end if;
-
-  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com', '',
-                             null, 'declined', null, 'test');
-  select count(*) into n from owners where id = v_owner and cc_email is null;
-  if n <> 1 then raise exception 'empty cc_email should store as null'; end if;
-
-  -- Whitespace-only is blank too, on the same Unicode set JS trim() uses.
-  -- ccAddress in the app decides whether to emit a Cc with trim(); if the RPC
-  -- disagreed, a " " would be a contact the database believes in and the mail
-  -- never reaches. Same drift trim_name_ws was introduced to end.
-  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com',
-                             E' \u00A0 ', null, 'declined', null, 'test');
-  select count(*) into n from owners where id = v_owner and cc_email is null;
-  if n <> 1 then
-    raise exception 'whitespace-only cc_email stored as a real address';
-  end if;
-
-  -- and edge whitespace around a real address is trimmed off it, not kept.
-  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com',
-                             '  second@example.com  ', null, 'declined', null, 'test');
-  select count(*) into n from owners
-   where id = v_owner and cc_email = 'second@example.com';
-  if n <> 1 then raise exception 'padded cc_email was not trimmed'; end if;
-
-  -- and the change is audited like every other owner write.
-  select count(*) into n from audit_log
-   where action = 'update_owner' and target_id = v_owner::text
-     and before ->> 'cc_email' = 'second@example.com'
-     and after -> 'cc_email' = 'null'::jsonb;
-  if n <> 1 then raise exception 'cc_email change not audited'; end if;
-
-  -- No public projection carries it. The column is admin-only, like email.
+  -- No public projection carries a giftee's address. It is contact data of
+  -- exactly the class owners.email is, and the public views list their
+  -- columns explicitly, so this asserts an absence that is structural.
   if exists (
     select 1 from information_schema.columns
-     where table_schema = 'public' and column_name = 'cc_email'
+     where table_schema = 'public' and column_name in ('player_email', 'cc_email')
        and table_name in ('v_public_owners', 'v_entry_public')
   ) then
-    raise exception 'cc_email leaked into a public view';
+    raise exception 'a contact address leaked into a public view';
+  end if;
+
+  -- owners.cc_email is gone entirely, not merely unused. Two columns meaning
+  -- almost the same thing drift, and the day they disagree somebody does not
+  -- get their pick request.
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'owners'
+       and column_name = 'cc_email'
+  ) then
+    raise exception 'owners.cc_email still exists';
   end if;
 
   -- Every write above produced audit rows.
@@ -238,7 +274,7 @@ begin
   v_entry := r.id;
 
   -- Rename it: the entry's own name moves, the recorded one does NOT.
-  perform admin_update_entry(v_entry, 'Real Name 1', null, null, null, 'test');
+  perform admin_update_entry(v_entry, 'Real Name 1', null, null, null, null, null, 'test');
   select entry_name, submitted_as_name, name_is_default into r
     from entries where id = v_entry;
   if r.entry_name <> 'Real Name 1' then raise exception 'rename did not apply'; end if;
@@ -278,7 +314,8 @@ begin
                                      'email', null, array['Told Her 1'], true, 'test');
   perform admin_mark_new_entries_sent('test');
   select id into v_sent_entry from entries where entry_name = 'Told Her 1';
-  perform admin_update_entry(v_sent_entry, 'Told Her Renamed', null, null, null, 'test');
+  perform admin_update_entry(v_sent_entry, 'Told Her Renamed', null, null, null,
+                             null, null, 'test');
 
   v_new_owner := admin_create_owner('Not', 'Yet', 'notyet@example.com', null,
                                     'email', null, array['Not Yet 1'], true, 'test');
@@ -300,7 +337,8 @@ begin
 
   -- And the reverse: sending new entries must not silently reconcile a
   -- rename the runner has NOT yet told her about.
-  perform admin_update_entry(v_sent_entry, 'Told Her Renamed Again', null, null, null, 'test');
+  perform admin_update_entry(v_sent_entry, 'Told Her Renamed Again', null, null,
+                             null, null, null, 'test');
   select admin_mark_new_entries_sent('test') into n;
   if n <> 1 then raise exception 'expected exactly 1 new entry sent, got %', n; end if;
 
@@ -578,7 +616,7 @@ begin
 
   -- The identity was wrong; correct it.
   perform admin_update_owner(v_wrong, 'Right', 'Person', 'right@example.com',
-                             null, null, 'confirmed', 'my error', 'test');
+                             null, 'confirmed', 'my error', 'test');
   res := admin_resync_default_entry_names(v_wrong, 'test', 'identity corrected');
   if (res->>'renamed')::int <> 4 then
     raise exception 'expected 4 re-derived, got %', res->>'renamed';
@@ -608,7 +646,7 @@ begin
                                 'email', null, array['His Own Name'], false, 'test');
   perform admin_add_entries(v_mixed, array['Mixed Case #2'], true, false, 'test');
   perform admin_update_owner(v_mixed, 'Renamed', 'Case', 'mixed@example.com',
-                             null, null, 'confirmed', null, 'test');
+                             null, 'confirmed', null, 'test');
   res := admin_resync_default_entry_names(v_mixed, 'test', 'mixed owner');
   if (res->>'renamed')::int <> 1 then
     raise exception 'expected only the default entry to move, got %', res->>'renamed';
@@ -755,7 +793,7 @@ begin
 
   -- The identity was wrong; the entries are renamed locally.
   perform admin_update_owner(v_owner, 'Right', 'Person', 'sub@example.com',
-                             null, null, 'confirmed', 'my error', 'test');
+                             null, 'confirmed', 'my error', 'test');
   update entries set entry_name = 'Right Person #' || entry_index
    where owner_id = v_owner;
 
