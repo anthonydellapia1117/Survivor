@@ -81,7 +81,11 @@ export function PickEmailsClient({
             // owner's name, which is owner-supplied like every other name in
             // this app. The message body is already escaped by the renderer.
             `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:13px;padding:14px 0 6px 0;">
-               <div><strong>To:</strong> ${escapeHtml(b.to)}</div>
+               <div><strong>To:</strong> ${escapeHtml(b.to)}</div>${
+                 b.cc
+                   ? `\n               <div><strong>Cc:</strong> ${escapeHtml(b.cc)}</div>`
+                   : ""
+               }
                <div><strong>Subject:</strong> ${escapeHtml(b.subject)}</div>
              </div>${b.html}<hr style="border:none;border-top:2px solid #262b31;margin:26px 0;">`,
         )
@@ -94,12 +98,15 @@ export function PickEmailsClient({
       built
         .map(
           (b) =>
-            `To: ${b.to}\nSubject: ${b.subject}\n\n${b.text}\n\n${"=".repeat(60)}\n`,
+            `To: ${b.to}\n${b.cc ? `Cc: ${b.cc}\n` : ""}Subject: ${b.subject}\n\n${b.text}\n\n${"=".repeat(60)}\n`,
         )
         .join("\n"),
     [built],
   );
 
+  // To-addresses only. A CC belongs beside the one owner it is for; pasting
+  // it into a combined address line would put a second person's address in the
+  // To line of a mass mail, which is the opposite of what the CC is for.
   const addresses = useMemo(() => built.map((b) => b.to).join(", "), [built]);
 
   return (
@@ -202,6 +209,7 @@ export function PickEmailsClient({
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {b.to}
+                  {b.cc ? ` · cc ${b.cc}` : ""}
                 </span>
               </button>
             );
@@ -214,6 +222,11 @@ export function PickEmailsClient({
               <code className="text-xs text-muted-foreground">
                 {current.to}
               </code>
+              {current.cc ? (
+                <code className="text-xs text-muted-foreground">
+                  cc {current.cc}
+                </code>
+              ) : null}
               <span className="text-border">·</span>
               <Button
                 size="sm"
@@ -244,6 +257,17 @@ export function PickEmailsClient({
               >
                 Subject
               </Button>
+              {current.cc ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () =>
+                    note(`${current.ownerId}-c`, await copyPlain(current.cc))
+                  }
+                >
+                  Cc address
+                </Button>
+              ) : null}
               {flash && flash.id.startsWith(current.ownerId) ? (
                 <span
                   className={cn("text-sm", flash.ok ? "text-win" : "text-loss")}

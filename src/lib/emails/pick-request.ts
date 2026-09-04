@@ -71,15 +71,35 @@ export interface PickRequestOwner {
   /** How they are addressed — first name where there is one. */
   greetingName: string;
   email: string;
+  /** Second address to copy, where somebody else plays entries this owner
+   *  pays for. Null for nearly everyone. */
+  ccEmail: string | null;
   entryNames: string[];
 }
 
 export interface BuiltEmail {
   ownerId: string;
   to: string;
+  /** Empty when there is nobody to copy — the header is then omitted. */
+  cc: string;
   subject: string;
   html: string;
   text: string;
+}
+
+/**
+ * The address to copy, or "" for none.
+ *
+ * An address equal to the recipient's is dropped rather than sent twice: the
+ * owner's own address turning up here is a typo, and honouring it would put
+ * two copies of the same mail in one inbox with no way to tell them apart.
+ * Compared case-insensitively because mailbox case is not significant to any
+ * provider this pool uses, and "Kris@" beside "kris@" is the same typo.
+ */
+export function ccAddress(email: string, ccEmail: string | null): string {
+  const cc = ccEmail?.trim() ?? "";
+  if (cc === "") return "";
+  return cc.toLowerCase() === email.trim().toLowerCase() ? "" : cc;
 }
 
 /**
@@ -155,6 +175,7 @@ export function buildPickRequest(
   return {
     ownerId: owner.id,
     to: owner.email,
+    cc: ccAddress(owner.email, owner.ccEmail),
     subject: doc.subject,
     html: renderEmailHtml(doc),
     text: renderEmailText(doc),
@@ -200,6 +221,7 @@ export function buildPickRequests(
           id: o.id,
           greetingName: o.greetingName,
           email,
+          ccEmail: o.ccEmail,
           entryNames: o.entryNames,
         },
         week,

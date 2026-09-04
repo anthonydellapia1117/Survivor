@@ -35,7 +35,13 @@ const DEFINES = "create or replace function mint_free_entries";
  * that defines it, the same way PostgreSQL does when the files are replayed
  * in order.
  */
-function liveMigration(): { file: string; sql: string; body: string } {
+function liveMigration(): {
+  file: string;
+  sql: string;
+  body: string;
+  /** `body` with SQL line comments stripped — what actually executes. */
+  code: string;
+} {
   const defining = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
     .sort()

@@ -109,12 +109,45 @@ begin
   end;
 
   -- participation change is audited with before/after.
-  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com', null, 'declined', null, 'test');
+  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com', null,
+                             null, 'declined', null, 'test');
   select count(*) into n from audit_log
    where action = 'update_owner' and target_id = v_owner::text
      and before ->> 'participation_status' = 'confirmed'
      and after ->> 'participation_status' = 'declined';
   if n <> 1 then raise exception 'status change not audited with before/after'; end if;
+
+  -- cc_email round-trips, and an empty string means "none" the same way the
+  -- primary address does. It is a second contact for an owner who pays for
+  -- entries somebody else plays -- never a second identity, so nothing else
+  -- about the owner moves with it.
+  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com',
+                             'second@example.com', null, 'declined', null, 'test');
+  select count(*) into n from owners
+   where id = v_owner and cc_email = 'second@example.com'
+     and email = 'x@example.com';
+  if n <> 1 then raise exception 'cc_email did not round-trip'; end if;
+
+  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com', '',
+                             null, 'declined', null, 'test');
+  select count(*) into n from owners where id = v_owner and cc_email is null;
+  if n <> 1 then raise exception 'empty cc_email should store as null'; end if;
+
+  -- and the change is audited like every other owner write.
+  select count(*) into n from audit_log
+   where action = 'update_owner' and target_id = v_owner::text
+     and before ->> 'cc_email' = 'second@example.com'
+     and after -> 'cc_email' = 'null'::jsonb;
+  if n <> 1 then raise exception 'cc_email change not audited'; end if;
+
+  -- No public projection carries it. The column is admin-only, like email.
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and column_name = 'cc_email'
+       and table_name in ('v_public_owners', 'v_entry_public')
+  ) then
+    raise exception 'cc_email leaked into a public view';
+  end if;
 
   -- Every write above produced audit rows.
   select count(*) into n from audit_log;
@@ -527,7 +560,7 @@ begin
 
   -- The identity was wrong; correct it.
   perform admin_update_owner(v_wrong, 'Right', 'Person', 'right@example.com',
-                             null, 'confirmed', 'my error', 'test');
+                             null, null, 'confirmed', 'my error', 'test');
   res := admin_resync_default_entry_names(v_wrong, 'test', 'identity corrected');
   if (res->>'renamed')::int <> 4 then
     raise exception 'expected 4 re-derived, got %', res->>'renamed';
@@ -557,7 +590,7 @@ begin
                                 'email', null, array['His Own Name'], false, 'test');
   perform admin_add_entries(v_mixed, array['Mixed Case #2'], true, false, 'test');
   perform admin_update_owner(v_mixed, 'Renamed', 'Case', 'mixed@example.com',
-                             null, 'confirmed', null, 'test');
+                             null, null, 'confirmed', null, 'test');
   res := admin_resync_default_entry_names(v_mixed, 'test', 'mixed owner');
   if (res->>'renamed')::int <> 1 then
     raise exception 'expected only the default entry to move, got %', res->>'renamed';
@@ -704,7 +737,7 @@ begin
 
   -- The identity was wrong; the entries are renamed locally.
   perform admin_update_owner(v_owner, 'Right', 'Person', 'sub@example.com',
-                             null, 'confirmed', 'my error', 'test');
+                             null, null, 'confirmed', 'my error', 'test');
   update entries set entry_name = 'Right Person #' || entry_index
    where owner_id = v_owner;
 

@@ -95,6 +95,33 @@ team with no game that week takes the late boundary.
 
 Priced per owner: 4+ entries drops the whole owner to the $25/entry tier.
 
+#### Why the tiers exist — ADMIN ONLY
+
+**$25 per entry is the real price.** That is what goes to the pool, every
+entry, every tier. The **$30 for 1–3 entries is a $5 tip to Anthony** for
+running this.
+
+**Four or more drops to the true $25.** That is the whole point of the tier:
+it rewards volume, gets more entries in, and earns Anthony more free entries
+(one per ten recruited, so more recruits is more free entries as well as more
+remittance).
+
+**This never leaves this file.** It appears on no public route, in no
+player-facing email, and in no export a player can reach. Nobody outside this
+document knows the $30 has a $5 spread in it. It is the same admin-only class
+as [the margin](#margin--admin-only), which is that spread plus the free
+entries, counted up.
+
+**Do not build a price override.** No per-owner rate field, no per-entry
+price, no hardcoded split to make a display come out even. Set 2026-09-04,
+when Kris Tomasco's four entries turned out to be two his and two Chas
+Flaster's: splitting them into two owners would have cost the 4+ tier and $20,
+and the fix for that would have been a rate field. A per-owner rate invites the
+next person to ask why one owner pays differently, and hardcoding $50/$50 to
+make a screen look right is the same shape as storing a derived value. **The
+four tier prices are the only prices.** Where an arrangement does not fit
+ownership, fix contact, not price — that is what `owners.cc_email` is for.
+
 ### Payment sweeps — match on AMOUNT first
 
 When reconciling Venmo receipts against the ledger, **start from the tier
@@ -276,15 +303,21 @@ from roughly the right place and can spot a big discrepancy immediately.
 **As of 2026-09-04:** 94 recruited + 9 free = **103 entries**, 31 owner rows
 (29 of them carrying recruited entries). $2,420 due, $1,470 collected, $950
 outstanding, **$2,350 owed to Lynne** (94 × $25). 18 owners settled, 11 still
-owing. The roster has grown by **13 live entries** since the last full send.
+owing. Every live entry is stamped as sent to Lynne, so the only open drift is
+the two renames below — **+0 ✎2 −0**.
 
-**That send, on 2026-09-03:** the roster stood at 90, the full 90 went to her,
-and every drift bucket was clear — **+0 ✎0 −0**. It was structured as 61
+**Sent in two passes on 2026-09-03.** At the first the roster stood at 90, the
+full 90 went to her, and every bucket was clear. That pass was structured as 61
 formatting corrections carried implicitly by a full-roster paste-over, 13
 additions (the 9 pending plus `Jim Teti #1`–`#4`) and 8 removals. The app
 records only 4 removals, which is correct: DiCicco 1–4 are genuinely voided
 rows, while the other 4 are the delete-half of the Jim Teti substitution and
-those entries are still live.
+those entries are still live. A **second pass later the same day** stamped 13
+more live entries as sent, taking her copy to 103.
+
+**Open drift right now:** `Kris Tomasco #1`–`#2` became `EAGLESFOR50 #1`–`#2`
+on 2026-09-04, after she had them under the old names. Two renames owed, and
+nothing else.
 
 Two standing facts that are NOT snapshots and must survive:
 
@@ -303,6 +336,16 @@ Two standing facts that are NOT snapshots and must survive:
   are NOT part of the correction.
 - **Every owner has an email on file.** The one historical gap was the symptom
   of that misrecording, not a missing address.
+- **Kris Tomasco owns four entries; Chas Flaster plays two of them.** One
+  owner, one payment, one 4+ tier — `EAGLESFOR50 #1`–`#2` are Kris's and
+  `Chas Flaster #1`–`#2` are Chas's, all four under Kris. Chas could not be
+  reached directly, so his address sits in Kris's `cc_email` and he is copied
+  on the one pick email. **Do not split this into two owners** — see
+  [why the tiers exist](#why-the-tiers-exist--admin-only).
+- **Ray Vassallo and John Vassallo are not a shared arrangement.** Ray covers
+  `Johnvas #1`–`#2`; John Vassallo is separately in for four. They came to
+  Anthony independently and the names are a coincidence. No action, ever —
+  this is here so a future session stops re-finding it.
 
 ## Working rules
 
@@ -429,3 +472,4 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
 | Audit rendering                     | `src/lib/audit-format.ts`, `/admin/audit`    |
 | Data backup (one-step restore)      | `src/lib/backup.ts`, `/api/admin/backup`     |
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |
+| Pick emails (owner + optional CC)    | `src/lib/emails/pick-request.ts`             |

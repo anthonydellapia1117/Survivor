@@ -57,6 +57,7 @@ export const adminLocalPgBackend: AdminBackend = {
       firstName: r.first_name,
       lastName: r.last_name,
       email: r.email,
+      ccEmail: r.cc_email ?? null,
       phone: r.phone,
       source: r.source,
       participationStatus: r.participation_status,
@@ -152,16 +153,20 @@ export const adminLocalPgBackend: AdminBackend = {
   },
 
   async updateOwner(a) {
-    await db().query("select admin_update_owner($1,$2,$3,$4,$5,$6,$7,$8)", [
-      a.ownerId,
-      a.firstName,
-      a.lastName,
-      a.email,
-      a.phone,
-      a.participationStatus,
-      a.notes,
-      a.actor,
-    ]);
+    await db().query(
+      "select admin_update_owner($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+      [
+        a.ownerId,
+        a.firstName,
+        a.lastName,
+        a.email,
+        a.ccEmail,
+        a.phone,
+        a.participationStatus,
+        a.notes,
+        a.actor,
+      ],
+    );
   },
 
   async addEntries(a) {

@@ -65,6 +65,7 @@ export async function updateOwnerAction(input: {
   firstName: string;
   lastName: string;
   email: string;
+  ccEmail: string;
   phone: string;
   participationStatus: string;
   notes: string;
