@@ -133,6 +133,24 @@ begin
   select count(*) into n from owners where id = v_owner and cc_email is null;
   if n <> 1 then raise exception 'empty cc_email should store as null'; end if;
 
+  -- Whitespace-only is blank too, on the same Unicode set JS trim() uses.
+  -- ccAddress in the app decides whether to emit a Cc with trim(); if the RPC
+  -- disagreed, a " " would be a contact the database believes in and the mail
+  -- never reaches. Same drift trim_name_ws was introduced to end.
+  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com',
+                             E' \u00A0 ', null, 'declined', null, 'test');
+  select count(*) into n from owners where id = v_owner and cc_email is null;
+  if n <> 1 then
+    raise exception 'whitespace-only cc_email stored as a real address';
+  end if;
+
+  -- and edge whitespace around a real address is trimmed off it, not kept.
+  perform admin_update_owner(v_owner, 'Test', 'Person', 'x@example.com',
+                             '  second@example.com  ', null, 'declined', null, 'test');
+  select count(*) into n from owners
+   where id = v_owner and cc_email = 'second@example.com';
+  if n <> 1 then raise exception 'padded cc_email was not trimmed'; end if;
+
   -- and the change is audited like every other owner write.
   select count(*) into n from audit_log
    where action = 'update_owner' and target_id = v_owner::text
@@ -949,6 +967,36 @@ begin
      and p.proacl is null;
   if v_bad is not null then
     raise exception 'admin RPC left at default grants (PUBLIC can execute): %', v_bad;
+  end if;
+
+  -- And the other direction, which is the half that kept shipping broken.
+  --
+  -- The checks above only say who must NOT be able to call these. Twice now a
+  -- migration has replaced an admin RPC's signature, dropped the old function
+  -- and with it the `grant execute ... to authenticated` it carried, and left
+  -- the app unable to call its own RPC: 20260903000034 restored one,
+  -- 20260904000059 the other. Both passed everything, because nothing asserted
+  -- the positive direction and because the local backend and this suite both
+  -- connect as a superuser, for whom every privilege check is true.
+  --
+  -- The app holds no service-role key by design, so `authenticated` IS the
+  -- production caller. Assert it over the whole family rather than per
+  -- function, so a new admin RPC is covered the day it is written.
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    select string_agg(p.proname || '(' ||
+                      pg_get_function_identity_arguments(p.oid) || ')',
+                      ', ' order by p.proname)
+      into v_bad
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname like 'admin\_%'
+       and not has_function_privilege('authenticated', p.oid, 'EXECUTE');
+    if v_bad is not null then
+      raise exception
+        'admin RPC not callable by authenticated, so the app cannot call it: %',
+        v_bad;
+    end if;
   end if;
 end $$;
 

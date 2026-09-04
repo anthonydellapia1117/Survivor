@@ -35,7 +35,7 @@ const WEEK1_GAMES = [
 const owner = (entryNames: string[], ccEmail: string | null = null) => ({
   id: "o1",
   greetingName: "Caroline",
-  email: "carolinehamlett@gmail.com",
+  email: "owner@example.com",
   ccEmail,
   entryNames,
 });
@@ -246,12 +246,12 @@ describe("a second contact address is copied, not substituted", () => {
 
   it("carries the CC address when one is on file", () => {
     const b = buildPickRequest(
-      owner(KRIS, "chas.flaster@gmail.com"),
+      owner(KRIS, "second@example.com"),
       WEEK1,
       WEEK1_GAMES,
     );
-    expect(b.to).toBe("carolinehamlett@gmail.com");
-    expect(b.cc).toBe("chas.flaster@gmail.com");
+    expect(b.to).toBe("owner@example.com");
+    expect(b.cc).toBe("second@example.com");
   });
 
   it("leaves the CC empty when there is none — the header is then omitted", () => {
@@ -264,7 +264,7 @@ describe("a second contact address is copied, not substituted", () => {
   it("does not change the message the owner receives", () => {
     const plain = buildPickRequest(owner(KRIS), WEEK1, WEEK1_GAMES);
     const copied = buildPickRequest(
-      owner(KRIS, "chas.flaster@gmail.com"),
+      owner(KRIS, "second@example.com"),
       WEEK1,
       WEEK1_GAMES,
     );
@@ -276,8 +276,8 @@ describe("a second contact address is copied, not substituted", () => {
 
   it("drops a CC that is the recipient, whatever its case or padding", () => {
     for (const same of [
-      "carolinehamlett@gmail.com",
-      "  CarolineHamlett@Gmail.com  ",
+      "owner@example.com",
+      "  Owner@Example.COM  ",
     ]) {
       expect(buildPickRequest(owner(KRIS, same), WEEK1, WEEK1_GAMES).cc).toBe(
         "",
@@ -299,8 +299,8 @@ describe("a second contact address is copied, not substituted", () => {
           id: "a",
           greetingName: "Kris",
           fullName: "Kris Tomasco",
-          email: "eaglesfor50@aol.com",
-          ccEmail: "chas.flaster@gmail.com",
+          email: "owner@example.com",
+          ccEmail: "second@example.com",
           entryNames: KRIS,
         },
         {
@@ -315,7 +315,7 @@ describe("a second contact address is copied, not substituted", () => {
       WEEK1,
       WEEK1_GAMES,
     );
-    expect(built.map((b) => b.cc)).toEqual(["chas.flaster@gmail.com", ""]);
+    expect(built.map((b) => b.cc)).toEqual(["second@example.com", ""]);
   });
 
   // A CC is a copy, never a fallback. An owner with no address of their own is
