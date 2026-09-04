@@ -17,6 +17,7 @@ import {
   pickDeadlineIso,
   type DeadlineTier,
 } from "@/lib/deadlines";
+import { normalizeAddress, sameAddress } from "./address";
 import {
   renderEmailHtml,
   renderEmailText,
@@ -97,9 +98,8 @@ export interface BuiltEmail {
  * provider this pool uses, and "Kris@" beside "kris@" is the same typo.
  */
 export function ccAddress(email: string, ccEmail: string | null): string {
-  const cc = ccEmail?.trim() ?? "";
-  if (cc === "") return "";
-  return cc.toLowerCase() === email.trim().toLowerCase() ? "" : cc;
+  const cc = normalizeAddress(ccEmail);
+  return sameAddress(cc, email) ? "" : cc;
 }
 
 /**
@@ -229,7 +229,7 @@ export function buildPickRequests(
     // An address that survives trim() but not ccAddress() was dropped for
     // being the recipient's own. Recorded before the message is built so the
     // report does not depend on reading it back out of the result.
-    const asked = o.ccEmail?.trim() ?? "";
+    const asked = normalizeAddress(o.ccEmail);
     if (asked !== "" && ccAddress(email, o.ccEmail) === "") {
       droppedCc.push({ id: o.id, name: o.fullName, address: asked });
     }

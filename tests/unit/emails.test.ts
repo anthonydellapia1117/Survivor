@@ -433,14 +433,41 @@ describe("a group send reaches second contacts too", () => {
     expect(list.missingEmail.map((o) => o.name)).toEqual(["No Address"]);
   });
 
-  it("emits a shared address once and says so", () => {
+  it("emits a shared address once, and names the row that repeated it", () => {
     const list = groupSendList([
       { id: "a", name: "A", email: "shared@example.com", ccEmail: null },
       { id: "b", name: "B", email: "SHARED@example.com", ccEmail: null },
       { id: "c", name: "C", email: "c@example.com", ccEmail: "shared@example.com" },
     ]);
     expect(list.addresses).toEqual(["shared@example.com", "c@example.com"]);
-    expect(list.duplicates).toEqual(["SHARED@example.com", "shared@example.com"]);
+    // One mailbox, reported once — keyed the same way the send list is, so a
+    // casing variant cannot show up as a second "duplicate". The row that
+    // repeated it is named, because that is what fixing the intake needs.
+    expect(list.duplicates).toEqual([
+      { ownerId: "b", ownerName: "B", address: "SHARED@example.com" },
+    ]);
+  });
+
+  // The two screens have to agree about the same row. The pick-email screen
+  // calls a CC that reaches the owner's own mailbox a dropped self-CC; if the
+  // group-send list counted it as a second contact, one row would be a second
+  // person on one screen and nobody on the other.
+  it("does not count a CC that reaches the owner's own mailbox", () => {
+    const list = groupSendList([
+      { id: "a", name: "A", email: "owner@example.com", ccEmail: "Owner@Example.COM" },
+    ]);
+    expect(list.addresses).toEqual(["owner@example.com"]);
+    expect(list.ccContacts).toEqual([]);
+    expect(list.duplicates).toEqual([]);
+  });
+
+  // A send about ONE person's money must not copy the person who does not owe
+  // it: Chas plays two entries Kris pays for, so a note about Kris's balance
+  // is not Chas's business.
+  it("leaves second contacts off when asked, for the money filters", () => {
+    const list = groupSendList(ROSTER, { includeCcContacts: false });
+    expect(list.addresses).toEqual(["owner@example.com", "solo@example.com"]);
+    expect(list.ccContacts).toEqual([]);
   });
 
   it("treats a whitespace-only address as none, on both columns", () => {

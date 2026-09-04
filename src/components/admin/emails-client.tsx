@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { groupSendList } from "@/lib/emails/group-send";
+import { normalizeAddress } from "@/lib/emails/address";
 
 type Filter = "all" | "paid" | "unpaid" | "missing";
 
@@ -33,6 +34,10 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
     () => owners.filter((o) => o.status === "confirmed"),
     [owners],
   );
+  // One definition of "has no address", shared with groupSendList — the
+  // banner and the Missing-email view contradicted each other when the filter
+  // used !o.email and the list used trim().
+  const hasEmail = (o: Row) => normalizeAddress(o.email) !== "";
   const filtered = useMemo(() => {
     switch (filter) {
       case "paid":
@@ -40,15 +45,26 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
       case "unpaid":
         return confirmed.filter((o) => !o.paid);
       case "missing":
-        return confirmed.filter((o) => !o.email);
+        return confirmed.filter((o) => !hasEmail(o));
       default:
         return confirmed;
     }
   }, [confirmed, filter]);
 
   // The filter chooses the ROWS; groupSendList chooses the addresses those
-  // rows contribute, owners and CC contacts alike.
-  const list = useMemo(() => groupSendList(filtered), [filtered]);
+  // rows contribute.
+  //
+  // Second contacts ride along on ALL, which is the announcement view. They
+  // are deliberately OFF for the money filters and for Missing email: a CC is
+  // on the roster to see announcements, not to be BCC'd on a note about the
+  // balance of the owner who pays for their entries, and "who can I not
+  // reach" is a diagnostic that should not hand back a live address list of
+  // different people.
+  const includeCcContacts = filter === "all";
+  const list = useMemo(
+    () => groupSendList(filtered, { includeCcContacts }),
+    [filtered, includeCcContacts],
+  );
   const missing = useMemo(
     () => groupSendList(confirmed).missingEmail,
     [confirmed],
@@ -74,8 +90,9 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
       <div>
         <h1 className="text-2xl">Emails</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          BCC-ready address list for group sends. Includes second contacts, so
-          somebody who plays entries another owner pays for is on it too.
+          BCC-ready address list for group sends. <strong>All</strong> includes
+          second contacts, so somebody who plays entries another owner pays for
+          is on it too; the money filters are owners only.
         </p>
       </div>
 
@@ -120,8 +137,12 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
 
       {list.duplicates.length > 0 ? (
         <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
-          Sent once each, though {list.duplicates.length === 1 ? "it" : "they"}{" "}
-          appear on more than one row: {list.duplicates.join(", ")}
+          Sent once each, though{" "}
+          {list.duplicates.length === 1 ? "it appears" : "they appear"} on more
+          than one row:{" "}
+          {list.duplicates
+            .map((d) => `${d.address} (repeated on ${d.ownerName})`)
+            .join(", ")}
         </p>
       ) : null}
 
@@ -140,7 +161,7 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
             ) : (
               <span className="font-semibold text-tie">NO EMAIL ON FILE</span>
             )}
-            {o.ccEmail ? (
+            {includeCcContacts && o.ccEmail ? (
               <span className="truncate text-xs text-muted-foreground">
                 + {o.ccEmail}
               </span>

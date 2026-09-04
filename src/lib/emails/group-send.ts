@@ -10,6 +10,13 @@
 //
 // So the list is built here, from both columns, and this file is the only
 // place that decides who is on it.
+//
+// Whether a CC is a second PERSON is not decided here — sameAddress is shared
+// with the pick-request generator, because a row that one screen calls a
+// second contact and the other calls a dropped self-CC is worse than either
+// answer on its own.
+
+import { normalizeAddress, sameAddress } from "./address";
 
 export interface GroupSendOwner {
   id: string;
@@ -27,15 +34,24 @@ export interface GroupSendList {
   /** The CC contacts on the list, and whose row each came from. */
   ccContacts: { ownerId: string; ownerName: string; address: string }[];
   /**
-   * Addresses that appear on more than one row and were emitted once. Worth
-   * showing rather than silently collapsing: two owners sharing an address is
-   * usually an intake mistake, and a CC that duplicates somebody's primary
-   * address means the arrangement is already covered.
+   * Addresses that appear on more than one ROW and were emitted once, each
+   * named with the row that repeated it. Worth showing rather than silently
+   * collapsing: two owners sharing an address is usually an intake mistake,
+   * and the thing needed to fix it is which rows collide — so record that,
+   * not just the string.
    */
-  duplicates: string[];
+  duplicates: { ownerId: string; ownerName: string; address: string }[];
 }
 
-const clean = (v: string | null | undefined): string => v?.trim() ?? "";
+/** Include each owner's second contact, not just their own address. */
+export interface GroupSendOptions {
+  /**
+   * Default true. Set false for a send that is about ONE person's money: a
+   * second contact is on the roster to see announcements, not to be BCC'd on
+   * a note about the balance of the owner who pays for their entries.
+   */
+  includeCcContacts?: boolean;
+}
 
 /**
  * Every address that should receive a group send, owners and CC contacts
@@ -47,19 +63,28 @@ const clean = (v: string | null | undefined): string => v?.trim() ?? "";
  * there. A group send is an announcement — the CC contact is a real person on
  * the roster and dropping them is the failure this function exists to stop.
  */
-export function groupSendList(owners: GroupSendOwner[]): GroupSendList {
+export function groupSendList(
+  owners: GroupSendOwner[],
+  options: GroupSendOptions = {},
+): GroupSendList {
+  const includeCc = options.includeCcContacts ?? true;
   const addresses: string[] = [];
   const ccContacts: GroupSendList["ccContacts"] = [];
   const missingEmail: GroupSendOwner[] = [];
-  const duplicates: string[] = [];
-  // Case-insensitive, because mailbox case is not significant to any provider
-  // this pool uses and "Kris@" beside "kris@" is one person, not two.
+  const duplicates: GroupSendList["duplicates"] = [];
+  // Keyed on the lowercased address, because that is what "the same mailbox"
+  // means here — and duplicates is keyed the same way, so one mailbox cannot
+  // be reported as two.
   const seen = new Set<string>();
+  const flagged = new Set<string>();
 
-  const add = (address: string) => {
+  const add = (owner: GroupSendOwner, address: string) => {
     const key = address.toLowerCase();
     if (seen.has(key)) {
-      if (!duplicates.includes(address)) duplicates.push(address);
+      if (!flagged.has(key)) {
+        flagged.add(key);
+        duplicates.push({ ownerId: owner.id, ownerName: owner.name, address });
+      }
       return;
     }
     seen.add(key);
@@ -67,13 +92,16 @@ export function groupSendList(owners: GroupSendOwner[]): GroupSendList {
   };
 
   for (const o of owners) {
-    const email = clean(o.email);
-    const cc = clean(o.ccEmail);
+    const email = normalizeAddress(o.email);
+    const cc = normalizeAddress(o.ccEmail);
     if (email === "") missingEmail.push(o);
-    else add(email);
-    if (cc !== "") {
+    else add(o, email);
+    // A CC that reaches the owner's own mailbox is not a second person. The
+    // pick-email screen reports it as dropped; counting it here would have
+    // the two screens contradicting each other about the same row.
+    if (includeCc && cc !== "" && !sameAddress(cc, o.email)) {
       ccContacts.push({ ownerId: o.id, ownerName: o.name, address: cc });
-      add(cc);
+      add(o, cc);
     }
   }
 
