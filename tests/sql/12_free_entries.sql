@@ -955,9 +955,46 @@ begin
   end loop;
 end $$;
 
--- ...and nothing else in the schema takes a row lock on those tables without
--- going through it. A `select ... for update` or a `lock table` anywhere would
--- reopen the cycle the BEFORE trigger closes.
+-- ...and nothing can lock one of those rows without going through it. This
+-- used to check only for an explicit `for update` / `for share` / `lock table`
+-- in a function body, which was a much weaker claim than the one the ordering
+-- argument rests on -- and it missed the real hole: a FOREIGN KEY takes a KEY
+-- SHARE lock on the parent row, and the child's write fires no trigger there.
+-- `insert into payments (owner_id = X)` locked owners(X) with no advisory lock
+-- held, and against a concurrent hard delete of X that deadlocked:
+--
+--   ERROR:  deadlock detected
+--   DETAIL: Process 3415 waits for ExclusiveLock on advisory lock ...
+--
+-- So the list of tables that must carry the lock trigger is DERIVED from
+-- pg_constraint rather than restated here. Add a table with a foreign key into
+-- entries, owners or config and forget the trigger, and this fails.
+do $$
+declare
+  r record;
+  n int;
+begin
+  for r in
+    select distinct c.conrelid::regclass::text as child
+      from pg_constraint c
+     where c.contype = 'f'
+       and c.confrelid::regclass::text in ('entries', 'owners', 'config')
+  loop
+    select count(*) into n
+      from pg_trigger tg join pg_class cl on cl.oid = tg.tgrelid
+     where cl.relname = r.child
+       and not tg.tgisinternal
+       and tg.tgfoid = 'lock_free_entry_rule'::regproc
+       and (tg.tgtype & 2) = 2      -- BEFORE
+       and (tg.tgtype & 1) = 0;     -- statement level
+    if n <> 1 then
+      raise exception
+        '% holds a foreign key into a rule table, so its writes take a KEY SHARE lock there, but it has no BEFORE lock trigger', r.child;
+    end if;
+  end loop;
+end $$;
+
+-- Explicit locks are still worth watching, but as their own, narrower claim.
 do $$
 declare
   n int;
@@ -1069,6 +1106,44 @@ begin
       (select count(*) from entries
         where owner_id = runner and is_free_entry and voided_at is null),
       held_before + 1;
+  end if;
+end $$;
+rollback;
+
+-- The numbering follows the NAME, not the is_free_entry flag.
+--
+-- That flag is internal bookkeeping and the entry dialog lets an admin toggle
+-- it. Reading it meant unticking "free" on AAA #4 both dropped it from the
+-- held count AND hid its still-current name from the numbering query, so the
+-- same statement minted a second live row called AAA #4:
+--
+--   entry_name | rows | flagged_free
+--   AAA #4     |    2 |            1
+--
+-- The name is what Lynne holds a number against.
+begin;
+do $$
+declare
+  runner uuid;
+  victim uuid;
+  highest int;
+begin
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  select coalesce(max((regexp_match(entry_name,'^AAA #?(\d+)$'))[1]::int), 0)
+    into highest from entries where owner_id = runner and is_free_entry;
+  if highest < 1 then raise exception 'setup: expected a minted backlog'; end if;
+
+  select id into victim from entries
+   where owner_id = runner and entry_name = 'AAA #' || highest;
+  -- Untick "free" on it, exactly as the entry dialog does.
+  perform admin_update_entry(victim, 'AAA #' || highest, null, false, 'test');
+
+  if exists (
+    select 1 from entries where entry_name like 'AAA %'
+     group by entry_name having count(*) > 1
+  ) then
+    raise exception 'unticking the free flag duplicated an AAA name';
   end if;
 end $$;
 rollback;
