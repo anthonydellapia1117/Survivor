@@ -344,6 +344,14 @@ out which half is theirs. `recipientsForPicks` in `src/lib/emails/recipients.ts`
 is the single place that decides this, and the screen, copy-all, address list
 and skip reporting are all built on what it returns.
 
+**A giftee is on the group send too.** They ride along on the **All** filter of
+`/admin/emails`, which is the announcement view — the same place `cc_email`
+contacts used to. Retiring the column did not retire the behaviour; only the
+source moved, from the owner to the entry. They are deliberately **off** for the
+money filters and for Missing email: a giftee is on the roster to hear
+announcements, not to be BCC'd on a note about the balance of the owner who pays
+for their entries.
+
 **`owners.cc_email` was the first attempt and is retired.** It was a property of
 the OWNER when the thing being modelled is a property of the ENTRY, so it broke
 at the second giftee on one owner. **Do not reintroduce it, and do not add a

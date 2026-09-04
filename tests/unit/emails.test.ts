@@ -346,8 +346,7 @@ describe("recipientsForPicks is the one place the unit is decided", () => {
 });
 
 // The group send is owner addresses. A person who only plays entries somebody
-// else bought is reached on their own pick email now, not here.
-describe("a group send is owner-addressed", () => {
+describe("a group send reaches the people who play, not just the buyers", () => {
   it("lists owner addresses, deduplicated, naming the row that repeated one", () => {
     const list = groupSendList([
       { id: "a", name: "A", email: "shared@example.com" },
@@ -360,6 +359,86 @@ describe("a group send is owner-addressed", () => {
       { ownerId: "b", ownerName: "B", address: "SHARED@example.com" },
     ]);
     expect(list.missingEmail.map((o) => o.name)).toEqual(["D"]);
+  });
+
+  // The failure this guards is the one Anthony named: "if I send a batch and
+  // the CC contacts are missing, Chas does not get his email and I would not
+  // know." The source moved from owners.cc_email to entries.player_email; the
+  // giftee still has to be on the announcement list.
+  it("includes the people who play an owner's entries when asked", () => {
+    const owners = [
+      {
+        id: "kris",
+        name: "Kris Tomasco",
+        email: "eaglesfor50@aol.com",
+        // Two gifted entries, one person: one address on the list.
+        players: ["chas.flaster@gmail.com", "chas.flaster@gmail.com"],
+      },
+    ];
+    const all = groupSendList(owners, { includeGiftedPlayers: true });
+    expect(all.addresses).toEqual([
+      "eaglesfor50@aol.com",
+      "chas.flaster@gmail.com",
+    ]);
+    expect(all.giftedPlayers).toEqual([
+      {
+        ownerId: "kris",
+        ownerName: "Kris Tomasco",
+        address: "chas.flaster@gmail.com",
+      },
+    ]);
+
+    // ...and off by default, which is what the money filters use: a giftee is
+    // not BCC'd on a note about the buyer's balance.
+    const owed = groupSendList(owners);
+    expect(owed.addresses).toEqual(["eaglesfor50@aol.com"]);
+    expect(owed.giftedPlayers).toEqual([]);
+  });
+
+  it("reaches a giftee even when the buyer has no address of their own", () => {
+    const list = groupSendList(
+      [{ id: "o", name: "O", email: null, players: ["player@example.com"] }],
+      { includeGiftedPlayers: true },
+    );
+    // Differs from a pick request on purpose: there a giftee is never a
+    // stand-in for the owner. An announcement is not addressed to one person.
+    expect(list.addresses).toEqual(["player@example.com"]);
+    expect(list.missingEmail.map((o) => o.name)).toEqual(["O"]);
+  });
+
+  it("a gift back to the buyer's own address is one person, not two", () => {
+    const list = groupSendList(
+      [
+        {
+          id: "o",
+          name: "O",
+          email: "owner@example.com",
+          players: ["  OWNER@Example.com  ", "   "],
+        },
+      ],
+      { includeGiftedPlayers: true },
+    );
+    expect(list.addresses).toEqual(["owner@example.com"]);
+    // Nothing was added, so nothing is annotated -- the row cannot claim a
+    // second contact the BCC string denies.
+    expect(list.giftedPlayers).toEqual([]);
+    expect(list.duplicates).toEqual([]);
+  });
+
+  it("a player address already on the list is deduplicated, not repeated", () => {
+    const list = groupSendList(
+      [
+        { id: "a", name: "A", email: "both@example.com" },
+        { id: "b", name: "B", email: "b@example.com", players: ["BOTH@example.com"] },
+      ],
+      { includeGiftedPlayers: true },
+    );
+    expect(list.addresses).toEqual(["both@example.com", "b@example.com"]);
+    expect(list.duplicates).toEqual([
+      { ownerId: "b", ownerName: "B", address: "BOTH@example.com" },
+    ]);
+    // Not annotated on B's row either: it was not emitted for B.
+    expect(list.giftedPlayers).toEqual([]);
   });
 });
 

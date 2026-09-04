@@ -21,6 +21,7 @@ interface Row {
   id: string;
   name: string;
   email: string | null;
+  players: string[];
   status: string;
   paid: boolean;
 }
@@ -53,12 +54,33 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
   // The filter chooses the ROWS; groupSendList chooses the addresses those
   // rows contribute.
   //
-  const list = useMemo(() => groupSendList(filtered), [filtered]);
+  // People who play entries somebody else bought ride along on ALL, which is
+  // the announcement view. They are deliberately OFF for the money filters and
+  // for Missing email: a giftee is on the roster to see announcements, not to
+  // be BCC'd on a note about the balance of the owner who pays for their
+  // entries, and "who can I not reach" is a diagnostic that should not hand
+  // back a live address list of different people.
+  const includeGiftedPlayers = filter === "all";
+  const list = useMemo(
+    () => groupSendList(filtered, { includeGiftedPlayers }),
+    [filtered, includeGiftedPlayers],
+  );
   const missing = useMemo(
     () => groupSendList(confirmed).missingEmail,
     [confirmed],
   );
   const emails = list.addresses;
+  // Render the annotations from the LIST, not from the raw row. Reading
+  // o.players directly puts a "+ address" on a row whose player the list
+  // deliberately left off — a whitespace value, a self-address, or a duplicate
+  // — so the row would claim a contact the BCC string and the count both deny.
+  const playersByOwner = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const c of list.giftedPlayers) {
+      m.set(c.ownerId, [...(m.get(c.ownerId) ?? []), c.address]);
+    }
+    return m;
+  }, [list]);
   const bcc = emails.join(", ");
 
   async function copyAll() {
@@ -79,9 +101,9 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
       <div>
         <h1 className="text-2xl">Emails</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          BCC-ready address list for group sends — owner addresses. Somebody
-          who only plays entries another owner bought is reached on their own
-          pick email, not here.
+          BCC-ready address list for group sends. <strong>All</strong> includes
+          the people who play entries another owner bought, so somebody like a
+          giftee is on it too; the money filters are owners only.
         </p>
       </div>
 
@@ -105,6 +127,11 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
           {emails.length} {emails.length === 1 ? "address" : "addresses"}
+          {list.giftedPlayers.length > 0
+            ? ` · ${list.giftedPlayers.length} player${
+                list.giftedPlayers.length === 1 ? "" : "s"
+              }`
+            : ""}
         </span>
         <Button size="sm" onClick={copyAll} disabled={emails.length === 0}>
           {copied ? "Copied" : "COPY ALL"}
@@ -145,6 +172,14 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
             ) : (
               <span className="font-semibold text-tie">NO EMAIL ON FILE</span>
             )}
+            {(playersByOwner.get(o.id) ?? []).map((address) => (
+              <span
+                key={address}
+                className="truncate text-xs text-muted-foreground"
+              >
+                + {address}
+              </span>
+            ))}
             <span
               className={cn(
                 "ml-auto text-xs font-medium",
