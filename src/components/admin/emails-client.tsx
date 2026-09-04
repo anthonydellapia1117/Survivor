@@ -1,11 +1,19 @@
 "use client";
 
-// A6: every owner email, one COPY ALL producing a BCC-ready
+// A6: every address on the roster, one COPY ALL producing a BCC-ready
 // comma-separated string. Filters: all / paid / unpaid / missing email.
+//
+// "Every address" includes cc_email contacts. An owner's second contact is a
+// person on the roster who is meant to see the same messages; building the
+// list from o.email alone drops them from every group send and no filter here
+// can reveal it, because the owner they hang off does have an address. Who is
+// on the list is decided in groupSendList, not here.
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { groupSendList } from "@/lib/emails/group-send";
+import { normalizeAddress } from "@/lib/emails/address";
 
 type Filter = "all" | "paid" | "unpaid" | "missing";
 
@@ -13,6 +21,7 @@ interface Row {
   id: string;
   name: string;
   email: string | null;
+  ccEmail: string | null;
   status: string;
   paid: boolean;
 }
@@ -25,6 +34,10 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
     () => owners.filter((o) => o.status === "confirmed"),
     [owners],
   );
+  // One definition of "has no address", shared with groupSendList — the
+  // banner and the Missing-email view contradicted each other when the filter
+  // used !o.email and the list used trim().
+  const hasEmail = (o: Row) => normalizeAddress(o.email) !== "";
   const filtered = useMemo(() => {
     switch (filter) {
       case "paid":
@@ -32,14 +45,39 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
       case "unpaid":
         return confirmed.filter((o) => !o.paid);
       case "missing":
-        return confirmed.filter((o) => !o.email);
+        return confirmed.filter((o) => !hasEmail(o));
       default:
         return confirmed;
     }
   }, [confirmed, filter]);
 
-  const emails = filtered.filter((o) => o.email).map((o) => o.email!) ;
-  const missing = confirmed.filter((o) => !o.email);
+  // The filter chooses the ROWS; groupSendList chooses the addresses those
+  // rows contribute.
+  //
+  // Second contacts ride along on ALL, which is the announcement view. They
+  // are deliberately OFF for the money filters and for Missing email: a CC is
+  // on the roster to see announcements, not to be BCC'd on a note about the
+  // balance of the owner who pays for their entries, and "who can I not
+  // reach" is a diagnostic that should not hand back a live address list of
+  // different people.
+  const includeCcContacts = filter === "all";
+  const list = useMemo(
+    () => groupSendList(filtered, { includeCcContacts }),
+    [filtered, includeCcContacts],
+  );
+  const missing = useMemo(
+    () => groupSendList(confirmed).missingEmail,
+    [confirmed],
+  );
+  const emails = list.addresses;
+  // Render the rows from the LIST, not from the raw row. Reading o.ccEmail
+  // directly puts a "+ address" on a row whose CC groupSendList deliberately
+  // left off — a whitespace value, or a self-CC — so the row would claim a
+  // second contact the BCC string and the count both deny.
+  const ccByOwner = useMemo(
+    () => new Map(list.ccContacts.map((c) => [c.ownerId, c.address])),
+    [list],
+  );
   const bcc = emails.join(", ");
 
   async function copyAll() {
@@ -60,7 +98,9 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
       <div>
         <h1 className="text-2xl">Emails</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          BCC-ready address list for group sends.
+          BCC-ready address list for group sends. <strong>All</strong> includes
+          second contacts, so somebody who plays entries another owner pays for
+          is on it too; the money filters are owners only.
         </p>
       </div>
 
@@ -84,6 +124,11 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
           {emails.length} {emails.length === 1 ? "address" : "addresses"}
+          {list.ccContacts.length > 0
+            ? ` · ${list.ccContacts.length} second contact${
+                list.ccContacts.length === 1 ? "" : "s"
+              }`
+            : ""}
         </span>
         <Button size="sm" onClick={copyAll} disabled={emails.length === 0}>
           {copied ? "Copied" : "COPY ALL"}
@@ -98,6 +143,17 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         </p>
       ) : null}
 
+      {list.duplicates.length > 0 ? (
+        <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
+          Sent once each, though{" "}
+          {list.duplicates.length === 1 ? "it appears" : "they appear"} on more
+          than one row:{" "}
+          {list.duplicates
+            .map((d) => `${d.address} (repeated on ${d.ownerName})`)
+            .join(", ")}
+        </p>
+      ) : null}
+
       {bcc ? (
         <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-border bg-surface p-3 font-mono text-xs leading-relaxed">
           {bcc}
@@ -108,11 +164,16 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         {filtered.map((o) => (
           <li key={o.id} className="flex items-center gap-3 px-3 py-2">
             <span className="w-44 shrink-0 truncate font-medium">{o.name}</span>
-            {o.email ? (
+            {hasEmail(o) ? (
               <span className="truncate text-muted-foreground">{o.email}</span>
             ) : (
               <span className="font-semibold text-tie">NO EMAIL ON FILE</span>
             )}
+            {ccByOwner.has(o.id) ? (
+              <span className="truncate text-xs text-muted-foreground">
+                + {ccByOwner.get(o.id)}
+              </span>
+            ) : null}
             <span
               className={cn(
                 "ml-auto text-xs font-medium",

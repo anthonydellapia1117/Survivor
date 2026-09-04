@@ -7,6 +7,7 @@ import {
   CONTACT_PHONE,
 } from "@/lib/emails/pick-request";
 import { renderEmailHtml, escapeHtml } from "@/lib/emails/template";
+import { groupSendList } from "@/lib/emails/group-send";
 import type { GameRow, WeekRow } from "@/lib/data/types";
 
 // Week 1 as seeded: early = Wed 09-09 noon ET, late = Fri 09-11 noon ET.
@@ -338,5 +339,144 @@ describe("a second contact address is copied, not substituted", () => {
     );
     expect(built).toHaveLength(0);
     expect(skippedNoEmail.map((s) => s.name)).toEqual(["No Address"]);
+  });
+});
+
+// A dropped CC is reported, not resolved in silence.
+describe("the batch says when it could not copy who it was asked to", () => {
+  it("reports a CC that matched the owner's own address", () => {
+    const { built, droppedCc } = buildPickRequests(
+      [
+        {
+          id: "a",
+          greetingName: "Kris",
+          fullName: "Kris Tomasco",
+          email: "owner@example.com",
+          ccEmail: "  Owner@Example.COM ",
+          entryNames: ["A #1"],
+        },
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    // The message still goes out — only the copy was impossible.
+    expect(built).toHaveLength(1);
+    expect(built[0].cc).toBe("");
+    expect(droppedCc).toEqual([
+      { id: "a", name: "Kris Tomasco", address: "Owner@Example.COM" },
+    ]);
+  });
+
+  it("reports nothing when the CC is a different person, or absent", () => {
+    const { droppedCc } = buildPickRequests(
+      [
+        {
+          id: "a",
+          greetingName: "Kris",
+          fullName: "Kris Tomasco",
+          email: "owner@example.com",
+          ccEmail: "second@example.com",
+          entryNames: ["A #1"],
+        },
+        {
+          id: "b",
+          greetingName: "Solo",
+          fullName: "Solo Owner",
+          email: "solo@example.com",
+          ccEmail: null,
+          entryNames: ["Solo"],
+        },
+        // Whitespace is not an address, so there was nothing to drop.
+        {
+          id: "c",
+          greetingName: "Blank",
+          fullName: "Blank CC",
+          email: "blank@example.com",
+          ccEmail: "   ",
+          entryNames: ["Blank"],
+        },
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(droppedCc).toEqual([]);
+  });
+});
+
+// The group-send list is the one that loses a person quietly: a second
+// contact is on the roster only through somebody else's row.
+describe("a group send reaches second contacts too", () => {
+  const ROSTER = [
+    { id: "k", name: "Kris Tomasco", email: "owner@example.com", ccEmail: "second@example.com" },
+    { id: "s", name: "Solo Owner", email: "solo@example.com", ccEmail: null },
+  ];
+
+  it("puts the CC contact on the list, attributed to the owner it came from", () => {
+    const list = groupSendList(ROSTER);
+    expect(list.addresses).toEqual([
+      "owner@example.com",
+      "second@example.com",
+      "solo@example.com",
+    ]);
+    expect(list.ccContacts).toEqual([
+      { ownerId: "k", ownerName: "Kris Tomasco", address: "second@example.com" },
+    ]);
+    expect(list.duplicates).toEqual([]);
+  });
+
+  it("still includes the CC contact when the owner has no address", () => {
+    // The owner misses the send; the person who plays their entries does not.
+    const list = groupSendList([
+      { id: "k", name: "No Address", email: null, ccEmail: "second@example.com" },
+    ]);
+    expect(list.addresses).toEqual(["second@example.com"]);
+    expect(list.missingEmail.map((o) => o.name)).toEqual(["No Address"]);
+  });
+
+  it("emits a shared address once, and names the row that repeated it", () => {
+    const list = groupSendList([
+      { id: "a", name: "A", email: "shared@example.com", ccEmail: null },
+      { id: "b", name: "B", email: "SHARED@example.com", ccEmail: null },
+      { id: "c", name: "C", email: "c@example.com", ccEmail: "shared@example.com" },
+    ]);
+    expect(list.addresses).toEqual(["shared@example.com", "c@example.com"]);
+    // One mailbox, reported once — keyed the same way the send list is, so a
+    // casing variant cannot show up as a second "duplicate". The row that
+    // repeated it is named, because that is what fixing the intake needs.
+    expect(list.duplicates).toEqual([
+      { ownerId: "b", ownerName: "B", address: "SHARED@example.com" },
+    ]);
+  });
+
+  // The two screens have to agree about the same row. The pick-email screen
+  // calls a CC that reaches the owner's own mailbox a dropped self-CC; if the
+  // group-send list counted it as a second contact, one row would be a second
+  // person on one screen and nobody on the other.
+  it("does not count a CC that reaches the owner's own mailbox", () => {
+    const list = groupSendList([
+      { id: "a", name: "A", email: "owner@example.com", ccEmail: "Owner@Example.COM" },
+    ]);
+    expect(list.addresses).toEqual(["owner@example.com"]);
+    expect(list.ccContacts).toEqual([]);
+    expect(list.duplicates).toEqual([]);
+  });
+
+  // A send about ONE person's money must not copy the person who does not owe
+  // it: Chas plays two entries Kris pays for, so a note about Kris's balance
+  // is not Chas's business.
+  it("leaves second contacts off when asked, for the money filters", () => {
+    const list = groupSendList(ROSTER, { includeCcContacts: false });
+    expect(list.addresses).toEqual(["owner@example.com", "solo@example.com"]);
+    expect(list.ccContacts).toEqual([]);
+  });
+
+  it("treats a whitespace-only address as none, on both columns", () => {
+    const list = groupSendList([
+      { id: "a", name: "A", email: "   ", ccEmail: "  " },
+      { id: "b", name: "B", email: "  b@example.com  ", ccEmail: " cc@example.com " },
+    ]);
+    expect(list.addresses).toEqual(["b@example.com", "cc@example.com"]);
+    expect(list.missingEmail.map((o) => o.name)).toEqual(["A"]);
+    expect(list.ccContacts.map((c) => c.address)).toEqual(["cc@example.com"]);
   });
 });

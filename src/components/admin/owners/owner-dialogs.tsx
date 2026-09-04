@@ -475,9 +475,10 @@ export function EditOwnerDialog({
               id="edit-cc-email-hint"
               className="text-xs text-muted-foreground"
             >
-              CC&apos;d on this owner&apos;s pick email. For when someone else
-              plays entries this owner pays for — they see the same message.
-              The owner stays the recipient.
+              For when someone else plays entries this owner pays for. They are
+              CC&apos;d on this owner&apos;s pick email — the owner stays the
+              recipient — and they are on the BCC list for group announcements.
+              They are NOT on the paid/unpaid lists, which stay owners only.
             </p>
           </div>
           <div className="space-y-1.5">
