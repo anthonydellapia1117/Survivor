@@ -3,7 +3,11 @@ import Link from "next/link";
 import { getAdminData } from "@/lib/data/admin";
 import { getData } from "@/lib/data";
 import { DEFAULT_PRICING, formatCents, lynneRemittanceCents } from "@/lib/pool";
-import { computeMargin, freeEntitlement } from "@/lib/free-entries";
+import {
+  computeMargin,
+  freeEntitlement,
+  FREE_ENTRY_OWNER_EMAIL,
+} from "@/lib/free-entries";
 import { duplicateTeamRisks } from "@/lib/alive";
 import { nextLockBoundary } from "@/lib/dashboard";
 import { formatEtDateTime } from "@/lib/format";
@@ -109,7 +113,25 @@ export default async function AdminOverviewPage() {
   const liveAll = entries.filter((e) => !e.voidedAt);
   const recruitedCount = liveAll.filter((e) => !e.isFreeEntry).length;
   const entitlement = freeEntitlement(recruitedCount, config.freeEntryRatio);
-  const myFree = liveAll.filter((e) => e.isFreeEntry);
+  // The RUNNER'S free entries, not every free entry in the pool. The
+  // entitlement is his — "Anthony's only", "Nobody else ever gets one" — so a
+  // free entry sitting under somebody else is not part of what he holds. This
+  // used to count pool-wide, which meant one tick of the "free" checkbox on
+  // another owner made him silently one short with nothing on this screen to
+  // say so: 60 recruited, owed 6, holding 5, and this comparing 6 against 6.
+  const runnerId = owners.find(
+    (o) =>
+      o.email?.toLowerCase() === FREE_ENTRY_OWNER_EMAIL &&
+      o.participationStatus === "confirmed",
+  )?.id;
+  const myFree = liveAll.filter(
+    (e) => e.isFreeEntry && e.ownerId === runnerId,
+  );
+  // ...and a free entry anywhere else is its own anomaly, surfaced rather than
+  // quietly absorbed into the count.
+  const strayFree = liveAll.filter(
+    (e) => e.isFreeEntry && e.ownerId !== runnerId,
+  );
   const freeNeedingNumber = myFree.filter((e) => e.lynneNumber === null);
 
   const confirmed = owners.filter((o) => o.participationStatus === "confirmed");
@@ -275,9 +297,24 @@ export default async function AdminOverviewPage() {
             Free entries behind the rule: {myFree.length} exist, {entitlement}{" "}
             earned
           </span>{" "}
-          (FLOOR({recruitedCount} recruited / {config.freeEntryRatio})). The
-          sync creates them on the next entry change — or add the missing AAA on
-          the Entries screen.
+          (FLOOR({recruitedCount} recruited / {config.freeEntryRatio})). The rule
+          mints them in the database on the next roster change — if this
+          persists, something is wrong with the trigger.
+        </Link>
+      ) : null}
+      {strayFree.length > 0 ? (
+        <Link
+          href="/admin/entries"
+          className="block rounded-md border border-loss/50 bg-loss/10 px-3 py-2.5 text-sm text-loss"
+        >
+          <span className="font-semibold">
+            {strayFree.length} free{" "}
+            {strayFree.length === 1 ? "entry is" : "entries are"} not yours
+          </span>{" "}
+          — {strayFree.map((e) => e.entryName).join(", ")}. Free entries are
+          yours only, so this is almost certainly the free checkbox ticked by
+          mistake. It does not count toward your entitlement; untick it on the
+          Entries screen.
         </Link>
       ) : null}
       {myFree.length > entitlement ? (

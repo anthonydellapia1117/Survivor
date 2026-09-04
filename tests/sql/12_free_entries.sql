@@ -972,85 +972,103 @@ begin
   end if;
 end $$;
 
--- Merging the RUNNER as source must not re-mint his entitlement.
+-- Merging the RUNNER away is REFUSED.
 --
--- admin_merge_owner reassigns every source entry to the target and THEN
--- archives the source. With the runner as source the trigger fires in
--- between, at the one moment when he owns no free entries but is still a
--- live confirmed owner. Counting only his own rows, it concluded the whole
--- entitlement was owed and -- finding no AAA numbers under him either --
--- restarted at 1. Observed before 20260904000048:
+-- admin_merge_owner moves the source's entries to the target and then archives
+-- the source. With the runner as source the trigger fires in the gap, when he
+-- is still a live confirmed owner holding nothing, and re-minted his whole
+-- entitlement -- restarting the numbering at 1, because the highest-AAA lookup
+-- was scoped to his rows too. Observed:
 --
 --   Brian Yost        live      AAA #1, AAA #2, AAA #3, AAA #4
 --   Anthony DellaPia  archived  AAA #1, AAA #2, AAA #3, AAA #4
 --
--- Four duplicated numbers Lynne holds, the new four invisible on the roster,
--- and the merge reporting success.
+-- Four duplicated numbers Lynne holds, the fresh four stranded on an archived
+-- owner, and the merge reporting success.
+--
+-- The operation is now refused outright, which is the honest answer: merging
+-- the runner INTO someone else hands his free entries to another person, which
+-- "Nobody else ever gets one" forbids, and leaves no owner row for the rule to
+-- key on. Merging a duplicate INTO the runner is untouched.
 begin;
 do $$
 declare
   runner uuid;
   target uuid;
-  before_free int;
-  dupes int;
+  ok boolean := false;
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  select count(*) into before_free from entries where is_free_entry;
-  if before_free < 1 then
-    raise exception 'setup: expected the runner to hold a backlog';
-  end if;
-
   select o.id into target from owners o
    where o.deleted_at is null and o.id <> runner
      and exists (select 1 from entries e where e.owner_id = o.id)
    limit 1;
-  perform admin_merge_owner(runner, target, 'test');
 
-  select count(*) into dupes from (
-    select entry_name from entries where is_free_entry
-     group by entry_name having count(*) > 1) d;
-  if dupes <> 0 then
-    raise exception 'merging the runner duplicated % AAA number(s)', dupes;
+  begin
+    perform admin_merge_owner(runner, target, 'test');
+  exception when check_violation then
+    ok := true;
+  end;
+  if not ok then
+    raise exception 'merging the runner away must be refused';
   end if;
-  if (select count(*) from entries where is_free_entry) <> before_free then
-    raise exception 'merging the runner must not mint: had %, now %',
-      before_free, (select count(*) from entries where is_free_entry);
-  end if;
-  -- ...and nothing was left stranded on the archived owner.
-  if exists (select 1 from entries e join owners o on o.id = e.owner_id
-              where e.is_free_entry and o.deleted_at is not null) then
-    raise exception 'free entries were left on the archived owner';
+
+  -- The other direction still works: a duplicate folded INTO the runner.
+  perform admin_merge_owner(target, runner, 'test');
+  if (select count(*) from (select entry_name from entries where is_free_entry
+                             group by entry_name having count(*) > 1) d) <> 0 then
+    raise exception 'merging INTO the runner duplicated an AAA number';
   end if;
 end $$;
 rollback;
 
--- A free entry that has ended up under someone else still COUNTS. The rule is
--- that FLOOR(recruited / ratio) of them exist, not that a particular owner row
--- holds them, and /admin counts the same way. Minting another on top would
--- double it; surfacing the anomaly is the same posture as a downward crossing.
+-- A free entry marked on somebody ELSE does not count toward the runner's
+-- entitlement, and must not suppress his mint.
+--
+-- The admin UI exposes a "free" checkbox on the add and edit dialogs for any
+-- owner. Counting those pool-wide silently cost him an entry -- 60 recruited,
+-- owed 6, holding 5 -- with /admin comparing 6 against 6 and raising nothing.
 begin;
 do $$
 declare
   runner uuid;
   other uuid;
-  held int;
+  ratio int;
+  recruited int;
+  held_before int;
+  names text[];
+  i int;
 begin
   runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
                                '','email','', null, false, 'test');
-  select count(*) into held from entries where is_free_entry;
+  select free_entry_ratio into ratio from config limit 1;
+  select count(*) into held_before from entries
+   where owner_id = runner and is_free_entry and voided_at is null;
 
   select o.id into other from owners o
    where o.deleted_at is null and o.id <> runner limit 1;
-  update entries set owner_id = other,
-                     entry_index = (select coalesce(max(e2.entry_index), 0) + 1
-                                      from entries e2 where e2.owner_id = other)
-   where owner_id = runner and is_free_entry
-     and entry_index = (select min(entry_index) from entries
-                         where owner_id = runner and is_free_entry);
+  -- Somebody else's entry, flagged free. Not the runner's, so not his.
+  perform admin_add_entries(other, array['Not Anthony''s freebie'],
+                            false, true, 'test');
 
-  if (select count(*) from entries where is_free_entry) <> held then
-    raise exception 'moving a free entry to another owner must not mint another';
+  -- Cross the next threshold: he is owed one more and must get it.
+  select count(*) into recruited from entries e join owners o on o.id = e.owner_id
+   where e.voided_at is null and not e.is_free_entry and o.deleted_at is null;
+  names := array[]::text[];
+  for i in 1..(ratio - (recruited % ratio)) loop
+    names := names || format('Cross %s', i);
+  end loop;
+  perform admin_create_owner('Cross','Threshold','ct@example.com','','email','',
+                             names, true, 'test');
+
+  if (select count(*) from entries
+       where owner_id = runner and is_free_entry and voided_at is null)
+     <> held_before + 1 then
+    raise exception
+      'a free entry on another owner must not suppress the runner''s mint: he holds %, expected %',
+      (select count(*) from entries
+        where owner_id = runner and is_free_entry and voided_at is null),
+      held_before + 1;
   end if;
 end $$;
 rollback;

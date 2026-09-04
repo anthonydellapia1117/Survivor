@@ -173,29 +173,60 @@ describe("the trigger and the app agree on the free-entry constants", () => {
     }
   });
 
-  it("counts what the pool holds, not what the runner's row holds", () => {
-    // admin_merge_owner moves every source entry to the target and then
-    // archives the source. With the runner as source, the trigger fires in
-    // between and — counting only his own rows — re-minted the entire
-    // entitlement, restarting the numbering at AAA #1. Observed: four
-    // duplicated numbers Lynne holds, the new four stranded on an owner the
-    // next statement archived, and the merge reporting success.
+  it("counts the runner's held entries, but numbers against every AAA ever", () => {
+    // The two reads answer different questions and are scoped differently on
+    // purpose. Getting either wrong produced a real bug on this branch:
     //
-    // Neither read is really about which owner row an entry sits under today.
-    const held = MIGRATION.slice(MIGRATION.indexOf("into v_have"));
-    expect(MIGRATION).toMatch(/into v_have[\s\S]{0,400}?join owners o on o\.id = e\.owner_id/);
-    expect(
-      MIGRATION.slice(0, MIGRATION.indexOf("into v_have")).length,
-      "v_have must be read after the lock",
-    ).toBeGreaterThan(MIGRATION.indexOf("pg_advisory_xact_lock"));
-    // Neither the held count nor the numbering may be scoped to the runner.
-    const haveClause = held.slice(0, held.indexOf(";"));
-    expect(haveClause).not.toMatch(/owner_id = v_owner/);
+    //   * v_have pool-wide: one tick of the "free" checkbox on another owner
+    //     silently cost the runner an entry — 60 recruited, owed 6, holding 5,
+    //     and /admin (also pool-wide then) compared 6 against 6 and raised
+    //     nothing. The entitlement is HIS: "Anthony's only", "Nobody else ever
+    //     gets one".
+    //   * v_max scoped to the runner: a merge that emptied his row restarted
+    //     the numbering at AAA #1, duplicating four numbers Lynne holds. A
+    //     number that has ever existed must never come back, whoever holds it.
+    const haveAt = MIGRATION.indexOf("into v_have");
+    const haveClause = MIGRATION.slice(haveAt, MIGRATION.indexOf(";", haveAt));
+    expect(haveClause, "the held count is the runner's own rows").toMatch(
+      /owner_id = v_owner/,
+    );
+
     const maxAt = MIGRATION.indexOf("into v_max");
     const maxClause = MIGRATION.slice(maxAt, MIGRATION.indexOf(";", maxAt));
-    expect(maxClause).not.toMatch(/owner_id = v_owner/);
-    // ...but the mint itself still lands under the runner.
+    expect(maxClause, "the numbering spans every owner").not.toMatch(
+      /owner_id = v_owner/,
+    );
+
+    // Both are read under the lock, and the mint still lands on the runner.
+    expect(haveAt).toBeGreaterThan(MIGRATION.indexOf("pg_advisory_xact_lock"));
+    expect(maxAt).toBeGreaterThan(MIGRATION.indexOf("pg_advisory_xact_lock"));
     expect(MIGRATION).toMatch(/insert into entries[\s\S]{0,200}?values \(v_owner/);
+  });
+
+  it("refuses the runner as a merge source", () => {
+    // admin_merge_owner moves the source's entries to the target and then
+    // archives the source; with the runner as source the rule fires in the gap
+    // and sees an empty entitlement. Closed at the source rather than by
+    // teaching the counting to tolerate the transient — which only worked by
+    // making an ordinary checkbox dangerous.
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+    const defining = files.filter((f) =>
+      f.includes("create or replace function admin_merge_owner("),
+    );
+    expect(defining.length).toBeGreaterThan(0);
+    const live = defining[defining.length - 1];
+    const body = live.slice(
+      live.indexOf("create or replace function admin_merge_owner("),
+    );
+    expect(body).toMatch(
+      new RegExp(`p_source[\\s\\S]{0,300}?${FREE_ENTRY_OWNER_EMAIL.replace(".", "\\.")}`),
+    );
+    // ...and only as SOURCE. Merging a duplicate INTO the runner is the
+    // direction that makes sense and must stay available.
+    expect(body).not.toMatch(/p_target[\s\S]{0,120}?anthonydellapia@gmail\.com/);
   });
 
   it("watches every input to the entitlement, not just entries", () => {
