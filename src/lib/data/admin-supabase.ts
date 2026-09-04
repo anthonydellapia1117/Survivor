@@ -49,7 +49,6 @@ export const adminSupabaseBackend: AdminBackend = {
         firstName: r.first_name,
         lastName: r.last_name,
         email: r.email,
-        ccEmail: r.cc_email ?? null,
         phone: r.phone,
         source: r.source,
         participationStatus: r.participation_status,
@@ -109,6 +108,8 @@ export const adminSupabaseBackend: AdminBackend = {
         lynneLabel: r.lynne_label,
         lynneNumber: r.lynne_number,
         isFreeEntry: r.is_free_entry,
+        isGifted: Boolean(r.is_gifted),
+        playerEmail: r.player_email ?? null,
         voidedAt: r.voided_at,
         pickCount: counts.get(r.id) ?? 0,
         isAdminEntry: adminOwners.has(r.owner_id),
@@ -204,7 +205,6 @@ export const adminSupabaseBackend: AdminBackend = {
       p_first_name: a.firstName,
       p_last_name: a.lastName,
       p_email: a.email,
-      p_cc_email: a.ccEmail,
       p_phone: a.phone,
       p_participation_status: a.participationStatus,
       p_notes: a.notes,
@@ -369,6 +369,8 @@ export const adminSupabaseBackend: AdminBackend = {
       p_lynne_label: a.lynneLabel,
       p_is_free: a.isFree,
       p_lynne_number: a.lynneNumber,
+      p_is_gifted: a.isGifted,
+      p_player_email: a.playerEmail,
       p_actor: a.actor,
     });
     if (error) throw error;

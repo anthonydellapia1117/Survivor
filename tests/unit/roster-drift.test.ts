@@ -26,6 +26,8 @@ function entry(over: Partial<AdminEntry> = {}): AdminEntry {
     submittedToLynneAt: null,
     submittedAsName: null,
     removalCommunicatedAt: null,
+    isGifted: false,
+    playerEmail: null,
     ...over,
   };
 }

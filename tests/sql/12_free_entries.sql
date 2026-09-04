@@ -1137,7 +1137,8 @@ begin
   select id into victim from entries
    where owner_id = runner and entry_name = 'AAA #' || highest;
   -- Untick "free" on it, exactly as the entry dialog does.
-  perform admin_update_entry(victim, 'AAA #' || highest, null, false, 'test');
+  perform admin_update_entry(victim, 'AAA #' || highest, null, false, null,
+                             null, null, 'test');
 
   if exists (
     select 1 from entries where entry_name like 'AAA %'
@@ -1336,7 +1337,8 @@ begin
   select id into victim from entries
    where owner_id = runner and entry_name = 'AAA #' || highest;
   -- Rename it away AND untick free, in one call, as the dialog does.
-  perform admin_update_entry(victim, 'Anthony bought this one', null, false, 'test');
+  perform admin_update_entry(victim, 'Anthony bought this one', null, false, null,
+                             null, null, 'test');
 
   if exists (select 1 from entries
               where entry_name = 'AAA #' || highest) then
@@ -1401,7 +1403,8 @@ begin
 
   select id into victim from entries
    where owner_id = runner and entry_name = 'AAA #' || highest;
-  perform admin_update_entry(victim, 'Renamed away', null, false, 'test');
+  perform admin_update_entry(victim, 'Renamed away', null, false, null,
+                             null, null, 'test');
 
   if exists (select 1 from entries where entry_name = 'AAA #' || highest) then
     raise exception
@@ -1469,7 +1472,8 @@ begin
 
   select id into victim from entries
    where owner_id = runner and entry_name = 'AAA #' || (highest + 1);
-  perform admin_update_entry(victim, 'Renamed away', null, false, 'test');
+  perform admin_update_entry(victim, 'Renamed away', null, false, null,
+                             null, null, 'test');
 
   if exists (select 1 from entries
               where entry_name = 'AAA #' || (highest + 1)) then

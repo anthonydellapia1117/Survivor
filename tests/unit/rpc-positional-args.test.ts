@@ -10,9 +10,13 @@ import { join } from "node:path";
  * a bogus transaction id on a bogus date, on a ledger CLAUDE.md calls
  * append-only, while typecheck, lint, vitest and the SQL suite stay green.
  *
- * The Supabase path passes named parameters and is insulated, so this is the
- * one caller carrying the risk — and it is the caller dev and any hand-run
- * script uses.
+ * The Supabase path passes NAMED parameters, so it cannot transpose. It was
+ * therefore called "insulated" and left unchecked here — and that was wrong.
+ * Named arguments prevent transposition, not OMISSION: adding a parameter to
+ * an RPC and forgetting to send it from that backend is a function-not-found
+ * at runtime, on the backend PRODUCTION runs. That shipped on 2026-09-04,
+ * when admin_update_entry gained the two gift fields and only the local
+ * backend learned to send them, so both backends are checked below.
  *
  * This is a seam test: it reads the live migration and the live backend and
  * asserts they agree, which no test exercising only one side can do. It
@@ -136,6 +140,95 @@ function positionalCalls(): { fn: string; args: string[]; raw: string }[] {
 
 const CALLS = positionalCalls();
 
+const SUPABASE = readFileSync(
+  join(process.cwd(), "src", "lib", "data", "admin-supabase.ts"),
+  "utf8",
+);
+
+/** The text between `open` and its matching close brace. */
+function balancedBrace(src: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return src.slice(open + 1, i);
+    }
+  }
+  throw new Error(`unbalanced braces from index ${open}`);
+}
+
+/** Every `.rpc("admin_x", { p_a: …, p_b: … })` in the Supabase backend. */
+function namedCalls(): { fn: string; params: string[] }[] {
+  const calls: { fn: string; params: string[] }[] = [];
+  const re = /\.rpc\(\s*"(admin_[a-z_]+)"\s*,\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(SUPABASE)) !== null) {
+    const open = SUPABASE.indexOf("{", m.index + m[0].length - 1);
+    const body = balancedBrace(SUPABASE, open);
+    // Keys at depth 0 only, scanned character by character. A line-based
+    // scan looked right and was not: it took the FIRST key on each line, so
+    // the single-line calls (`{ p_entry_id: …, p_actor: … }`) reported one
+    // parameter and read as a mismatch. Depth also has to ignore braces and
+    // brackets inside string literals -- admin_apply_lynne_import passes JSON.
+    const params: string[] = [];
+    let depth = 0;
+    let quote: string | null = null;
+    for (let i = 0; i < body.length; i++) {
+      const ch = body[i];
+      if (quote) {
+        if (ch === "\\\\") i++;
+        else if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        quote = ch;
+        continue;
+      }
+      if (ch === "{" || ch === "[" || ch === "(") depth++;
+      else if (ch === "}" || ch === "]" || ch === ")") depth--;
+      else if (depth === 0 && /[a-z]/.test(ch)) {
+        const key = /^(p_[a-z0-9_]+)\s*:/.exec(body.slice(i));
+        if (key && (i === 0 || /[\s,{]/.test(body[i - 1]))) {
+          params.push(key[1]);
+          i += key[1].length;
+        }
+      }
+    }
+    calls.push({ fn: m[1], params });
+  }
+  return calls;
+}
+
+const NAMED = namedCalls();
+
+describe("the Supabase backend sends every parameter the RPC declares", () => {
+  it("finds EVERY named call site", () => {
+    // Same premise check the positional suite carries: compare against an
+    // independent count of `.rpc(` occurrences, so a regex that quietly stops
+    // matching cannot pass as full coverage.
+    const occurrences = (SUPABASE.match(/\.rpc\(\s*"admin_/g) ?? []).length;
+    expect(NAMED.length).toBe(occurrences);
+    expect(NAMED.length).toBeGreaterThan(15);
+  });
+
+  it.each(NAMED.map((c) => [c.fn, c] as const))(
+    "%s — sends exactly the declared parameters",
+    (fn, call) => {
+      const declared = liveParams(fn);
+      expect(declared, `no migration defines ${fn}`).not.toHaveLength(0);
+      // A SET comparison, because named arguments are order-independent.
+      // Missing is the failure that shipped: admin_update_entry gained
+      // p_is_gifted and p_player_email and this backend kept sending six, so
+      // every entry save and every Lynne-number import raised
+      // function-not-found in production. Extra fails too -- passing
+      // p_cc_email after 20260904000062 dropped it is the same outage.
+      expect([...call.params].sort()).toEqual([...declared].sort());
+    },
+  );
+});
+
 describe("the local backend's positional args match the RPC signature", () => {
   it("finds EVERY positional call site, not just most of them", () => {
     // A loose lower bound is how the set-returning call went missing: the
@@ -190,7 +283,7 @@ describe("the local backend's positional args match the RPC signature", () => {
     );
   });
 
-  it("checks the owner path by NAME too — ccEmail sits beside phone", () => {
+  it("checks the owner path by NAME too", () => {
     const call = CALLS.find((c) => c.fn === "admin_update_owner");
     expect(call).toBeDefined();
     expect(call!.args.map((a) => a.replace(/^a\./, ""))).toEqual(
@@ -198,9 +291,25 @@ describe("the local backend's positional args match the RPC signature", () => {
     );
   });
 
+  it("and the entry path, where the gift fields sit after lynneNumber", () => {
+    const call = CALLS.find((c) => c.fn === "admin_update_entry");
+    expect(call).toBeDefined();
+    expect(call!.args.map((a) => a.replace(/^a\./, ""))).toEqual(
+      liveParams("admin_update_entry").map(toCamel),
+    );
+  });
+
   it("reads the LAST definition, so a replaced signature is what is checked", () => {
-    // admin_update_owner was replaced twice on 2026-09-04 (58 added
-    // p_cc_email, 59 restored the grant). Whichever lands last is live.
-    expect(liveParams("admin_update_owner")).toContain("p_cc_email");
+    // admin_update_owner has been redefined four times: 58 added p_cc_email,
+    // 59 restored the grant it dropped, 62 retired the column again. Reading
+    // any definition but the last would still see p_cc_email, so its ABSENCE
+    // is the proof — and it is the stronger direction, because a stale read
+    // here means every name-order assertion above is checking a dead shape.
+    expect(liveParams("admin_update_owner")).not.toContain("p_cc_email");
+    expect(liveParams("admin_update_owner")).toContain("p_phone");
+
+    // Same for entries: 60 introduced the gift fields, 61 replaced the whole
+    // function again to fix name_is_default.
+    expect(liveParams("admin_update_entry")).toContain("p_player_email");
   });
 });

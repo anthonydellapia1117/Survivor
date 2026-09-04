@@ -28,3 +28,24 @@ export function sameAddress(
   if (left === "" || right === "") return false;
   return left.toLowerCase() === right.toLowerCase();
 }
+
+/**
+ * Catches a TYPO, not an RFC violation.
+ *
+ * Deliberately permissive: exactly one @, something either side of it, a dot
+ * in the domain, and no whitespace. Real addresses in this pool are ordinary
+ * consumer mailboxes, and a stricter rule that rejects a valid-but-unusual
+ * address is worse than one that lets a malformed one through — a refused
+ * save blocks a real arrangement, while a bad address surfaces the first time
+ * a pick request bounces.
+ *
+ * Blank is VALID here. `is_gifted` with no address is a real state — somebody
+ * else plays this entry and their address is not known yet — so a blank field
+ * must save. Callers that need "is there an address at all" ask
+ * normalizeAddress, which is a different question.
+ */
+export function isPlausibleAddress(value: string | null | undefined): boolean {
+  const address = normalizeAddress(value);
+  if (address === "") return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address);
+}

@@ -51,9 +51,11 @@ export default async function PickEmailsPage({
     summaries.filter((s) => isAliveStatus(s.status)).map((s) => s.id),
   );
   const live = entries.filter((e) => e.voidedAt === null && aliveIds.has(e.id));
-  const byOwner = new Map<string, string[]>();
+  // Entries, not names: recipientsForPicks needs is_gifted and player_email to
+  // decide whose message each one belongs on.
+  const byOwner = new Map<string, typeof live>();
   for (const e of [...live].sort((a, b) => a.entryIndex - b.entryIndex)) {
-    byOwner.set(e.ownerId, [...(byOwner.get(e.ownerId) ?? []), e.entryName]);
+    byOwner.set(e.ownerId, [...(byOwner.get(e.ownerId) ?? []), e]);
   }
 
   const batch = buildPickRequests(
@@ -65,8 +67,12 @@ export default async function PickEmailsPage({
           o.firstName.trim() || `${o.firstName} ${o.lastName}`.trim(),
         fullName: `${o.firstName} ${o.lastName}`.trim(),
         email: o.email,
-        ccEmail: o.ccEmail,
-        entryNames: byOwner.get(o.id) ?? [],
+        entries: (byOwner.get(o.id) ?? []).map((e) => ({
+          id: e.id,
+          entryName: e.entryName,
+          isGifted: e.isGifted,
+          playerEmail: e.playerEmail,
+        })),
       }))
       .sort((a, b) => a.fullName.localeCompare(b.fullName)),
     week,
@@ -79,7 +85,7 @@ export default async function PickEmailsPage({
       weeks={weeks.map((w) => w.week)}
       built={batch.built}
       skippedNoEmail={batch.skippedNoEmail}
-      droppedCc={batch.droppedCc}
+      giftedWithoutEmail={batch.giftedWithoutEmail}
     />
   );
 }

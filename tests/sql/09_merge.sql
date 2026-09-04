@@ -128,12 +128,12 @@ begin
   select admin_create_owner('Lynne','Num','','','email','',array['LN 1','LN 2'],false,'test') into o;
   select id into e1 from entries where owner_id = o and entry_index = 1;
   select id into e2 from entries where owner_id = o and entry_index = 2;
-  perform admin_update_entry(e1, 'LN 1', '', null, 977, 'test');
+  perform admin_update_entry(e1, 'LN 1', '', null, 977, null, null, 'test');
   begin
-    perform admin_update_entry(e2, 'LN 2', '', null, 977, 'test');
+    perform admin_update_entry(e2, 'LN 2', '', null, 977, null, null, 'test');
     raise exception 'duplicate lynne_number accepted';
   exception when unique_violation then null;
   end;
-  perform admin_update_entry(e2, 'LN 2', '', null, null, 'test');
+  perform admin_update_entry(e2, 'LN 2', '', null, null, null, null, 'test');
 end $$;
 rollback;

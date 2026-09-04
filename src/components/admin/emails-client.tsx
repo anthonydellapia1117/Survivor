@@ -3,11 +3,16 @@
 // A6: every address on the roster, one COPY ALL producing a BCC-ready
 // comma-separated string. Filters: all / paid / unpaid / missing email.
 //
-// "Every address" includes cc_email contacts. An owner's second contact is a
-// person on the roster who is meant to see the same messages; building the
-// list from o.email alone drops them from every group send and no filter here
-// can reveal it, because the owner they hang off does have an address. Who is
-// on the list is decided in groupSendList, not here.
+// "Every address" includes the people who PLAY entries somebody else bought,
+// read off entries.player_email. They are on the roster and meant to see the
+// same messages; building the list from o.email alone drops them from every
+// group send and no filter here can reveal it, because the owner they hang
+// off does have an address. Who is on the list is decided in groupSendList,
+// not here.
+//
+// The address used to come from owners.cc_email, which this PR retired --
+// same people, read off the entry that records the arrangement rather than
+// off the owner, which is what lets one owner have two different giftees.
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +26,7 @@ interface Row {
   id: string;
   name: string;
   email: string | null;
-  ccEmail: string | null;
+  players: string[];
   status: string;
   paid: boolean;
 }
@@ -54,30 +59,33 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
   // The filter chooses the ROWS; groupSendList chooses the addresses those
   // rows contribute.
   //
-  // Second contacts ride along on ALL, which is the announcement view. They
-  // are deliberately OFF for the money filters and for Missing email: a CC is
-  // on the roster to see announcements, not to be BCC'd on a note about the
-  // balance of the owner who pays for their entries, and "who can I not
-  // reach" is a diagnostic that should not hand back a live address list of
-  // different people.
-  const includeCcContacts = filter === "all";
+  // People who play entries somebody else bought ride along on ALL, which is
+  // the announcement view. They are deliberately OFF for the money filters and
+  // for Missing email: a giftee is on the roster to see announcements, not to
+  // be BCC'd on a note about the balance of the owner who pays for their
+  // entries, and "who can I not reach" is a diagnostic that should not hand
+  // back a live address list of different people.
+  const includeGiftedPlayers = filter === "all";
   const list = useMemo(
-    () => groupSendList(filtered, { includeCcContacts }),
-    [filtered, includeCcContacts],
+    () => groupSendList(filtered, { includeGiftedPlayers }),
+    [filtered, includeGiftedPlayers],
   );
   const missing = useMemo(
     () => groupSendList(confirmed).missingEmail,
     [confirmed],
   );
   const emails = list.addresses;
-  // Render the rows from the LIST, not from the raw row. Reading o.ccEmail
-  // directly puts a "+ address" on a row whose CC groupSendList deliberately
-  // left off — a whitespace value, or a self-CC — so the row would claim a
-  // second contact the BCC string and the count both deny.
-  const ccByOwner = useMemo(
-    () => new Map(list.ccContacts.map((c) => [c.ownerId, c.address])),
-    [list],
-  );
+  // Render the annotations from the LIST, not from the raw row. Reading
+  // o.players directly puts a "+ address" on a row whose player the list
+  // deliberately left off — a whitespace value, a self-address, or a duplicate
+  // — so the row would claim a contact the BCC string and the count both deny.
+  const playersByOwner = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const c of list.giftedPlayers) {
+      m.set(c.ownerId, [...(m.get(c.ownerId) ?? []), c.address]);
+    }
+    return m;
+  }, [list]);
   const bcc = emails.join(", ");
 
   async function copyAll() {
@@ -99,8 +107,8 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         <h1 className="text-2xl">Emails</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           BCC-ready address list for group sends. <strong>All</strong> includes
-          second contacts, so somebody who plays entries another owner pays for
-          is on it too; the money filters are owners only.
+          the people who play entries another owner bought, so somebody like a
+          giftee is on it too; the money filters are owners only.
         </p>
       </div>
 
@@ -124,9 +132,9 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
           {emails.length} {emails.length === 1 ? "address" : "addresses"}
-          {list.ccContacts.length > 0
-            ? ` · ${list.ccContacts.length} second contact${
-                list.ccContacts.length === 1 ? "" : "s"
+          {list.giftedPlayers.length > 0
+            ? ` · ${list.giftedPlayers.length} player${
+                list.giftedPlayers.length === 1 ? "" : "s"
               }`
             : ""}
         </span>
@@ -169,11 +177,14 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
             ) : (
               <span className="font-semibold text-tie">NO EMAIL ON FILE</span>
             )}
-            {ccByOwner.has(o.id) ? (
-              <span className="truncate text-xs text-muted-foreground">
-                + {ccByOwner.get(o.id)}
+            {(playersByOwner.get(o.id) ?? []).map((address) => (
+              <span
+                key={address}
+                className="truncate text-xs text-muted-foreground"
+              >
+                + {address}
               </span>
-            ) : null}
+            ))}
             <span
               className={cn(
                 "ml-auto text-xs font-medium",

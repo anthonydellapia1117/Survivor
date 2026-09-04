@@ -47,7 +47,6 @@ function owner(
     firstName: "F",
     lastName: last,
     email: null,
-    ccEmail: null,
     phone: null,
     source: "import",
     participationStatus: "confirmed",
