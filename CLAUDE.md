@@ -334,6 +334,14 @@ else is playing this and I do not have their address yet" — where
 `Lou Direnzo #1`–`#2` sit right now. That is the gap worth chasing, and the
 pick-emails screen surfaces it as one. A single column could not express it.
 
+**An addressless gift goes on NOBODY's pick request** — not the buyer's. Falling
+through to the buyer quietly undoes the standing: his request lists an entry
+whose pick belongs to the giftee and asks him to choose a team for it, so acting
+on the reply records a pick from someone with no authority over that entry. The
+cost is that those entries sit unasked until an address turns up, which is what
+"a gap to chase" means. **Chase it before the week's late deadline** — nobody is
+being asked for those entries in the meantime.
+
 **There is no `player_name`.** The entry name already carries the identity, and
 a second name field drifts against it. A giftee is greeted by their entry names.
 

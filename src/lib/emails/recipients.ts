@@ -157,17 +157,30 @@ export function recipientsForPicks(owners: RecipientOwner[]): RecipientSplit {
     // puts the giftee's message ahead of the buyer's.
     for (const e of o.entries) {
       const player = normalizeAddress(e.playerEmail);
-      if (!e.isGifted || player === "" || sameAddress(player, o.email)) {
-        // Gifted with no address is still a gap even though the owner keeps
-        // it for now: somebody else is playing it and cannot be reached.
-        if (e.isGifted && player === "") {
-          giftedWithoutEmail.push({
-            entryId: e.id,
-            entryName: e.entryName,
-            ownerId: o.id,
-            ownerName: o.fullName,
-          });
-        }
+      // Gifted with no address goes to NOBODY's message. It is reported as
+      // the gap it is and nothing else.
+      //
+      // It used to fall through to the buyer, which quietly undid the whole
+      // standing: the buyer's request then listed an entry whose pick belongs
+      // to the giftee and asked him to choose a team for it, so acting on a
+      // reply would record a pick from a person with no authority over that
+      // entry. Nick DiVirgilio's message asked him for Lou Direnzo #1-#2.
+      //
+      // The cost is that these entries sit unasked until an address turns up,
+      // which is exactly what "a gap to chase" means -- the screen lists them
+      // separately from an owner with no address of their own, because the
+      // person to go and ask is different.
+      if (e.isGifted && player === "") {
+        giftedWithoutEmail.push({
+          entryId: e.id,
+          entryName: e.entryName,
+          ownerId: o.id,
+          ownerName: o.fullName,
+        });
+        continue;
+      }
+      // A gift back to the buyer's own address IS the buyer's to play.
+      if (!e.isGifted || sameAddress(player, o.email)) {
         own.push(e);
         continue;
       }

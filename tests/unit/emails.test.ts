@@ -415,10 +415,55 @@ describe("the batch reports rather than guesses", () => {
         ownerName: "Caroline Reichenback",
       },
     ]);
-    // It stays on the buyer's message meanwhile — the pick still has to be
-    // asked for by somebody.
+    // It is on NOBODY's message. Letting it fall through to the buyer undid
+    // the standing: his request would list an entry whose pick belongs to the
+    // giftee and ask him to choose a team for it, so acting on the reply
+    // records a pick from someone with no authority over that entry.
     expect(built).toHaveLength(1);
-    expect(built[0].text).toContain("Lou Direnzo #1");
+    expect(built[0].to).toBe("nick@example.com");
+    expect(built[0].text).not.toContain("Lou Direnzo #1");
+    expect(built[0].text).toContain("Nick #1");
+    expect(built[0].subject).toContain("(1 entry)");
+  });
+
+  it("gives the buyer no message at all when every entry is an unreachable gift", () => {
+    const { built, giftedWithoutEmail, skippedNoEmail } = buildPickRequests(
+      [
+        ownerRow(
+          [
+            entry("Lou Direnzo #1", { gifted: true }),
+            entry("Lou Direnzo #2", { gifted: true }),
+          ],
+          "nick@example.com",
+        ),
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built).toEqual([]);
+    expect(giftedWithoutEmail).toHaveLength(2);
+    // NOT reported as unmailable: his address is fine, he simply has nothing
+    // of his own to be asked for. The two lists mean different things and the
+    // person to go and ask is different.
+    expect(skippedNoEmail).toEqual([]);
+  });
+
+  it("a gift back to the buyer's own address is still the buyer's to play", () => {
+    const { built, giftedWithoutEmail } = buildPickRequests(
+      [
+        ownerRow(
+          [entry("Nick #1"), entry("Nick #2", { player: "nick@example.com" })],
+          "nick@example.com",
+        ),
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    // Marked gifted, but to himself -- one person, one message, both entries,
+    // and no gap, because nobody is out of reach.
+    expect(built).toHaveLength(1);
+    expect(built[0].subject).toContain("(2 entries)");
+    expect(giftedWithoutEmail).toEqual([]);
   });
 
   // A giftee is reachable on their own address whatever the buyer's state.
