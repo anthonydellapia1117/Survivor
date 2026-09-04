@@ -202,15 +202,106 @@ describe("a gifted entry goes to whoever plays it", () => {
     const [toKris, toChas] = built;
     expect(toChas.text).toContain("Caroline Reichenback");
     expect(toChas.text).toContain("yours to make");
-    expect(toKris.text).toContain("you have an entry in Anthony's group");
+    // Kris keeps two of his own, so the owner footer reads plural. The old
+    // wording was hardcoded singular whatever the count.
+    expect(toKris.text).toContain("you have entries in Anthony's group");
+    expect(toKris.text).not.toContain("yours to make");
   });
 
-  it("names the buyer on every message, so the admin can see the pairing", () => {
+  // Neither of the next two exists in the roster today. Both are one more
+  // gift away, and keying the buckets on the (owner, person) PAIR produced
+  // two emails for one person in each -- the exact "reads a list and works
+  // out which half is theirs" problem the recipient unit exists to end.
+  it("one person gifted by two buyers gets ONE message naming both", () => {
+    const { built } = buildPickRequests(
+      [
+        {
+          id: "o1",
+          greetingName: "Kris",
+          fullName: "Kris Tomasco",
+          email: "kris@example.com",
+          entries: [
+            entry("Kris #1"),
+            entry("Chas #1", { player: "chas@example.com" }),
+          ],
+        },
+        {
+          id: "o2",
+          greetingName: "Ray",
+          fullName: "Ray Vassallo",
+          email: "ray@example.com",
+          entries: [
+            entry("Rayvas #1"),
+            entry("Chas #2", { player: "CHAS@example.com" }),
+          ],
+        },
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    const toChas = built.filter((b) => b.to.toLowerCase() === "chas@example.com");
+    expect(toChas).toHaveLength(1);
+    expect(toChas[0].subject).toContain("(2 entries)");
+    expect(toChas[0].buyers.map((b) => b.name)).toEqual([
+      "Kris Tomasco",
+      "Ray Vassallo",
+    ]);
+    // Both buyers named, so nobody wonders who put which entry in their name.
+    expect(toChas[0].text).toContain("Kris Tomasco and Ray Vassallo");
+    // Three messages total, not four: Kris, Ray, Chas.
+    expect(built).toHaveLength(3);
+  });
+
+  it("somebody who owns entries AND is gifted one gets a single mixed message", () => {
+    const { built } = buildPickRequests(
+      [
+        {
+          id: "o1",
+          greetingName: "Kris",
+          fullName: "Kris Tomasco",
+          email: "kris@example.com",
+          entries: [
+            entry("Kris #1"),
+            // Gifted to Ray, who is an owner in his own right.
+            entry("Extra", { player: "ray@example.com" }),
+          ],
+        },
+        {
+          id: "o2",
+          greetingName: "Ray",
+          fullName: "Ray Vassallo",
+          email: "ray@example.com",
+          entries: [entry("Rayvas #1")],
+        },
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built).toHaveLength(2);
+    const toRay = built.find((b) => b.to === "ray@example.com")!;
+    expect(toRay.kind).toBe("mixed");
+    expect(toRay.subject).toContain("(2 entries)");
+    // Greeted as himself, not by his entry names: the roster knows who he is.
+    expect(toRay.text).toContain("Ray —");
+    expect(toRay.text).toContain("you have entries in Anthony's group");
+    expect(toRay.text).toContain("Kris Tomasco put another in your name");
+    expect(toRay.text).toContain("all yours to make");
+  });
+
+  it("keeps the buyer's own message first, in roster order", () => {
     const { built } = buildPickRequests([KRIS()], WEEK1, WEEK1_GAMES);
-    for (const b of built) {
-      expect(b.ownerId).toBe("o1");
-      expect(b.ownerName).toBe("Caroline Reichenback");
-    }
+    expect(built.map((b) => b.kind)).toEqual(["owner", "player"]);
+  });
+
+  it("names the buyer on a giftee's message, and nobody on the owner's own", () => {
+    const { built } = buildPickRequests([KRIS()], WEEK1, WEEK1_GAMES);
+    const owner = built.find((b) => b.kind === "owner")!;
+    const player = built.find((b) => b.kind === "player")!;
+    // The owner bought their own: there is no third party to name.
+    expect(owner.buyers).toEqual([]);
+    expect(player.buyers).toEqual([
+      { id: "o1", name: "Caroline Reichenback" },
+    ]);
     // Keys are distinct, or the screen cannot tell the messages apart.
     expect(new Set(built.map((b) => b.key)).size).toBe(built.length);
   });

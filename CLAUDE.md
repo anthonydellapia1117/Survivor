@@ -344,6 +344,14 @@ out which half is theirs. `recipientsForPicks` in `src/lib/emails/recipients.ts`
 is the single place that decides this, and the screen, copy-all, address list
 and skip reporting are all built on what it returns.
 
+**The bucket is the PERSON, not the buyer-and-person pair.** Somebody gifted
+entries by two different buyers gets **one** message naming both, and somebody
+who owns entries and also plays one gifted to them gets **one** message saying
+plainly which is which. Two emails to one mailbox, each listing half of what
+that person has to pick, is the same "work out which half is yours" problem
+read the other way round. Neither case is in the roster today; both are one
+gift away.
+
 **A giftee is on the group send too.** They ride along on the **All** filter of
 `/admin/emails`, which is the announcement view — the same place `cc_email`
 contacts used to. Retiring the column did not retire the behaviour; only the

@@ -6,13 +6,20 @@
 // decision of 2026-09-04: once an entry is gifted the giftee owns the pick, and
 // a reply from them is acted on. The money and the tier stay with the buyer.
 //
-// So the unit is the RECIPIENT. Kris gets a message listing his two; Chas gets
-// his own message listing only his two, with his own reply line. Two people,
-// two conversations, neither reading a list of four and working out which half
-// is theirs.
+// So the unit is the RECIPIENT — the PERSON, keyed by their mailbox, not the
+// (owner, person) pair. Kris gets a message listing his two; Chas gets his own
+// message listing his, with his own reply line.
+//
+// Keying on the pair looks equivalent and is not. Somebody gifted entries by
+// two different buyers would get two separate emails, and somebody who both
+// owns entries and plays one gifted by another owner would get two more —
+// each listing part of what they have to pick, from the same sender, on the
+// same deadline. That is exactly the "reads a list and works out which half is
+// theirs" problem the recipient unit exists to end, so the buckets are built
+// across the WHOLE roster before any message is emitted.
 //
 // Everything downstream — the screen, copy-all, the address list, the skip
-// reporting — is built on what this returns, so the new unit is learned in one
+// reporting — is built on what this returns, so the unit is learned in one
 // place rather than bolted onto owner grouping in five.
 
 import { normalizeAddress, sameAddress } from "./address";
@@ -33,19 +40,29 @@ export interface RecipientOwner {
   entries: RecipientEntry[];
 }
 
+/** An owner who bought entries on somebody else's message. */
+export interface Buyer {
+  id: string;
+  name: string;
+}
+
 export interface Recipient {
-  /** Stable across renders: the owner id, or owner id + the player address. */
+  /** The lowercased address. One mailbox, one message, one conversation. */
   key: string;
-  kind: "owner" | "player";
+  /**
+   * "owner" — every entry is one they bought themselves.
+   * "player" — every entry was bought for them by somebody else.
+   * "mixed"  — both, which one message has to say plainly.
+   */
+  kind: "owner" | "player" | "mixed";
   email: string;
   /** How this person is greeted. A giftee is greeted by their entry names,
    *  because the roster stores no name for them — the entry name is the only
    *  identity anyone gave, and inventing one would be the app deciding. */
   greetingName: string;
-  /** Who paid. Every recipient belongs to exactly one owner. */
-  ownerId: string;
-  ownerName: string;
   entries: RecipientEntry[];
+  /** Owners who bought entries on this message, excluding the recipient. */
+  buyers: Buyer[];
 }
 
 export interface RecipientSplit {
@@ -83,27 +100,56 @@ function playerGreeting(entries: RecipientEntry[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+interface Bucket {
+  email: string;
+  /** Set once the mailbox is an owner's own — their greeting wins. */
+  ownerGreeting: string | null;
+  entries: RecipientEntry[];
+  buyers: Map<string, string>;
+  ownsSome: boolean;
+  playsSome: boolean;
+}
+
 /**
  * Split a roster into the messages that actually need sending.
  *
  * An entry is the owner's unless it is gifted AND carries an address that
  * differs from the owner's own. A gifted entry whose player_email is the
- * owner's address is the owner's to play — the same rule ccAddress applies,
- * from the same helper, so the two cannot drift.
+ * owner's address is the owner's to play — the same rule the group-send list
+ * applies, from the same helper, so the two cannot drift.
  */
 export function recipientsForPicks(owners: RecipientOwner[]): RecipientSplit {
-  const recipients: Recipient[] = [];
   const ownersWithoutEmail: RecipientSplit["ownersWithoutEmail"] = [];
   const giftedWithoutEmail: RecipientSplit["giftedWithoutEmail"] = [];
+  // Keyed on the lowercased address, so "Chas@" beside "chas@" is one person.
+  // Insertion order is roster order, which is the order messages come out in.
+  const buckets = new Map<string, Bucket>();
+
+  const bucketFor = (address: string): Bucket => {
+    const key = address.toLowerCase();
+    const existing = buckets.get(key);
+    if (existing) return existing;
+    const fresh: Bucket = {
+      email: address,
+      ownerGreeting: null,
+      entries: [],
+      buyers: new Map(),
+      ownsSome: false,
+      playsSome: false,
+    };
+    buckets.set(key, fresh);
+    return fresh;
+  };
 
   for (const o of owners) {
     if (o.entries.length === 0) continue;
     const ownerEmail = normalizeAddress(o.email);
     const own: RecipientEntry[] = [];
-    // Keyed on the lowercased address so one giftee with two entries gets one
-    // message, and "Chas@" beside "chas@" is not two people.
-    const byPlayer = new Map<string, { address: string; entries: RecipientEntry[] }>();
+    const gifted: RecipientEntry[] = [];
 
+    // Partition FIRST, bucket second. The owner's own message has to be
+    // created before the entries they gifted away, or a roster-ordered run
+    // puts the giftee's message ahead of the buyer's.
     for (const e of o.entries) {
       const player = normalizeAddress(e.playerEmail);
       if (!e.isGifted || player === "" || sameAddress(player, o.email)) {
@@ -120,10 +166,7 @@ export function recipientsForPicks(owners: RecipientOwner[]): RecipientSplit {
         own.push(e);
         continue;
       }
-      const key = player.toLowerCase();
-      const bucket = byPlayer.get(key) ?? { address: player, entries: [] };
-      bucket.entries.push(e);
-      byPlayer.set(key, bucket);
+      gifted.push(e);
     }
 
     // The owner's own message, if there is anything left to ask them for.
@@ -136,33 +179,40 @@ export function recipientsForPicks(owners: RecipientOwner[]): RecipientSplit {
           entryNames: own.map((e) => e.entryName),
         });
       } else {
-        recipients.push({
-          key: o.id,
-          kind: "owner",
-          email: ownerEmail,
-          greetingName: o.greetingName,
-          ownerId: o.id,
-          ownerName: o.fullName,
-          entries: own,
-        });
+        // Merges with anything already gifted to this mailbox. Two owner ROWS
+        // sharing one address merge too: that is an intake mistake the roster
+        // surfaces elsewhere, and two emails to one mailbox each asking for
+        // picks on half the entries is the worse way to find out about it.
+        const bucket = bucketFor(ownerEmail);
+        bucket.ownerGreeting ??= o.greetingName;
+        bucket.entries.push(...own);
+        bucket.ownsSome = true;
       }
     }
 
-    // One message per giftee. Deliberately independent of whether the owner
-    // could be mailed: a giftee is reachable on their own address, and an
-    // owner with no address of their own does not silence the people playing
-    // the entries they bought.
-    for (const [key, bucket] of byPlayer) {
-      recipients.push({
-        key: `${o.id}:${key}`,
-        kind: "player",
-        email: bucket.address,
-        greetingName: playerGreeting(bucket.entries),
-        ownerId: o.id,
-        ownerName: o.fullName,
-        entries: bucket.entries,
-      });
+    // One message per PERSON, not per person-per-buyer. Two buyers gifting to
+    // the same player put their entries on one message, each buyer named.
+    for (const e of gifted) {
+      const bucket = bucketFor(normalizeAddress(e.playerEmail));
+      bucket.entries.push(e);
+      bucket.playsSome = true;
+      bucket.buyers.set(o.id, o.fullName);
     }
+  }
+
+  const recipients: Recipient[] = [];
+  for (const [key, b] of buckets) {
+    // A giftee is reachable on their own address whether or not the owner who
+    // bought their entries could be mailed: an owner with no address of their
+    // own does not silence the people playing the entries they bought.
+    recipients.push({
+      key,
+      kind: b.ownsSome && b.playsSome ? "mixed" : b.ownsSome ? "owner" : "player",
+      email: b.email,
+      greetingName: b.ownerGreeting ?? playerGreeting(b.entries),
+      entries: b.entries,
+      buyers: [...b.buyers].map(([id, name]) => ({ id, name })),
+    });
   }
 
   return { recipients, ownersWithoutEmail, giftedWithoutEmail };

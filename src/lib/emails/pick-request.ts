@@ -19,6 +19,7 @@
 import type { GameDay, GameRow, WeekRow } from "@/lib/data/types";
 import {
   recipientsForPicks,
+  type Buyer,
   type Recipient,
   type RecipientOwner,
   type RecipientSplit,
@@ -78,13 +79,13 @@ const TIER_DESCRIPTION: Record<DeadlineTier, string> = {
 };
 
 export interface BuiltEmail {
-  /** Stable id for this MESSAGE. One owner can now produce several. */
+  /** Stable id for this MESSAGE: the recipient's mailbox. */
   key: string;
-  ownerId: string;
-  /** Who pays for the entries listed. Shown so the admin can see at a glance
-   *  that Chas's message hangs off Kris's row. */
-  ownerName: string;
-  kind: "owner" | "player";
+  /** Who paid for entries on this message that the recipient does not own.
+   *  Shown so the admin can see at a glance that Chas's message carries
+   *  Kris's entries — and, if it ever happens, two buyers' at once. */
+  buyers: Buyer[];
+  kind: "owner" | "player" | "mixed";
   to: string;
   subject: string;
   html: string;
@@ -118,6 +119,43 @@ export function deadlineRows(
     }));
 }
 
+/**
+ * Why this person is getting this mail.
+ *
+ * A giftee is told whose entries these are, because otherwise a mail listing
+ * names they recognise arrives from someone they may not have heard from
+ * about this pool. An owner's own message keeps the original wording —
+ * nothing about their experience changed.
+ *
+ * The mixed case is real once one mailbox can carry both: say plainly that
+ * some are theirs and name who bought the rest, rather than picking one of
+ * the two footers and being quietly wrong about half the list.
+ */
+function recipientFooter(recipient: Recipient, n: number): string {
+  const REPLY = "Reply to this address; picks are not accepted anywhere else.";
+  const buyers = recipient.buyers.map((b) => b.name);
+  const named =
+    buyers.length <= 1
+      ? (buyers[0] ?? "")
+      : `${buyers.slice(0, -1).join(", ")} and ${buyers[buyers.length - 1]}`;
+
+  if (recipient.kind === "owner") {
+    return `You are getting this because you have ${
+      n === 1 ? "an entry" : "entries"
+    } in Anthony's group. ${REPLY}`;
+  }
+  if (recipient.kind === "mixed") {
+    return `You are getting this because you have entries in Anthony's group, and ${named} put ${
+      recipient.buyers.length === 1 ? "another" : "others"
+    } in your name — the picks are all yours to make. ${REPLY}`;
+  }
+  return `You are getting this because ${named} put ${
+    n === 1 ? "an entry" : "these entries"
+  } in your name in Anthony's group — ${
+    n === 1 ? "the pick is" : "the picks are"
+  } yours to make. ${REPLY}`;
+}
+
 export function buildPickRequest(
   recipient: Recipient,
   week: WeekRow,
@@ -125,7 +163,6 @@ export function buildPickRequest(
 ): BuiltEmail {
   const names = recipient.entries.map((e) => e.entryName);
   const n = names.length;
-  const gifted = recipient.kind === "player";
   const doc: EmailDoc = {
     subject: `Week ${week.week} pick${n === 1 ? "" : "s"} — ${recipient.greetingName} (${n} ${
       n === 1 ? "entry" : "entries"
@@ -159,23 +196,12 @@ export function buildPickRequest(
         phone: CONTACT_PHONE,
       },
     ],
-    // A giftee is told whose entries these are, because otherwise a mail
-    // listing two names they recognise arrives from someone they may not have
-    // heard from about this pool. The owner's own message keeps the original
-    // wording — nothing about their experience changed.
-    footer: gifted
-      ? `You are getting this because ${recipient.ownerName} put ${
-          n === 1 ? "an entry" : "these entries"
-        } in your name in Anthony's group — ${
-          n === 1 ? "the pick is" : "the picks are"
-        } yours to make. Reply to this address; picks are not accepted anywhere else.`
-      : "You are getting this because you have an entry in Anthony's group. Reply to this address — picks are not accepted anywhere else.",
+    footer: recipientFooter(recipient, n),
   };
 
   return {
     key: recipient.key,
-    ownerId: recipient.ownerId,
-    ownerName: recipient.ownerName,
+    buyers: recipient.buyers,
     kind: recipient.kind,
     to: recipient.email,
     subject: doc.subject,

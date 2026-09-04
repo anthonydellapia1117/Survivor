@@ -264,9 +264,10 @@ export function PickEmailsClient({
                 <span className="block truncate text-xs text-muted-foreground">
                   {b.to}
                 </span>
-                {b.kind === "player" ? (
+                {b.buyers.length > 0 ? (
                   <span className="block truncate text-xs text-muted-foreground">
-                    plays entries bought by {b.ownerName}
+                    {b.kind === "mixed" ? "own entries, plus some" : "plays entries"}{" "}
+                    bought by {b.buyers.map((x) => x.name).join(", ")}
                   </span>
                 ) : null}
               </button>
