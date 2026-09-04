@@ -320,7 +320,14 @@ export function PickEmailsClient({
               >
                 Subject
               </Button>
-              {flash && flash.id.startsWith(current.key) ? (
+              {/* EXACT match on this message's three ids. startsWith was
+                  safe while the key was an owner UUID -- fixed length, so no
+                  key could be a prefix of another -- and stopped being safe
+                  the moment the key became an email address: a@x.com is a
+                  prefix of a@x.com.au, so copying for one recipient flashed
+                  "Copied" on the other. */}
+              {flash &&
+              ["t", "a", "s"].some((k) => flash.id === `${current.key}-${k}`) ? (
                 <span
                   className={cn("text-sm", flash.ok ? "text-win" : "text-loss")}
                   role="status"

@@ -479,6 +479,11 @@ describe("a group send reaches the people who play, not just the buyers", () => 
         address: "chas.flaster@gmail.com",
       },
     ]);
+    // ...and that repeat is NOT a collision. `duplicates` means one mailbox
+    // on more than one ROW, which is an intake mistake worth chasing; a
+    // giftee playing two of the same owner's entries is the ordinary case
+    // and must not pollute it.
+    expect(all.duplicates).toEqual([]);
 
     // ...and off by default, which is what the money filters use: a giftee is
     // not BCC'd on a note about the buyer's balance.
@@ -531,6 +536,28 @@ describe("a group send reaches the people who play, not just the buyers", () => 
     ]);
     // Not annotated on B's row either: it was not emitted for B.
     expect(list.giftedPlayers).toEqual([]);
+  });
+});
+
+describe("one mailbox on two ROWS is still a collision worth showing", () => {
+  it("reports a giftee shared by two different owners", () => {
+    // The real intake mistake: the same address reached from two rows. This
+    // has to survive the within-row deduplication above.
+    const list = groupSendList(
+      [
+        { id: "a", name: "A", email: "a@example.com", players: ["x@example.com"] },
+        { id: "b", name: "B", email: "b@example.com", players: ["X@example.com"] },
+      ],
+      { includeGiftedPlayers: true },
+    );
+    expect(list.addresses).toEqual([
+      "a@example.com",
+      "x@example.com",
+      "b@example.com",
+    ]);
+    expect(list.duplicates).toEqual([
+      { ownerId: "b", ownerName: "B", address: "X@example.com" },
+    ]);
   });
 });
 

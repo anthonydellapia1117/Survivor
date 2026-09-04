@@ -105,8 +105,16 @@ export function groupSendList(
     else add(o, email);
 
     if (!includeGiftedPlayers) continue;
+    // One giftee playing two of this owner's entries arrives twice, which is
+    // not a collision -- `duplicates` means the same mailbox on more than one
+    // ROW, which is an intake mistake worth showing. Collapsing the repeat
+    // here keeps it out of that list; without this, Kris's row reported a
+    // duplicate against itself purely because Chas plays two of his entries.
+    const seenHere = new Set<string>();
     for (const raw of o.players ?? []) {
       const player = normalizeAddress(raw);
+      if (player !== "" && seenHere.has(player.toLowerCase())) continue;
+      if (player !== "") seenHere.add(player.toLowerCase());
       // A gift back to the buyer's own address is one person, not two. Same
       // rule recipientsForPicks applies, from the same helper, so the two
       // cannot disagree about whether a row is a second contact.

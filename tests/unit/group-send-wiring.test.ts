@@ -31,6 +31,10 @@ const code = (src: string) =>
 
 const CLIENT_CODE = code(CLIENT);
 
+const PICKS_CLIENT = code(
+  read("src/components/admin/emails/pick-emails-client.tsx"),
+);
+
 describe("the emails screen actually asks for the people who play", () => {
   it("premise: both files still use the pieces this test reasons about", () => {
     // If groupSendList is no longer what the screen calls, every assertion
@@ -68,5 +72,27 @@ describe("the emails screen actually asks for the people who play", () => {
     // the row would contradict the BCC string and the count beside it.
     expect(CLIENT_CODE).toContain("list.giftedPlayers");
     expect(CLIENT_CODE).not.toContain("o.players");
+  });
+});
+
+describe("a message key is an email address, so nothing may prefix-match it", () => {
+  // The pick-emails screen keys each message on the recipient's mailbox. It
+  // used to key on the owner's UUID, where prefix matching was harmless
+  // because every key was the same length -- no UUID can be a prefix of
+  // another. An address can: a@x.com is a prefix of a@x.com.au, so a
+  // startsWith check flashed "Copied" on the wrong recipient's message.
+  //
+  // This guards the class, not the one call site: any prefix test against a
+  // key is unsafe now, and the next one added would be a fresh instance of
+  // the same bug.
+  it("uses no startsWith or prefix test against a key", () => {
+    expect(PICKS_CLIENT).not.toMatch(/startsWith\(\s*(current|b|current\.key|b\.key)/);
+    expect(PICKS_CLIENT).not.toContain("startsWith(current.key)");
+    expect(PICKS_CLIENT).not.toContain("key.startsWith");
+  });
+
+  it("still keys messages on the mailbox, or the premise is stale", () => {
+    // If keys stopped being addresses, the assertion above guards nothing.
+    expect(PICKS_CLIENT).toContain("b.key === selected");
   });
 });
