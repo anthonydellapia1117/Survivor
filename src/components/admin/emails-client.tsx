@@ -3,11 +3,16 @@
 // A6: every address on the roster, one COPY ALL producing a BCC-ready
 // comma-separated string. Filters: all / paid / unpaid / missing email.
 //
-// "Every address" includes cc_email contacts. An owner's second contact is a
-// person on the roster who is meant to see the same messages; building the
-// list from o.email alone drops them from every group send and no filter here
-// can reveal it, because the owner they hang off does have an address. Who is
-// on the list is decided in groupSendList, not here.
+// "Every address" includes the people who PLAY entries somebody else bought,
+// read off entries.player_email. They are on the roster and meant to see the
+// same messages; building the list from o.email alone drops them from every
+// group send and no filter here can reveal it, because the owner they hang
+// off does have an address. Who is on the list is decided in groupSendList,
+// not here.
+//
+// The address used to come from owners.cc_email, which this PR retired --
+// same people, read off the entry that records the arrangement rather than
+// off the owner, which is what lets one owner have two different giftees.
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
