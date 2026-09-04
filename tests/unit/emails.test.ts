@@ -238,8 +238,8 @@ describe("the shell is reusable, not pick-specific", () => {
 // owner as recipient, the player copied.
 describe("a second contact address is copied, not substituted", () => {
   const KRIS = [
-    "EAGLESFOR50 #1",
-    "EAGLESFOR50 #2",
+    "Kris Tomasco #1",
+    "Kris Tomasco #2",
     "Chas Flaster #1",
     "Chas Flaster #2",
   ];

@@ -303,8 +303,8 @@ from roughly the right place and can spot a big discrepancy immediately.
 **As of 2026-09-04:** 94 recruited + 9 free = **103 entries**, 31 owner rows
 (29 of them carrying recruited entries). $2,420 due, $1,470 collected, $950
 outstanding, **$2,350 owed to Lynne** (94 × $25). 18 owners settled, 11 still
-owing. Every live entry is stamped as sent to Lynne, so the only open drift is
-the two renames below — **+0 ✎2 −0**.
+owing. Every live entry is stamped as sent to Lynne and nothing has moved
+since — **+0 ✎0 −0**.
 
 **Sent in two passes on 2026-09-03.** At the first the roster stood at 90, the
 full 90 went to her, and every bucket was clear. That pass was structured as 61
@@ -315,9 +315,13 @@ rows, while the other 4 are the delete-half of the Jim Teti substitution and
 those entries are still live. A **second pass later the same day** stamped 13
 more live entries as sent, taking her copy to 103.
 
-**Open drift right now:** `Kris Tomasco #1`–`#2` became `EAGLESFOR50 #1`–`#2`
-on 2026-09-04, after she had them under the old names. Two renames owed, and
-nothing else.
+**A rename that was made and then withdrawn.** On 2026-09-04 Kris Tomasco's
+two entries were renamed to `EAGLESFOR50 #1`–`#2` and reverted the same day.
+`EAGLESFOR50` was Kris's preference, not a requirement, and Lynne already held
+both under the original names from the second pass above; a cosmetic rename is
+not worth a two-line correction to her sheet. **Anthony's call, not a mistake
+being undone** — the round trip is in `audit_log` and the drift is clear
+again.
 
 Two standing facts that are NOT snapshots and must survive:
 
@@ -337,11 +341,12 @@ Two standing facts that are NOT snapshots and must survive:
 - **Every owner has an email on file.** The one historical gap was the symptom
   of that misrecording, not a missing address.
 - **Kris Tomasco owns four entries; Chas Flaster plays two of them.** One
-  owner, one payment, one 4+ tier — `EAGLESFOR50 #1`–`#2` are Kris's and
+  owner, one payment, one 4+ tier — `Kris Tomasco #1`–`#2` are Kris's and
   `Chas Flaster #1`–`#2` are Chas's, all four under Kris. Chas could not be
   reached directly, so his address sits in Kris's `cc_email` and he is copied
   on the one pick email. **Do not split this into two owners** — see
-  [why the tiers exist](#why-the-tiers-exist--admin-only).
+  [why the tiers exist](#why-the-tiers-exist--admin-only). All four names are
+  still `name_is_default`; nobody has supplied a real one.
 - **Ray Vassallo and John Vassallo are not a shared arrangement.** Ray covers
   `Johnvas #1`–`#2`; John Vassallo is separately in for four. They came to
   Anthony independently and the names are a coincidence. No action, ever —
