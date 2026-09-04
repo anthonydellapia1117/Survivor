@@ -91,6 +91,25 @@ describe("a message key is an email address, so nothing may prefix-match it", ()
     expect(PICKS_CLIENT).not.toContain("key.startsWith");
   });
 
+  it("gives every flash id a suffix, so the render can enumerate them", () => {
+    // Narrowing the render condition to the suffixed ids fixed the prefix
+    // collision and broke the main "Copy email" button, whose id was the BARE
+    // key -- so its Copied banner never appeared. Both halves have to agree,
+    // and the way to keep them agreeing is that no id is ever a bare key.
+    expect(PICKS_CLIENT).not.toMatch(/note\(\s*current\.key\s*,/);
+    // Every per-message id is `${current.key}-<letter>`; the render condition
+    // lists the same letters. If a button adds a new one, this catches the
+    // render condition that was not updated with it.
+    const emitted = [
+      ...PICKS_CLIENT.matchAll(/note\(\s*`\$\{current\.key\}-([a-z])`/g),
+    ].map((m) => m[1]);
+    expect(emitted.length).toBeGreaterThan(0);
+    const rendered = /\[((?:\s*"[a-z]",?)+)\]\.some/.exec(PICKS_CLIENT);
+    expect(rendered, "render condition not found").not.toBeNull();
+    const listed = [...rendered![1].matchAll(/"([a-z])"/g)].map((m) => m[1]);
+    expect([...listed].sort()).toEqual([...new Set(emitted)].sort());
+  });
+
   it("still keys messages on the mailbox, or the premise is stale", () => {
     // If keys stopped being addresses, the assertion above guards nothing.
     expect(PICKS_CLIENT).toContain("b.key === selected");

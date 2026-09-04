@@ -286,7 +286,7 @@ export function PickEmailsClient({
                 size="sm"
                 onClick={async () =>
                   note(
-                    current.key,
+                    `${current.key}-e`,
                     await copyRich(current.html, current.text),
                   )
                 }
@@ -327,7 +327,9 @@ export function PickEmailsClient({
                   prefix of a@x.com.au, so copying for one recipient flashed
                   "Copied" on the other. */}
               {flash &&
-              ["t", "a", "s"].some((k) => flash.id === `${current.key}-${k}`) ? (
+              ["e", "t", "a", "s"].some(
+                (k) => flash.id === `${current.key}-${k}`,
+              ) ? (
                 <span
                   className={cn("text-sm", flash.ok ? "text-win" : "text-loss")}
                   role="status"

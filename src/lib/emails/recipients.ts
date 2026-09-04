@@ -63,6 +63,9 @@ export interface Recipient {
   entries: RecipientEntry[];
   /** Owners who bought entries on this message, excluding the recipient. */
   buyers: Buyer[];
+  /** How many of `entries` somebody else bought. Not derivable from
+   *  buyers.length: one buyer can gift several. */
+  giftedCount: number;
 }
 
 export interface RecipientSplit {
@@ -106,6 +109,7 @@ interface Bucket {
   ownerGreeting: string | null;
   entries: RecipientEntry[];
   buyers: Map<string, string>;
+  giftedCount: number;
   ownsSome: boolean;
   playsSome: boolean;
 }
@@ -134,6 +138,7 @@ export function recipientsForPicks(owners: RecipientOwner[]): RecipientSplit {
       ownerGreeting: null,
       entries: [],
       buyers: new Map(),
+      giftedCount: 0,
       ownsSome: false,
       playsSome: false,
     };
@@ -196,6 +201,7 @@ export function recipientsForPicks(owners: RecipientOwner[]): RecipientSplit {
       const bucket = bucketFor(normalizeAddress(e.playerEmail));
       bucket.entries.push(e);
       bucket.playsSome = true;
+      bucket.giftedCount += 1;
       bucket.buyers.set(o.id, o.fullName);
     }
   }
@@ -212,6 +218,7 @@ export function recipientsForPicks(owners: RecipientOwner[]): RecipientSplit {
       greetingName: b.ownerGreeting ?? playerGreeting(b.entries),
       entries: b.entries,
       buyers: [...b.buyers].map(([id, name]) => ({ id, name })),
+      giftedCount: b.giftedCount,
     });
   }
 

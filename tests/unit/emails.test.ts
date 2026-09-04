@@ -284,8 +284,45 @@ describe("a gifted entry goes to whoever plays it", () => {
     // Greeted as himself, not by his entry names: the roster knows who he is.
     expect(toRay.text).toContain("Ray —");
     expect(toRay.text).toContain("you have entries in Anthony's group");
+    expect(toRay.giftedCount).toBe(1);
     expect(toRay.text).toContain("Kris Tomasco put another in your name");
     expect(toRay.text).toContain("all yours to make");
+  });
+
+  it("counts GIFTED ENTRIES in the mixed footer, not buyers", () => {
+    // One buyer gifting three is still buyers.length === 1, which read
+    // "put another in your name" on a message carrying three of them.
+    const { built } = buildPickRequests(
+      [
+        {
+          id: "o1",
+          greetingName: "Kris",
+          fullName: "Kris Tomasco",
+          email: "kris@example.com",
+          entries: [
+            entry("Kris #1"),
+            entry("G1", { player: "ray@example.com" }),
+            entry("G2", { player: "ray@example.com" }),
+            entry("G3", { player: "ray@example.com" }),
+          ],
+        },
+        {
+          id: "o2",
+          greetingName: "Ray",
+          fullName: "Ray Vassallo",
+          email: "ray@example.com",
+          entries: [entry("Rayvas #1")],
+        },
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    const toRay = built.find((b) => b.to === "ray@example.com")!;
+    expect(toRay.kind).toBe("mixed");
+    expect(toRay.giftedCount).toBe(3);
+    expect(toRay.buyers).toHaveLength(1);
+    expect(toRay.text).toContain("Kris Tomasco put 3 more in your name");
+    expect(toRay.text).not.toContain("put another in your name");
   });
 
   it("keeps the buyer's own message first, in roster order", () => {

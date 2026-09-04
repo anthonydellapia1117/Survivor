@@ -85,6 +85,8 @@ export interface BuiltEmail {
    *  Shown so the admin can see at a glance that Chas's message carries
    *  Kris's entries — and, if it ever happens, two buyers' at once. */
   buyers: Buyer[];
+  /** How many entries on this message somebody else bought. */
+  giftedCount: number;
   kind: "owner" | "player" | "mixed";
   to: string;
   subject: string;
@@ -145,8 +147,11 @@ function recipientFooter(recipient: Recipient, n: number): string {
     } in Anthony's group. ${REPLY}`;
   }
   if (recipient.kind === "mixed") {
+    // Counts the GIFTED ENTRIES, not the buyers. One buyer can gift several,
+    // so buyers.length === 1 said "another" for a message carrying three.
+    const g = recipient.giftedCount;
     return `You are getting this because you have entries in Anthony's group, and ${named} put ${
-      recipient.buyers.length === 1 ? "another" : "others"
+      g === 1 ? "another" : `${g} more`
     } in your name — the picks are all yours to make. ${REPLY}`;
   }
   return `You are getting this because ${named} put ${
@@ -202,6 +207,7 @@ export function buildPickRequest(
   return {
     key: recipient.key,
     buyers: recipient.buyers,
+    giftedCount: recipient.giftedCount,
     kind: recipient.kind,
     to: recipient.email,
     subject: doc.subject,
