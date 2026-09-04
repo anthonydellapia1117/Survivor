@@ -263,6 +263,41 @@ describe("the trigger and the app agree on the free-entry constants", () => {
   });
 });
 
+describe("the two admin backends agree on what the roster is", () => {
+  // The free-entry trigger's recruited count excludes entries whose owner is
+  // archived. /admin computes its entitlement from listEntries(), so a backend
+  // that includes them makes the screen disagree with the database and report
+  // the rule as behind when it is not. That is a cross-backend contract no
+  // runtime test in this suite can see — neither implementation is reachable
+  // without its database — so it is guarded at the source, like the migration
+  // constants above.
+  it("both exclude entries whose owner is archived", () => {
+    const localPg = readFileSync(
+      join(process.cwd(), "src/lib/data/admin-localpg.ts"),
+      "utf8",
+    );
+    const supabase = readFileSync(
+      join(process.cwd(), "src/lib/data/admin-supabase.ts"),
+      "utf8",
+    );
+    // local-PG joins the live owners directly.
+    expect(localPg).toMatch(
+      /from entries e join owners o on o\.id = e\.owner_id and o\.deleted_at is null/,
+    );
+    // Supabase fetches owners with `.is("deleted_at", null)` and must filter
+    // entries against that set rather than returning every row.
+    const listEntries = supabase.slice(
+      supabase.indexOf("async listEntries()"),
+      supabase.indexOf("async listEntrySummaries("),
+    );
+    expect(listEntries).toMatch(/\.is\("deleted_at", null\)/);
+    expect(
+      listEntries,
+      "listEntries must drop entries whose owner is not in the live set",
+    ).toMatch(/\.filter\(\(r: any\) => names\.has\(r\.owner_id\)\)/);
+  });
+});
+
 describe("the app side stays read-only", () => {
   it("exposes no mint — the entitlement is a number to display", async () => {
     const mod = await import("@/lib/free-entries");

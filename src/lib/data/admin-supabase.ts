@@ -89,6 +89,15 @@ export const adminSupabaseBackend: AdminBackend = {
       counts.set(p.entry_id, (counts.get(p.entry_id) ?? 0) + 1);
     }
     return (entries ?? [])
+      // Entries whose owner is archived are not part of the roster. The
+      // local-PG backend has always excluded them (it joins
+      // `owners ... and o.deleted_at is null`); this one did not, so the two
+      // disagreed — and so did this backend and the free-entry trigger, whose
+      // recruited count excludes them. /admin would then compute a larger
+      // entitlement than the database and report the rule as behind when it
+      // was not. The `?? "?"` below was the tell: those rows already had no
+      // owner name to render, because `names` only holds live owners.
+      .filter((r: any) => names.has(r.owner_id))
       .map((r: any) => ({
         id: r.id,
         ownerId: r.owner_id,
