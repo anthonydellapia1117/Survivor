@@ -33,6 +33,15 @@ begin
     from owners o
    where o.cc_email is not null
      and trim_name_ws(o.cc_email) <> ''
+     -- LIVE owners only. admin_merge_owner moves a source's entries to the
+     -- target and leaves an archived shell behind, contact fields intact, so
+     -- a shell can never satisfy the "an entry carries it" test below -- its
+     -- entries belong to somebody else now. Scanning shells would raise on a
+     -- contact that is not lost (nobody plays anything under a shell) and
+     -- hand out a hint that cannot be followed. Every owner-reading view
+     -- filters shells out for the same reason; this guard reads the table
+     -- directly, so it has to do it itself.
+     and o.merged_into_owner_id is null
      and not exists (
        select 1 from entries e
         where e.owner_id = o.id
