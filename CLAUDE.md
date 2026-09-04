@@ -273,10 +273,13 @@ cleared the still-need-to-ask flag.
 These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
 
-**As of 2026-09-03:** 82 recruited + 8 free = **90 entries**, 28 owners.
-$2,120 due, $1,270 collected, $850 outstanding, **$2,050 owed to Lynne**
-(82 × $25). 17 owners settled, 10 still owing. Lynne is current: the full 90 went to her on **2026-09-03** and
-every drift bucket is clear — **+0 ✎0 −0**. That send was structured as 61
+**As of 2026-09-04:** 94 recruited + 9 free = **103 entries**, 31 owner rows
+(29 of them carrying recruited entries). $2,420 due, $1,470 collected, $950
+outstanding, **$2,350 owed to Lynne** (94 × $25). 18 owners settled, 11 still
+owing. The roster has grown by **13 live entries** since the last full send.
+
+**That send, on 2026-09-03:** the roster stood at 90, the full 90 went to her,
+and every drift bucket was clear — **+0 ✎0 −0**. It was structured as 61
 formatting corrections carried implicitly by a full-roster paste-over, 13
 additions (the 9 pending plus `Jim Teti #1`–`#4`) and 8 removals. The app
 records only 4 removals, which is correct: DiCicco 1–4 are genuinely voided
@@ -302,6 +305,25 @@ Two standing facts that are NOT snapshots and must survive:
   of that misrecording, not a missing address.
 
 ## Working rules
+
+- **Severity in the abstract is not severity here.** This is a **one-admin
+  pool: one person, one browser, one session.** A concurrency finding is real
+  as a mechanism and not real as a risk — the interleaving exists in the
+  code and nothing in this pool produces it. When a review flags one,
+  **document it and move on** unless it is reachable by a single admin acting
+  normally.
+
+  The same test applies to anything that needs a contrived setup to
+  reproduce. **Two psql connections with deliberate sleeps is not a
+  scenario.** If a finding takes machinery the real system does not have, it
+  is a note, not a fix.
+
+  Set 2026-09-04, after fifteen migrations went in to enforce one rule.
+  Seven of them were the rule; eight were a concurrency layer defending a
+  case this pool cannot produce, and four of the defects that review found
+  were introduced by earlier fixes in the same review. The layer stays until
+  the off-season — ripping out working machinery before Week 1 is the same
+  mistake pointed the other way.
 
 - **Never invent data.** No placeholder owners, no guessed amounts, no
   fabricated picks. If something is unknown, say it is unknown.
