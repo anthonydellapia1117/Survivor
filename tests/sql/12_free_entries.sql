@@ -1269,3 +1269,66 @@ begin
       'admin_merge_owner reads the source before locking, so its guard can decide from a snapshot another transaction invalidates';
   end if;
 end $$;
+
+-- TRUNCATE is a write too.
+--
+-- PostgreSQL does not fire a statement trigger for TRUNCATE unless the trigger
+-- names it, so emptying a watched table used to skip reconciliation. With a
+-- ratio of 20 and 20 recruited, one free entry is owed and held; truncating
+-- `config` drops the ratio to the fallback of 10, making two owed -- and
+-- nothing was minted until some unrelated write came along.
+--
+-- Narrow (it needs a non-default ratio and a bare TRUNCATE the app never
+-- issues) but the rule's claim is unconditional, and "we listed three of the
+-- four write shapes" is the same shape as the bug this all started with.
+begin;
+do $$
+declare
+  runner uuid;
+  names text[];
+  i int;
+begin
+  update entries set voided_at = now() where voided_at is null;
+  update config set free_entry_ratio = 20;
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  names := array[]::text[];
+  for i in 1..20 loop names := names || format('R %s', i); end loop;
+  perform admin_create_owner('Twenty','Recruits','t20@example.com','','email','',
+                             names, true, 'test');
+  if (select count(*) from entries
+       where owner_id = runner and is_free_entry and voided_at is null) <> 1 then
+    raise exception 'setup: 20 recruited at a ratio of 20 owes exactly one';
+  end if;
+
+  truncate config;
+
+  if (select count(*) from entries
+       where owner_id = runner and is_free_entry and voided_at is null) <> 2 then
+    raise exception
+      'truncating config must reconcile: the ratio fell back to 10, so two are owed, and % are held',
+      (select count(*) from entries
+        where owner_id = runner and is_free_entry and voided_at is null);
+  end if;
+end $$;
+rollback;
+
+-- ...and every watched table names TRUNCATE, so no fourth write shape is
+-- quietly missing.
+do $$
+declare
+  t text;
+  n int;
+begin
+  foreach t in array array['entries','owners','config'] loop
+    select count(*) into n
+      from pg_trigger tg join pg_class c on c.oid = tg.tgrelid
+     where c.relname = t and not tg.tgisinternal
+       and tg.tgfoid in ('mint_free_entries'::regproc, 'lock_free_entry_rule'::regproc)
+       and (tg.tgtype & 32) = 32;   -- TRUNCATE
+    if n <> 2 then
+      raise exception
+        'expected both the lock and mint triggers on % to fire for TRUNCATE, found %', t, n;
+    end if;
+  end loop;
+end $$;
