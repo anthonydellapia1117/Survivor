@@ -310,7 +310,8 @@ Set by Anthony on 2026-09-04.
 Three times the same shape has turned up: one buyer, one payment at the bulk
 tier, some of the entries named for **other people**. Kris Tomasco bought four
 and gave two to Chas Flaster; Ray Vassallo bought four and two are his brother
-John's; Nick DiVirgilio bought four and two are Lou Direnzo's.
+John's. (Nick DiVirgilio looked like a third and is not — see
+[an alias is not a giftee](#an-alias-is-not-a-giftee).)
 
 **Once an entry is gifted, the giftee owns the pick.** Chas replying to change
 his own pick is legitimate and **is acted on**. Ray for `Rayvas`, John for
@@ -330,9 +331,11 @@ Two columns, not one:
   the roster does not otherwise record.
 
 **`is_gifted` with no address is a real state, not an error.** It says "somebody
-else is playing this and I do not have their address yet" — where
-`Lou Direnzo #1`–`#2` sit right now. That is the gap worth chasing, and the
-pick-emails screen surfaces it as one. A single column could not express it.
+else is playing this and I do not have their address yet" — a real second
+person whose address has not been supplied yet. That is the gap worth chasing,
+and the pick-emails screen surfaces it as one. A single column could not
+express it. **No entry is in that state today**, and before putting one there,
+check it is not [an alias](#an-alias-is-not-a-giftee).
 
 **An addressless gift goes on NOBODY's pick request** — not the buyer's. Falling
 through to the buyer quietly undoes the standing: his request lists an entry
@@ -359,6 +362,34 @@ plainly which is which. Two emails to one mailbox, each listing half of what
 that person has to pick, is the same "work out which half is yours" problem
 read the other way round. Neither case is in the roster today; both are one
 gift away.
+
+### An alias is not a giftee
+
+Set by Anthony on 2026-09-04, after the app got this wrong.
+
+`Lou Direnzo #1`–`#2` are **Nick DiVirgilio's own entries.** He named two of his
+four after a friend to tell them apart. **There is no Lou to contact and there
+never will be** — no address was ever provided and none is coming. Nick plays
+all four and is asked for all four picks.
+
+They were recorded as gifted with no address, which put them in the gap state
+above and took them off Nick's pick request entirely — asking nobody for two
+live entries.
+
+**The fix needs no new column.** An entry name is stored verbatim and never
+normalised, so the name IS the alias; the roster has nothing else to record. An
+alias is simply `is_gifted = false`, like any entry its owner plays. A flag
+distinguishing "alias" from "real giftee" would be a second thing meaning
+almost what the first means, and the day they disagree somebody does not get
+their pick request — the same reason `owners.cc_email` is retired.
+
+**This is a data correction, not a rule change.** The standing above is right
+and unchanged: an entry gifted to a real second person belongs to that person.
+Chas Flaster and John Vassallo are real people with real addresses. Nick's
+friend is a label on a row.
+
+So before marking an entry gifted, ask whether there is a **person** behind the
+name. If not, it is a name, and names are already free-form.
 
 **A giftee is on the group send too.** They ride along on the **All** filter of
 `/admin/emails`, which is the announcement view — the same place `cc_email`

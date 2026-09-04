@@ -108,6 +108,31 @@ exception when undefined_object then
   null; -- roles absent outside supabase-shaped databases
 end $$;
 
+-- RESTORING A BACKUP TAKEN WHILE THE COLUMN EXISTED
+--
+-- src/lib/backup.ts names every live column in its INSERT statements, deriving
+-- them from the row keys at dump time. A backup taken while cc_email existed
+-- therefore contains `insert into owners (..., cc_email, ...)`, and the restore
+-- procedure says to apply every migration first -- so this drop makes that
+-- insert fail with `column "cc_email" does not exist`, and because the restore
+-- is one transaction the WHOLE thing rolls back.
+--
+-- In production that window was 2026-09-04 02:43:11 to 15:55:39 UTC. It is
+-- closed: nothing taken after this migration carries the column. A backup FILE
+-- from inside it can still be sitting on disk, so the remedy, which is two
+-- lines and does not require editing the dump:
+--
+--   alter table owners add column if not exists cc_email text;
+--   -- run the backup file
+--   alter table owners drop column cc_email;
+--
+-- The failure is loud, names the column, and leaves no partial state, so this
+-- is a note rather than a compatibility shim. Keeping a dead column alive to
+-- make one 13-hour window restorable is the second mechanism this migration
+-- exists to remove. The GENERAL case -- any future column drop breaking any
+-- older backup -- is worth fixing in the dump format itself and is not this
+-- PR's to widen into.
+--
 -- The column goes last, after the guard has cleared it and after the only
 -- function that wrote it no longer exists.
 alter table owners drop column if exists cc_email;
