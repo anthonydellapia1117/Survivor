@@ -1416,28 +1416,69 @@ begin
 end $$;
 rollback;
 
--- A number in use with NO durable record behind it is the residual gap, and it
--- is documented rather than papered over: place an AAA name outside the rule
--- (a hand INSERT, or admin_add_entries with is_free) AFTER the backfill has
--- run, then rename it away, and nothing remembers it. Closing that would mean
--- recording on every write that happens to carry an AAA name, which is more
--- machinery than the case is worth. What IS guaranteed: every number the rule
--- minted, and every number in use when the history was introduced.
+-- An AAA name introduced OUTSIDE the rule and then renamed away must not come
+-- back either.
+--
+-- The admin UI's "free" checkbox routes through admin_add_entries, so an
+-- AAA name can enter without the rule ever minting it -- and its audit row
+-- files the name under `after.names`, not `after.minted`. Renaming it away
+-- then created the shortage and lost the number in one statement:
+--
+--   admin_add_entries(runner, ARRAY['AAA #5'], is_free => true)
+--   ...renamed away and unticked
+--   -> "Renamed away" (not free) AND a fresh live AAA #5
+--
+-- I documented this as an accepted residual gap one migration earlier and was
+-- wrong twice over: it is reachable through an ordinary checkbox, and the
+-- record needed to close it already existed.
+begin;
 do $$
 declare
   runner uuid;
+  ratio int;
+  recruited int;
   highest int;
+  victim uuid;
+  names text[];
+  i int;
 begin
-  select o.id into runner from owners o
-   where lower(o.email) = 'anthonydellapia@gmail.com' and o.deleted_at is null;
-  if runner is null then return; end if;   -- fixture has no runner
+  runner := admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com',
+                               '','email','', null, false, 'test');
+  select free_entry_ratio into ratio from config limit 1;
   select coalesce(max((regexp_match(entry_name,'^AAA #?(\d+)$'))[1]::int), 0)
-    into highest from entries where entry_name ~ '^AAA #?\d+$';
-  if highest <> 0 then
+    into highest from entries where owner_id = runner and is_free_entry;
+
+  -- The next number, placed by the add-entry flow rather than by the rule.
+  perform admin_add_entries(runner, array['AAA #' || (highest + 1)],
+                            false, true, 'test');
+  if exists (select 1 from audit_log
+              where action = 'mint_free_entries'
+                and after::text like '%AAA #' || (highest + 1) || '%') then
+    raise exception 'setup: that number should NOT have come from a mint';
+  end if;
+
+  -- Cross the threshold so the entitlement matches what is now held.
+  select count(*) into recruited from entries e join owners o on o.id = e.owner_id
+   where e.voided_at is null and not e.is_free_entry and o.deleted_at is null;
+  names := array[]::text[];
+  for i in 1..(ratio - (recruited % ratio)) loop
+    names := names || format('Cross %s', i);
+  end loop;
+  perform admin_create_owner('Cross','Over','co@example.com','','email','',
+                             names, true, 'test');
+
+  select id into victim from entries
+   where owner_id = runner and entry_name = 'AAA #' || (highest + 1);
+  perform admin_update_entry(victim, 'Renamed away', null, false, 'test');
+
+  if exists (select 1 from entries
+              where entry_name = 'AAA #' || (highest + 1)) then
     raise exception
-      'the fixture unexpectedly carries AAA rows; the note above about the backfill seeding nothing needs revisiting';
+      'AAA #% came back: it was introduced by admin_add_entries, so the scan has to read that record too',
+      highest + 1;
   end if;
 end $$;
+rollback;
 
 -- The seeding is a one-time record, not a claimed mint, and does not stack.
 do $$
