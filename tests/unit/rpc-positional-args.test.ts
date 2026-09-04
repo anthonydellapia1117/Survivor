@@ -119,7 +119,11 @@ function balancedBracket(src: string, open: number): string {
 /** Every `select fn($1,…)` in the local backend, with the array it passes. */
 function positionalCalls(): { fn: string; args: string[]; raw: string }[] {
   const calls: { fn: string; args: string[]; raw: string }[] = [];
-  const re = /select (admin_[a-z_]+)\(\$1[^)]*\)/g;
+  // Both call shapes. admin_deadline_sweep returns a set and is called as
+  // `select * from admin_deadline_sweep($1,…)`; a regex anchored on
+  // `select admin_` skipped it silently, which is the same failure this file
+  // was written to stop — a guard that looks like coverage and is not.
+  const re = /select (?:\* from )?(admin_[a-z_]+)\(\$1[^)]*\)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(SOURCE)) !== null) {
     const open = SOURCE.indexOf("[", m.index);
@@ -133,9 +137,14 @@ function positionalCalls(): { fn: string; args: string[]; raw: string }[] {
 const CALLS = positionalCalls();
 
 describe("the local backend's positional args match the RPC signature", () => {
-  it("finds the call sites at all", () => {
-    // If the file is refactored to named parameters this drops to 0 and every
-    // case below goes vacuously green, so assert the premise.
+  it("finds EVERY positional call site, not just most of them", () => {
+    // A loose lower bound is how the set-returning call went missing: the
+    // count still cleared the bar, so nothing said a call was unguarded.
+    // Count the call sites independently of the parser that extracts them.
+    const declared = SOURCE.match(/admin_[a-z_]+\(\$1/g) ?? [];
+    expect(CALLS.map((c) => c.fn).sort()).toEqual(
+      declared.map((d) => d.replace("($1", "")).sort(),
+    );
     expect(CALLS.length).toBeGreaterThan(10);
   });
 
