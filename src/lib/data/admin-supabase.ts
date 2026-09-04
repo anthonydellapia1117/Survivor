@@ -369,6 +369,8 @@ export const adminSupabaseBackend: AdminBackend = {
       p_lynne_label: a.lynneLabel,
       p_is_free: a.isFree,
       p_lynne_number: a.lynneNumber,
+      p_is_gifted: a.isGifted,
+      p_player_email: a.playerEmail,
       p_actor: a.actor,
     });
     if (error) throw error;

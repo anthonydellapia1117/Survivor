@@ -3,6 +3,7 @@ import { buildPickRequests, CONTACT_PHONE } from "@/lib/emails/pick-request";
 import { renderEmailHtml, escapeHtml } from "@/lib/emails/template";
 import { groupSendList } from "@/lib/emails/group-send";
 import { recipientsForPicks } from "@/lib/emails/recipients";
+import { isPlausibleAddress } from "@/lib/emails/address";
 import type { GameRow, WeekRow } from "@/lib/data/types";
 
 // Week 1 as seeded: early = Wed 09-09 noon ET, late = Fri 09-11 noon ET.
@@ -439,6 +440,35 @@ describe("a group send reaches the people who play, not just the buyers", () => 
     ]);
     // Not annotated on B's row either: it was not emitted for B.
     expect(list.giftedPlayers).toEqual([]);
+  });
+});
+
+describe("a mistyped player address is caught before it is saved", () => {
+  it("blank is valid — gifted with no address yet is a real state", () => {
+    // Lou Direnzo #1-#2 are exactly this. A blank field has to save, or the
+    // gap can never be recorded and never chased.
+    expect(isPlausibleAddress("")).toBe(true);
+    expect(isPlausibleAddress("   ")).toBe(true);
+    expect(isPlausibleAddress(null)).toBe(true);
+  });
+
+  it("rejects the shapes a typo actually produces", () => {
+    expect(isPlausibleAddress("chas.flaster")).toBe(false);
+    expect(isPlausibleAddress("chas.flaster@")).toBe(false);
+    expect(isPlausibleAddress("@gmail.com")).toBe(false);
+    expect(isPlausibleAddress("chas.flaster@gmail")).toBe(false);
+    expect(isPlausibleAddress("chas flaster@gmail.com")).toBe(false);
+    expect(isPlausibleAddress("a@b@gmail.com")).toBe(false);
+  });
+
+  it("accepts real addresses, including the awkward ones", () => {
+    // Permissive on purpose: refusing a valid-but-unusual address blocks a
+    // real arrangement, which is worse than letting one through.
+    expect(isPlausibleAddress("chas.flaster@gmail.com")).toBe(true);
+    expect(isPlausibleAddress("  jmvas731@msn.com  ")).toBe(true);
+    expect(isPlausibleAddress("eaglesfor50@aol.com")).toBe(true);
+    expect(isPlausibleAddress("first+tag@sub.domain.co.uk")).toBe(true);
+    expect(isPlausibleAddress("O'Brien@example.com")).toBe(true);
   });
 });
 

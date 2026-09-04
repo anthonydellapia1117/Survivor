@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { isPlausibleAddress } from "@/lib/emails/address";
 
 export function EntryEditDialog({
   entry,
@@ -67,6 +68,16 @@ export function EntryEditDialog({
     if (parsedNum !== null && (!Number.isInteger(parsedNum) || parsedNum < 1)) {
       setBusy(false);
       setError("Lynne number must be a positive whole number");
+      return;
+    }
+    // The Save button calls this directly rather than submitting a form, so
+    // the input's type="email" never runs a native validity check. Without
+    // this a mistyped address saves, and the entry's pick request is then
+    // generated for a destination that cannot receive it -- silently, because
+    // nothing here ever sends the mail and sees it bounce.
+    if (!isPlausibleAddress(playerEmail)) {
+      setBusy(false);
+      setError("Player email does not look like an address");
       return;
     }
     const result = await updateEntryAction({
