@@ -70,6 +70,14 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
     [confirmed],
   );
   const emails = list.addresses;
+  // Render the rows from the LIST, not from the raw row. Reading o.ccEmail
+  // directly puts a "+ address" on a row whose CC groupSendList deliberately
+  // left off — a whitespace value, or a self-CC — so the row would claim a
+  // second contact the BCC string and the count both deny.
+  const ccByOwner = useMemo(
+    () => new Map(list.ccContacts.map((c) => [c.ownerId, c.address])),
+    [list],
+  );
   const bcc = emails.join(", ");
 
   async function copyAll() {
@@ -156,14 +164,14 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         {filtered.map((o) => (
           <li key={o.id} className="flex items-center gap-3 px-3 py-2">
             <span className="w-44 shrink-0 truncate font-medium">{o.name}</span>
-            {o.email ? (
+            {hasEmail(o) ? (
               <span className="truncate text-muted-foreground">{o.email}</span>
             ) : (
               <span className="font-semibold text-tie">NO EMAIL ON FILE</span>
             )}
-            {includeCcContacts && o.ccEmail ? (
+            {ccByOwner.has(o.id) ? (
               <span className="truncate text-xs text-muted-foreground">
-                + {o.ccEmail}
+                + {ccByOwner.get(o.id)}
               </span>
             ) : null}
             <span
