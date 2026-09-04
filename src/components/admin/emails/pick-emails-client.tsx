@@ -41,6 +41,21 @@ async function copyPlain(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * The message headers, in order, as data.
+ *
+ * Both flavours of the whole-batch copy render these — the HTML paste and the
+ * plain-text paste have to agree about what was sent, and they stop agreeing
+ * the moment the list is written out twice with its own conditional for the
+ * optional Cc.
+ */
+function headerLines(b: BuiltEmail): { label: string; value: string }[] {
+  const lines = [{ label: "To", value: b.to }];
+  if (b.cc) lines.push({ label: "Cc", value: b.cc });
+  lines.push({ label: "Subject", value: b.subject });
+  return lines;
+}
+
 type Flash = { id: string; ok: boolean } | null;
 
 export function PickEmailsClient({
@@ -48,11 +63,13 @@ export function PickEmailsClient({
   weeks,
   built,
   skippedNoEmail,
+  droppedCc,
 }: {
   week: number;
   weeks: number[];
   built: BuiltEmail[];
   skippedNoEmail: { id: string; name: string; entryCount: number }[];
+  droppedCc: { id: string; name: string; address: string }[];
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(
@@ -80,14 +97,16 @@ export function PickEmailsClient({
             // escapeHtml on the header line too: the subject carries the
             // owner's name, which is owner-supplied like every other name in
             // this app. The message body is already escaped by the renderer.
-            `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:13px;padding:14px 0 6px 0;">
-               <div><strong>To:</strong> ${escapeHtml(b.to)}</div>${
-                 b.cc
-                   ? `\n               <div><strong>Cc:</strong> ${escapeHtml(b.cc)}</div>`
-                   : ""
-               }
-               <div><strong>Subject:</strong> ${escapeHtml(b.subject)}</div>
-             </div>${b.html}<hr style="border:none;border-top:2px solid #262b31;margin:26px 0;">`,
+            `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:13px;padding:14px 0 6px 0;">${headerLines(
+              b,
+            )
+              .map(
+                (h) =>
+                  `<div><strong>${h.label}:</strong> ${escapeHtml(h.value)}</div>`,
+              )
+              .join(
+                "",
+              )}</div>${b.html}<hr style="border:none;border-top:2px solid #262b31;margin:26px 0;">`,
         )
         .join(""),
     [built],
@@ -98,7 +117,9 @@ export function PickEmailsClient({
       built
         .map(
           (b) =>
-            `To: ${b.to}\n${b.cc ? `Cc: ${b.cc}\n` : ""}Subject: ${b.subject}\n\n${b.text}\n\n${"=".repeat(60)}\n`,
+            `${headerLines(b)
+              .map((h) => `${h.label}: ${h.value}`)
+              .join("\n")}\n\n${b.text}\n\n${"=".repeat(60)}\n`,
         )
         .join("\n"),
     [built],
@@ -189,6 +210,19 @@ export function PickEmailsClient({
         </div>
       ) : null}
 
+      {droppedCc.length > 0 ? (
+        <div className="rounded-md border border-tie bg-tie/15 px-4 py-3 text-sm text-tie">
+          <p className="font-semibold">
+            {droppedCc.length} CC {droppedCc.length === 1 ? "address" : "addresses"}{" "}
+            {droppedCc.length === 1 ? "was" : "were"} dropped for matching the
+            owner&apos;s own address, so nobody extra is copied:
+          </p>
+          <p className="mt-1 text-xs">
+            {droppedCc.map((o) => `${o.name} (${o.address})`).join(" · ")}
+          </p>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
         <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface">
           {built.map((b) => {
@@ -247,6 +281,15 @@ export function PickEmailsClient({
                 }
               >
                 Plain text
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () =>
+                  note(`${current.ownerId}-a`, await copyPlain(current.to))
+                }
+              >
+                To address
               </Button>
               <Button
                 size="sm"

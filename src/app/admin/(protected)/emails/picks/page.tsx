@@ -79,6 +79,7 @@ export default async function PickEmailsPage({
       weeks={weeks.map((w) => w.week)}
       built={batch.built}
       skippedNoEmail={batch.skippedNoEmail}
+      droppedCc={batch.droppedCc}
     />
   );
 }

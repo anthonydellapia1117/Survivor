@@ -186,6 +186,16 @@ export interface PickRequestBatch {
   built: BuiltEmail[];
   /** Owners with entries but no address — they cannot be mailed at all. */
   skippedNoEmail: { id: string; name: string; entryCount: number }[];
+  /**
+   * Owners whose CC was dropped because it matched their own address.
+   *
+   * Reported rather than resolved in silence: the admin's only other evidence
+   * would be the absence of a Cc line, and the person who was meant to be
+   * copied finds out by never receiving anything. The batch already reports
+   * "we could not do what you asked" for a missing owner address; a dropped
+   * CC is the same kind of fact.
+   */
+  droppedCc: { id: string; name: string; address: string }[];
 }
 
 /**
@@ -204,6 +214,7 @@ export function buildPickRequests(
 ): PickRequestBatch {
   const built: BuiltEmail[] = [];
   const skippedNoEmail: PickRequestBatch["skippedNoEmail"] = [];
+  const droppedCc: PickRequestBatch["droppedCc"] = [];
   for (const o of owners) {
     if (o.entryNames.length === 0) continue;
     const email = o.email?.trim() ?? "";
@@ -214,6 +225,13 @@ export function buildPickRequests(
         entryCount: o.entryNames.length,
       });
       continue;
+    }
+    // An address that survives trim() but not ccAddress() was dropped for
+    // being the recipient's own. Recorded before the message is built so the
+    // report does not depend on reading it back out of the result.
+    const asked = o.ccEmail?.trim() ?? "";
+    if (asked !== "" && ccAddress(email, o.ccEmail) === "") {
+      droppedCc.push({ id: o.id, name: o.fullName, address: asked });
     }
     built.push(
       buildPickRequest(
@@ -229,5 +247,5 @@ export function buildPickRequests(
       ),
     );
   }
-  return { built, skippedNoEmail };
+  return { built, skippedNoEmail, droppedCc };
 }

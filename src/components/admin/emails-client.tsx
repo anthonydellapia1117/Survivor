@@ -1,11 +1,18 @@
 "use client";
 
-// A6: every owner email, one COPY ALL producing a BCC-ready
+// A6: every address on the roster, one COPY ALL producing a BCC-ready
 // comma-separated string. Filters: all / paid / unpaid / missing email.
+//
+// "Every address" includes cc_email contacts. An owner's second contact is a
+// person on the roster who is meant to see the same messages; building the
+// list from o.email alone drops them from every group send and no filter here
+// can reveal it, because the owner they hang off does have an address. Who is
+// on the list is decided in groupSendList, not here.
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { groupSendList } from "@/lib/emails/group-send";
 
 type Filter = "all" | "paid" | "unpaid" | "missing";
 
@@ -13,6 +20,7 @@ interface Row {
   id: string;
   name: string;
   email: string | null;
+  ccEmail: string | null;
   status: string;
   paid: boolean;
 }
@@ -38,8 +46,14 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
     }
   }, [confirmed, filter]);
 
-  const emails = filtered.filter((o) => o.email).map((o) => o.email!) ;
-  const missing = confirmed.filter((o) => !o.email);
+  // The filter chooses the ROWS; groupSendList chooses the addresses those
+  // rows contribute, owners and CC contacts alike.
+  const list = useMemo(() => groupSendList(filtered), [filtered]);
+  const missing = useMemo(
+    () => groupSendList(confirmed).missingEmail,
+    [confirmed],
+  );
+  const emails = list.addresses;
   const bcc = emails.join(", ");
 
   async function copyAll() {
@@ -60,7 +74,8 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
       <div>
         <h1 className="text-2xl">Emails</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          BCC-ready address list for group sends.
+          BCC-ready address list for group sends. Includes second contacts, so
+          somebody who plays entries another owner pays for is on it too.
         </p>
       </div>
 
@@ -84,6 +99,11 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
           {emails.length} {emails.length === 1 ? "address" : "addresses"}
+          {list.ccContacts.length > 0
+            ? ` · ${list.ccContacts.length} second contact${
+                list.ccContacts.length === 1 ? "" : "s"
+              }`
+            : ""}
         </span>
         <Button size="sm" onClick={copyAll} disabled={emails.length === 0}>
           {copied ? "Copied" : "COPY ALL"}
@@ -95,6 +115,13 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
           {missing.length} confirmed{" "}
           {missing.length === 1 ? "owner has" : "owners have"} no email:{" "}
           {missing.map((o) => o.name).join(", ")} — they miss every group send.
+        </p>
+      ) : null}
+
+      {list.duplicates.length > 0 ? (
+        <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
+          Sent once each, though {list.duplicates.length === 1 ? "it" : "they"}{" "}
+          appear on more than one row: {list.duplicates.join(", ")}
         </p>
       ) : null}
 
@@ -113,6 +140,11 @@ export function EmailsClient({ owners }: { owners: Row[] }) {
             ) : (
               <span className="font-semibold text-tie">NO EMAIL ON FILE</span>
             )}
+            {o.ccEmail ? (
+              <span className="truncate text-xs text-muted-foreground">
+                + {o.ccEmail}
+              </span>
+            ) : null}
             <span
               className={cn(
                 "ml-auto text-xs font-medium",
