@@ -3,6 +3,10 @@ export interface AdminOwner {
   firstName: string;
   lastName: string;
   email: string | null;
+  /** Second contact address, CC'd on this owner's pick email. Null for
+   *  almost everyone — it exists for an owner who pays for entries somebody
+   *  else plays, so both people see the same message. Admin-only. */
+  ccEmail: string | null;
   phone: string | null;
   source: string;
   participationStatus: "confirmed" | "declined" | "pending";
@@ -89,6 +93,7 @@ export interface AdminBackend {
     firstName: string;
     lastName: string;
     email: string;
+    ccEmail: string;
     phone: string;
     participationStatus: string;
     notes: string;

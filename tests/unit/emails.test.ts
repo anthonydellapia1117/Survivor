@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildPickRequest,
   buildPickRequests,
+  ccAddress,
   deadlineRows,
   CONTACT_PHONE,
 } from "@/lib/emails/pick-request";
@@ -31,10 +32,11 @@ const WEEK1_GAMES = [
   g(1, "Monday"),
 ];
 
-const owner = (entryNames: string[]) => ({
+const owner = (entryNames: string[], ccEmail: string | null = null) => ({
   id: "o1",
   greetingName: "Caroline",
-  email: "carolinehamlett@gmail.com",
+  email: "owner@example.com",
+  ccEmail,
   entryNames,
 });
 
@@ -166,6 +168,7 @@ describe("the batch reports rather than guesses", () => {
   const base = {
     greetingName: "X",
     fullName: "X Y",
+    ccEmail: null,
     entryNames: ["X #1"],
   };
 
@@ -227,5 +230,113 @@ describe("the shell is reusable, not pick-specific", () => {
     expect(html).toContain("Week 1 results");
     expect(html).toContain("Still alive");
     expect(html).not.toMatch(/\sclass=/i);
+  });
+});
+
+// A second contact address, for the case that produced it: Kris Tomasco owns
+// and pays for four entries, two of which Chas Flaster plays. One message, the
+// owner as recipient, the player copied.
+describe("a second contact address is copied, not substituted", () => {
+  const KRIS = [
+    "Kris Tomasco #1",
+    "Kris Tomasco #2",
+    "Chas Flaster #1",
+    "Chas Flaster #2",
+  ];
+
+  it("carries the CC address when one is on file", () => {
+    const b = buildPickRequest(
+      owner(KRIS, "second@example.com"),
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(b.to).toBe("owner@example.com");
+    expect(b.cc).toBe("second@example.com");
+  });
+
+  it("leaves the CC empty when there is none — the header is then omitted", () => {
+    expect(buildPickRequest(owner(KRIS), WEEK1, WEEK1_GAMES).cc).toBe("");
+  });
+
+  // The owner is still the one asked for the picks, and the message still
+  // lists every entry: the CC changes who SEES it, never who owns it or what
+  // it says. If this ever fails, a CC has started editing the message.
+  it("does not change the message the owner receives", () => {
+    const plain = buildPickRequest(owner(KRIS), WEEK1, WEEK1_GAMES);
+    const copied = buildPickRequest(
+      owner(KRIS, "second@example.com"),
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(copied.subject).toBe(plain.subject);
+    expect(copied.html).toBe(plain.html);
+    expect(copied.text).toBe(plain.text);
+    for (const name of KRIS) expect(copied.text).toContain(name);
+  });
+
+  it("drops a CC that is the recipient, whatever its case or padding", () => {
+    for (const same of [
+      "owner@example.com",
+      "  Owner@Example.COM  ",
+    ]) {
+      expect(buildPickRequest(owner(KRIS, same), WEEK1, WEEK1_GAMES).cc).toBe(
+        "",
+      );
+    }
+  });
+
+  it("treats a blank CC as none rather than mailing whitespace", () => {
+    expect(ccAddress("a@x.com", "   ")).toBe("");
+    expect(ccAddress("a@x.com", "")).toBe("");
+    expect(ccAddress("a@x.com", null)).toBe("");
+    expect(ccAddress("a@x.com", "  b@x.com  ")).toBe("b@x.com");
+  });
+
+  it("carries the CC through the batch builder", () => {
+    const { built } = buildPickRequests(
+      [
+        {
+          id: "a",
+          greetingName: "Kris",
+          fullName: "Kris Tomasco",
+          email: "owner@example.com",
+          ccEmail: "second@example.com",
+          entryNames: KRIS,
+        },
+        {
+          id: "b",
+          greetingName: "Solo",
+          fullName: "Solo Owner",
+          email: "solo@x.com",
+          ccEmail: null,
+          entryNames: ["Solo"],
+        },
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built.map((b) => b.cc)).toEqual(["second@example.com", ""]);
+  });
+
+  // A CC is a copy, never a fallback. An owner with no address of their own is
+  // still reported as unmailable even when somebody else could be copied —
+  // sending only to the CC would ask the wrong person for the picks.
+  it("does not let a CC stand in for a missing owner address", () => {
+    const { built, skippedNoEmail } = buildPickRequests(
+      [
+        {
+          id: "a",
+          greetingName: "X",
+          fullName: "No Address",
+          email: null,
+          ccEmail: "someone@x.com",
+          entryNames: ["X #1"],
+        },
+      ],
+      WEEK1,
+      WEEK1_GAMES,
+    );
+    expect(built).toHaveLength(0);
+    expect(skippedNoEmail.map((s) => s.name)).toEqual(["No Address"]);
   });
 });

@@ -95,6 +95,33 @@ team with no game that week takes the late boundary.
 
 Priced per owner: 4+ entries drops the whole owner to the $25/entry tier.
 
+#### Why the tiers exist — ADMIN ONLY
+
+**$25 per entry is the real price.** That is what goes to the pool, every
+entry, every tier. The **$30 for 1–3 entries is a $5 tip to Anthony** for
+running this.
+
+**Four or more drops to the true $25.** That is the whole point of the tier:
+it rewards volume, gets more entries in, and earns Anthony more free entries
+(one per ten recruited, so more recruits is more free entries as well as more
+remittance).
+
+**This never leaves this file.** It appears on no public route, in no
+player-facing email, and in no export a player can reach. Nobody outside this
+document knows the $30 has a $5 spread in it. It is the same admin-only class
+as [the margin](#margin--admin-only), which is that spread plus the free
+entries, counted up.
+
+**Do not build a price override.** No per-owner rate field, no per-entry
+price, no hardcoded split to make a display come out even. Set 2026-09-04,
+when Kris Tomasco's four entries turned out to be two his and two Chas
+Flaster's: splitting them into two owners would have cost the 4+ tier and $20,
+and the fix for that would have been a rate field. A per-owner rate invites the
+next person to ask why one owner pays differently, and hardcoding $50/$50 to
+make a screen look right is the same shape as storing a derived value. **The
+four tier prices are the only prices.** Where an arrangement does not fit
+ownership, fix contact, not price — that is what `owners.cc_email` is for.
+
 ### Payment sweeps — match on AMOUNT first
 
 When reconciling Venmo receipts against the ledger, **start from the tier
@@ -170,6 +197,13 @@ recruited count), `owners` (who the runner is, and whose entries count) and
 `entries` alone let the other two drift silently: creating the runner *after*
 importing the roster writes only `owners`, so the whole backlog stayed unminted
 until some unrelated entry write happened along.
+
+**It has now fired in production.** On 2026-09-04, TJ Auletto's four entries
+took recruited from 99 to 103 and the trigger minted `AAA #10` inside that same
+`admin_create_owner` call — issued as raw SQL with no app layer anywhere. The
+mint's `audit_log` row and the `create_owner` row carry the **identical**
+timestamp, which is what one transaction looks like; the mint row is written by
+`system (free-entry rule)` and records `held_before: 9, entitlement: 10`.
 
 It takes an advisory lock **before reading anything**. There is deliberately no
 "nothing is owed, skip the lock" shortcut, because that decision is itself made
@@ -273,15 +307,32 @@ cleared the still-need-to-ask flag.
 These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
 
-**As of 2026-09-03:** 82 recruited + 8 free = **90 entries**, 28 owners.
-$2,120 due, $1,270 collected, $850 outstanding, **$2,050 owed to Lynne**
-(82 × $25). 17 owners settled, 10 still owing. Lynne is current: the full 90 went to her on **2026-09-03** and
-every drift bucket is clear — **+0 ✎0 −0**. That send was structured as 61
+**As of 2026-09-04:** 103 recruited + 10 free = **113 entries**, 34 owner rows
+(32 of them carrying recruited entries). $2,650 due, $1,500 collected, $1,150
+outstanding, **$2,575 owed to Lynne** (103 × $25). 19 owners settled, 13 still
+owing.
+
+**Lynne is owed ten additions — +10 ✎0 −0.** Three owners joined after the
+2026-09-03 send: Mario Tropea III (`Mario 3rd #1`–`#4`), Michael Ciarrocchi
+(`Mikecia`) and TJ Auletto (`TJA #1`–`#4`) — nine recruited entries, and
+`AAA #10`, which the trigger minted when those crossed 100.
+
+**Sent in two passes on 2026-09-03.** At the first the roster stood at 90, the
+full 90 went to her, and every bucket was clear. That pass was structured as 61
 formatting corrections carried implicitly by a full-roster paste-over, 13
 additions (the 9 pending plus `Jim Teti #1`–`#4`) and 8 removals. The app
 records only 4 removals, which is correct: DiCicco 1–4 are genuinely voided
 rows, while the other 4 are the delete-half of the Jim Teti substitution and
-those entries are still live.
+those entries are still live. A **second pass later the same day** stamped 13
+more live entries as sent, taking her copy to 103.
+
+**A rename that was made and then withdrawn.** On 2026-09-04 Kris Tomasco's
+two entries were renamed to `EAGLESFOR50 #1`–`#2` and reverted the same day.
+`EAGLESFOR50` was Kris's preference, not a requirement, and Lynne already held
+both under the original names from the second pass above; a cosmetic rename is
+not worth a two-line correction to her sheet. **Anthony's call, not a mistake
+being undone** — the round trip is in `audit_log` and the drift is clear
+again.
 
 Two standing facts that are NOT snapshots and must survive:
 
@@ -300,8 +351,45 @@ Two standing facts that are NOT snapshots and must survive:
   are NOT part of the correction.
 - **Every owner has an email on file.** The one historical gap was the symptom
   of that misrecording, not a missing address.
+- **Kris Tomasco owns four entries; Chas Flaster plays two of them.** One
+  owner, one payment, one 4+ tier — `Kris Tomasco #1`–`#2` are Kris's and
+  `Chas Flaster #1`–`#2` are Chas's, all four under Kris. Chas could not be
+  reached directly, so his address sits in Kris's `cc_email` and he is copied
+  on the one pick email. **Do not split this into two owners** — see
+  [why the tiers exist](#why-the-tiers-exist--admin-only). All four names are
+  still `name_is_default`; nobody has supplied a real one.
+- **There are three Tropeas and they are three people.** `mariohockey97@yahoo.com`
+  is **Mario Tropea III**, who goes by "Mario 3rd" and owns `Mario 3rd #1`–`#4`
+  in this pool. `mariocentercity@gmail.com` is **Mario Tropea Jr.**, his father.
+  `tropea920@gmail.com` is **Anthony Tropea Sr**. All three are on Anthony's
+  distribution lists; only Mario III is in Survivor. **Never merge them, and
+  never attach entries to the wrong one** — set 2026-09-04, when the four
+  entries went in.
+- **Ray Vassallo and John Vassallo are not a shared arrangement.** Ray covers
+  `Johnvas #1`–`#2`; John Vassallo is separately in for four. They came to
+  Anthony independently and the names are a coincidence. No action, ever —
+  this is here so a future session stops re-finding it.
 
 ## Working rules
+
+- **Severity in the abstract is not severity here.** This is a **one-admin
+  pool: one person, one browser, one session.** A concurrency finding is real
+  as a mechanism and not real as a risk — the interleaving exists in the
+  code and nothing in this pool produces it. When a review flags one,
+  **document it and move on** unless it is reachable by a single admin acting
+  normally.
+
+  The same test applies to anything that needs a contrived setup to
+  reproduce. **Two psql connections with deliberate sleeps is not a
+  scenario.** If a finding takes machinery the real system does not have, it
+  is a note, not a fix.
+
+  Set 2026-09-04, after fifteen migrations went in to enforce one rule.
+  Seven of them were the rule; eight were a concurrency layer defending a
+  case this pool cannot produce, and four of the defects that review found
+  were introduced by earlier fixes in the same review. The layer stays until
+  the off-season — ripping out working machinery before Week 1 is the same
+  mistake pointed the other way.
 
 - **Never invent data.** No placeholder owners, no guessed amounts, no
   fabricated picks. If something is unknown, say it is unknown.
@@ -407,3 +495,4 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
 | Audit rendering                     | `src/lib/audit-format.ts`, `/admin/audit`    |
 | Data backup (one-step restore)      | `src/lib/backup.ts`, `/api/admin/backup`     |
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |
+| Pick emails (owner + optional CC)    | `src/lib/emails/pick-request.ts`             |

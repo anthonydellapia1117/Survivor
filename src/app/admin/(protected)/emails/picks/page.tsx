@@ -65,6 +65,7 @@ export default async function PickEmailsPage({
           o.firstName.trim() || `${o.firstName} ${o.lastName}`.trim(),
         fullName: `${o.firstName} ${o.lastName}`.trim(),
         email: o.email,
+        ccEmail: o.ccEmail,
         entryNames: byOwner.get(o.id) ?? [],
       }))
       .sort((a, b) => a.fullName.localeCompare(b.fullName)),
