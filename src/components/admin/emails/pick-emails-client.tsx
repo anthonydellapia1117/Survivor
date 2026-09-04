@@ -228,12 +228,23 @@ export function PickEmailsClient({
 
       {giftedWithoutEmail.length > 0 ? (
         <div className="rounded-md border border-tie bg-tie/15 px-4 py-3 text-sm text-tie">
+          {/* Says what is actually true. This used to read "stays on the
+              buyer's message", which was accurate until the pick stopped
+              falling through to the buyer -- and a banner that reassures the
+              admin somebody was asked, when nobody was, is worse than no
+              banner: the entry goes into the week with no pick and the screen
+              said it was handled. */}
           <p className="font-semibold">
-            {giftedWithoutEmail.length} gifted{" "}
-            {giftedWithoutEmail.length === 1 ? "entry has" : "entries have"} no
-            player address, so{" "}
-            {giftedWithoutEmail.length === 1 ? "it stays" : "they stay"} on the
-            buyer&apos;s message — ask for the address:
+            NOBODY was asked for{" "}
+            {giftedWithoutEmail.length === 1
+              ? "this entry"
+              : `these ${giftedWithoutEmail.length} entries`}
+            . {giftedWithoutEmail.length === 1 ? "It is" : "They are"} gifted
+            with no player address, so{" "}
+            {giftedWithoutEmail.length === 1 ? "it is" : "they are"} on no
+            message above. Get the address from the buyer before the late
+            deadline, or {giftedWithoutEmail.length === 1 ? "it goes" : "they go"}{" "}
+            into the week with no pick:
           </p>
           <p className="mt-1 text-xs">
             {giftedWithoutEmail

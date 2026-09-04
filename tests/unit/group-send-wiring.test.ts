@@ -115,3 +115,34 @@ describe("a message key is an email address, so nothing may prefix-match it", ()
     expect(PICKS_CLIENT).toContain("b.key === selected");
   });
 });
+
+describe("the addressless-gift banner says what is actually true", () => {
+  // recipientsForPicks puts an addressless gift on NOBODY's message. The
+  // banner announcing those entries used to say they stay on the buyer's --
+  // true until the fall-through was removed, and false after. A banner that
+  // reassures the admin somebody was asked, when nobody was, is worse than no
+  // banner at all: the entry goes into the week with no pick and the screen
+  // said it was handled.
+  //
+  // Copy is not usually worth a test. This copy is the only thing standing
+  // between a known gap and a silently missed pick.
+  it("does not claim the entry stays on the buyer's message", () => {
+    // Whitespace-collapsed, and matched on the phrase the false version has
+    // to contain. An earlier form of this assertion tested /stays? on the/,
+    // which never matched: the source reads `"they stay"} on the`, with the
+    // ternary's closing quote and brace between the two words. It passed
+    // against the real regression -- a guard that looks like coverage and is
+    // not, which is the same trap this PR has now hit four times.
+    const copy = PICKS_CLIENT.replace(/\s+/g, " ");
+    expect(copy).not.toContain("on the buyer");
+  });
+
+  it("says nobody was asked, and names the deadline as the thing to beat", () => {
+    // Whitespace-collapsed: JSX wraps this copy across several lines, so the
+    // sentences are not contiguous in the source.
+    const copy = PICKS_CLIENT.replace(/\s+/g, " ");
+    expect(copy).toContain("NOBODY was asked");
+    expect(copy).toContain("on no message above");
+    expect(copy).toContain("before the late deadline");
+  });
+});
