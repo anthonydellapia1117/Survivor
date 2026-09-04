@@ -1179,6 +1179,48 @@ begin
 end $$;
 rollback;
 
+-- ...but ONLY for the tables where an entitlement decision follows. `payments`
+-- and `picks` carry the lock trigger purely for foreign-key lock ordering, and
+-- refusing them refused writes that cannot get the entitlement wrong -- with a
+-- message about an entitlement neither can change. Both were observed failing.
+begin;
+set transaction isolation level repeatable read;
+do $$
+declare
+  o uuid;
+  e uuid;
+begin
+  select id into o from owners where deleted_at is null limit 1;
+  select id into e from entries limit 1;
+  insert into payments (owner_id, amount_cents, method, paid_on)
+  values (o, 3000, 'venmo', current_date);
+  insert into picks (entry_id, week, team, source) values (e, 1, 'KC', 'admin');
+end $$;
+rollback;
+
+-- A transaction that writes a payment AND a rule table is still refused, so
+-- nothing gets in by the side door.
+begin;
+set transaction isolation level repeatable read;
+do $$
+declare
+  o uuid;
+  ok boolean := false;
+begin
+  select id into o from owners where deleted_at is null limit 1;
+  insert into payments (owner_id, amount_cents, method, paid_on)
+  values (o, 3000, 'venmo', current_date);
+  begin
+    insert into owners (first_name, last_name) values ('Side','Door');
+  exception when invalid_transaction_state then
+    ok := true;
+  end;
+  if not ok then
+    raise exception 'a rule-table write under REPEATABLE READ must still be refused';
+  end if;
+end $$;
+rollback;
+
 -- ...and the levels the rule IS correct under are not refused.
 begin;
 set transaction isolation level serializable;
