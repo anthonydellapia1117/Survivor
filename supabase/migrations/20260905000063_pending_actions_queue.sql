@@ -82,10 +82,10 @@ end $$;
 -- Idempotent on (kind, source_message_id, payload) while the row is open: the
 -- sweep runs hourly and re-reading the same message must not stack duplicates.
 -- Returning the existing id is the whole no-op, so no audit row is written in
--- that case - nothing changed. It is a lookup, not a unique index, because one
--- message legitimately carries two items of the same kind (a $200 Venmo
--- settling two owners is two payment rows from one receipt) that differ only
--- in payload.
+-- that case - nothing changed. It is a lookup under an advisory lock, not a
+-- unique index, because one message legitimately carries two items of the
+-- same kind (a $200 Venmo settling two owners is two payment rows from one
+-- receipt) that differ only in payload.
 create or replace function admin_stage_pending(
   p_kind text,
   p_payload jsonb,
@@ -111,6 +111,15 @@ begin
   if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
     raise exception 'admin_stage_pending: payload must be a JSON object';
   end if;
+
+  -- Serialise concurrent stages of one message. The lookup below is what
+  -- makes re-staging a no-op, and two transactions that both read before
+  -- either inserts would both insert. One hourly sweep does not produce that
+  -- interleaving (CLAUDE.md, Working rules), but the lock is one line and the
+  -- same shape mint_free_entries uses: taken before the read, released at
+  -- commit. Keyed on kind and message id, so unrelated messages never wait.
+  perform pg_advisory_xact_lock(
+    hashtext('pending_actions:' || v_kind || ':' || coalesce(v_source, ''))::bigint);
 
   select id into v_id
     from pending_actions
