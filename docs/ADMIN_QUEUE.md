@@ -1,8 +1,11 @@
 # Admin queue (NEEDS ANTHONY as rows)
 
-Shipped as migration `20260905000063_pending_actions_queue.sql`. The migration
-is applied by hand, after the SQL suites pass locally; until then
-/admin/queue says the table is not available instead of listing rows.
+Shipped as migration `20260905000063_pending_actions_queue.sql`, applied to
+production on 2026-09-05. Migration `20260905000064_queue_stale_pick_guard.sql`
+(a queued pick cannot replace a newer or a scored pick) is written and
+suite-tested but NOT yet applied; apply it by hand, then this note goes.
+Until 63 is applied /admin/queue says the table is not available instead of
+listing rows.
 
 1. What it is
 1a. `pending_actions` holds the items the hourly sweep finds and may not act on
@@ -26,7 +29,9 @@ is applied by hand, after the SQL suites pass locally; until then
     directly, so the append-only ledger, the txn-per-owner dedupe, the mint
     trigger and the audit rule all hold. If the RPC refuses (duplicate
     transaction, unknown week) the whole approve rolls back and the row stays
-    open.
+    open. A queued `pick` is also refused, row left open, when the entry's
+    current pick for that week was submitted after the reply arrived (stale)
+    or already carries a result (scored); a newer reply still supersedes.
 2c. A kind with no RPC (`new_owner`, `identity`, anything new) is recorded as
     approved and **not applied**; Anthony enters it on its own screen.
     `new_owner` is manual on purpose: the duplicate-owner search lives on Quick
@@ -54,7 +59,8 @@ the two drift.
     the admin cannot write the table directly, stage then approve applies
     through the RPC and audits, a refused RPC leaves the row open, dismiss
     applies nothing, a resolved item re-staged is a no-op, an approved pick
-    keeps its mail's arrival time. Runs via `scripts/db/test-db.sh` (13 of 13
-    pass locally on Postgres 16, 2026-09-05).
+    keeps its mail's arrival time, a stale or post-score queued pick is refused
+    and a newer one supersedes. Runs via `scripts/db/test-db.sh` (13 of 13 pass
+    locally on Postgres 16, 2026-09-05).
 4b. `tests/unit/queue.test.ts`: payload summaries, kind labels, dispatch table,
     and the SQL seam.

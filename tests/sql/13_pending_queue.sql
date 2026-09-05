@@ -469,6 +469,73 @@ end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);
 
+-- ------------------------------------------------------------ admin: a stale queued pick cannot roll back a newer one
+set local role authenticated;
+select set_config('request.jwt.claims', '{"email":"admin@test.local"}', true);
+-- The reply in the queue is older than the pick that is now current (a later
+-- reply, or one Anthony keyed in). Approving it must be refused, not applied
+-- over the newer choice; a newer queued reply still supersedes; and once the
+-- week is scored nothing in the queue may replace the pick.
+do $$
+declare
+  e uuid := (select v from _q where k = 'entry')::uuid;
+  stale uuid; newer uuid; after_score uuid;
+  res jsonb;
+  ok boolean := false;
+begin
+  -- Current pick for week 1 is PHI, submitted 2026-09-01 16:00 (block above).
+  stale := admin_stage_pending('pick',
+    jsonb_build_object('entry_id', e, 'week', 1, 'team', 'DAL', 'received_at', '2026-08-31 12:00:00+00'::timestamptz),
+    'gmail-msg-7', 'sweep');
+  begin
+    perform admin_approve_pending(stale, null, 'admin@test.local');
+  exception when others then
+    ok := sqlerrm like '%stale%';
+  end;
+  if not ok then raise exception 'a queued pick older than the current pick must be refused as stale'; end if;
+  if (select resolved_at from pending_actions where id = stale) is not null then
+    raise exception 'a refused stale pick must leave the row open';
+  end if;
+  if not exists (select 1 from picks where entry_id = e and week = 1 and is_current and team = 'PHI') then
+    raise exception 'the refused stale pick must not touch the current pick';
+  end if;
+
+  -- A newer queued reply does supersede.
+  newer := admin_stage_pending('pick',
+    jsonb_build_object('entry_id', e, 'week', 1, 'team', 'DAL', 'received_at', '2026-09-02 12:00:00+00'::timestamptz),
+    'gmail-msg-8', 'sweep');
+  res := admin_approve_pending(newer, null, 'admin@test.local');
+  if not exists (select 1 from picks where entry_id = e and week = 1 and is_current and team = 'DAL'
+                   and submitted_at = '2026-09-02 12:00:00+00'::timestamptz) then
+    raise exception 'a newer queued pick must supersede the current one at its own arrival time';
+  end if;
+  if not exists (select 1 from audit_log where action = 'override_pick'
+                  and target_id = (res->'result'->>'pick_id')) then
+    raise exception 'superseding through the queue must leave the override_pick audit row';
+  end if;
+
+  -- Scored: nothing from the queue replaces it, however new the reply.
+  perform admin_set_result(e, 1, 'win', 'manual', 'admin@test.local');
+  after_score := admin_stage_pending('pick',
+    jsonb_build_object('entry_id', e, 'week', 1, 'team', 'NYG', 'received_at', '2026-09-03 12:00:00+00'::timestamptz),
+    'gmail-msg-9', 'sweep');
+  ok := false;
+  begin
+    perform admin_approve_pending(after_score, null, 'admin@test.local');
+  exception when others then
+    ok := sqlerrm like '%already%';
+  end;
+  if not ok then raise exception 'a queued pick must not replace a scored pick'; end if;
+  if (select resolved_at from pending_actions where id = after_score) is not null then
+    raise exception 'a refused post-score pick must leave the row open';
+  end if;
+  if not exists (select 1 from picks where entry_id = e and week = 1 and is_current and team = 'DAL' and result = 'win') then
+    raise exception 'the scored pick must be untouched';
+  end if;
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
 -- ------------------------------------------------------------ non-admin sees no rows
 set local role authenticated;
 select set_config('request.jwt.claims', '{"email":"stranger@example.com"}', true);
