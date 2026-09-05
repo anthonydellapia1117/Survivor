@@ -17,6 +17,14 @@
 --     (payload.received_at, or now() when absent): the queued reply is stale;
 --   * the row's target moved on since it was staged: a payment or entries
 --     row whose owner was merged or archived, a pick whose entry was voided.
+--
+-- Known and left alone: admin_set_result and the Lynne import (20260821
+-- migrations 7 and 9) each look up the current pick unlocked and then
+-- update it by id. An approve landing in that gap could supersede the row
+-- they are about to score. Closing it means changing those two RPCs, which
+-- is outside this migration; it needs the one admin to score and approve
+-- the same entry at the same instant, which per CLAUDE.md (Working rules)
+-- is documented, not built against, until the off-season pass.
 -- A queued reply newer than the current pick still supersedes it, at its own
 -- arrival time, exactly as before. Only the pick branch changes; the function
 -- is restated whole because that is how a plpgsql body is replaced.
@@ -109,6 +117,14 @@ begin
          or nullif(r.payload->>'team', '') is null then
         raise exception 'pick payload needs entry_id, week and team';
       end if;
+      -- Lock order, same as admin_submit_pick: the (entry, week) advisory
+      -- lock FIRST, then any row lock. A direct submission takes the advisory
+      -- lock and then key-shares the entry row on insert; taking the entry
+      -- row here before the advisory lock would be the reverse order and a
+      -- deadlock between the two.
+      perform pg_advisory_xact_lock(
+        hashtext('picks:' || (r.payload->>'entry_id') || ':' || (r.payload->>'week'))::bigint);
+
       -- The entry may have been voided since this was staged; a pick on a
       -- voided entry is off the roster and out of standings, so refuse and
       -- leave the row open.
@@ -132,11 +148,10 @@ begin
       -- allowed to replace it? A scored pick, never. A pick submitted after
       -- this reply arrived, never: the queued reply is stale, whichever way
       -- it got beaten (a later reply, or Anthony's own click). Refusing
-      -- leaves the row open for him to dismiss. The lock is the one every
-      -- pick submission takes (admin_submit_pick below), so the check and
-      -- the write cannot be split by a submission committing in between.
-      perform pg_advisory_xact_lock(
-        hashtext('picks:' || (r.payload->>'entry_id') || ':' || (r.payload->>'week'))::bigint);
+      -- leaves the row open for him to dismiss. The advisory lock taken at
+      -- the top of this branch is the one every pick submission takes
+      -- (admin_submit_pick below), so the check and the write cannot be
+      -- split by a submission committing in between.
       -- FOR UPDATE on the current pick: admin_set_result and the Lynne
       -- import update that same row to write a result, so a scorer in
       -- flight holds it and this read waits, then sees the result and
