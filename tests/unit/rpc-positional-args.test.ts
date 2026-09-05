@@ -68,11 +68,15 @@ function splitTopLevel(list: string): string[] {
 }
 
 /**
- * The parameter names of the LAST migration that defines `fn`, in order.
- * Migrations are append-only and a later file can replace a function, so a
- * fixed filename would guard a superseded signature.
+ * Every signature of `fn` declared in the LAST migration that defines it,
+ * each as its parameter names in order. Migrations are append-only and a
+ * later file can replace a function, so a fixed filename would guard a
+ * superseded signature. One file can declare more than one signature:
+ * admin_submit_pick has five- and six-argument forms since 20260905000063
+ * (the queue passes a submission time, every other caller does not), and a
+ * caller is right if it matches ANY live signature exactly.
  */
-function liveParams(fn: string): string[] {
+function liveSignatures(fn: string): string[][] {
   // Both spellings, and the public-qualified form: admin_mark_new_entries_sent
   // ships as a plain `create function`, so matching only `create or replace`
   // silently found no definition and reported a non-existent problem.
@@ -89,20 +93,39 @@ function liveParams(fn: string): string[] {
     .filter((sql) => markers.some((m) => sql.includes(m)));
   if (files.length === 0) return [];
   const sql = files[files.length - 1];
-  const at = markers
-    .map((m) => ({ m, i: sql.lastIndexOf(m) }))
-    .filter((x) => x.i >= 0)
-    .sort((a, b) => b.i - a.i)[0];
-  const open = at.i + at.m.length - 1;
-  // Strip SQL line comments first. admin_apply_lynne_import documents one
-  // parameter with `-- [{entry_id, result}] pre-screened: matched, no
-  // variance`, and the comma inside that comment split the parameter after it
-  // in half — so the list came back one short and the guard reported a
-  // transposition that did not exist.
-  const params = balanced(sql, open).replace(/--[^\n]*/g, "");
-  return splitTopLevel(params)
-    .map((p) => p.split(/\s+/)[0])
-    .filter((p) => p.startsWith("p_"));
+  const sigs = new Map<string, string[]>();
+  for (const m of markers) {
+    let i = sql.indexOf(m);
+    while (i >= 0) {
+      const open = i + m.length - 1;
+      // Strip SQL line comments first. admin_apply_lynne_import documents one
+      // parameter with `-- [{entry_id, result}] pre-screened: matched, no
+      // variance`, and the comma inside that comment split the parameter
+      // after it in half — so the list came back one short and the guard
+      // reported a transposition that did not exist.
+      const params = balanced(sql, open).replace(/--[^\n]*/g, "");
+      const names = splitTopLevel(params)
+        .map((p) => p.split(/\s+/)[0])
+        .filter((p) => p.startsWith("p_"));
+      sigs.set(names.join(","), names);
+      i = sql.indexOf(m, i + m.length);
+    }
+  }
+  return [...sigs.values()];
+}
+
+/**
+ * The live signature a positional call of `arity` arguments is held to: the
+ * one with that many parameters when one exists, else the last declared, so
+ * a call of the wrong arity still fails against a real signature.
+ */
+function liveParams(fn: string, arity?: number): string[] {
+  const sigs = liveSignatures(fn);
+  if (sigs.length === 0) return [];
+  if (arity !== undefined) {
+    return sigs.find((s) => s.length === arity) ?? sigs[sigs.length - 1];
+  }
+  return sigs[sigs.length - 1];
 }
 
 /** The text between `open` and its matching close bracket. */
@@ -216,7 +239,7 @@ describe("the Supabase backend sends every parameter the RPC declares", () => {
   it.each(NAMED.map((c) => [c.fn, c] as const))(
     "%s — sends exactly the declared parameters",
     (fn, call) => {
-      const declared = liveParams(fn);
+      const declared = liveSignatures(fn);
       expect(declared, `no migration defines ${fn}`).not.toHaveLength(0);
       // A SET comparison, because named arguments are order-independent.
       // Missing is the failure that shipped: admin_update_entry gained
@@ -224,7 +247,11 @@ describe("the Supabase backend sends every parameter the RPC declares", () => {
       // every entry save and every Lynne-number import raised
       // function-not-found in production. Extra fails too -- passing
       // p_cc_email after 20260904000062 dropped it is the same outage.
-      expect([...call.params].sort()).toEqual([...declared].sort());
+      // PostgREST resolves an overload by the set of names sent, so the call
+      // must equal one declared set exactly, not a mix of two.
+      expect(declared.map((s) => [...s].sort())).toContainEqual(
+        [...call.params].sort(),
+      );
     },
   );
 });
@@ -242,7 +269,7 @@ describe("the local backend's positional args match the RPC signature", () => {
   });
 
   for (const { fn, args, raw } of CALLS) {
-    const params = liveParams(fn);
+    const params = liveParams(fn, args.length);
     // Names line up only where the SQL parameter and the TS field agree.
     // Several predate any such convention (admin_merge_owner takes p_source
     // for a.sourceId, admin_update_week p_early for a.earlyDeadlineAt), and

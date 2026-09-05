@@ -23,6 +23,31 @@ function db(): Pool {
 // database's microsecond precision on restore. (The Supabase backend gets
 // strings from PostgREST, so this matches production behavior.)
 const TIME_OIDS = new Set([1082, 1114, 1184]); // date, timestamp, timestamptz
+// The three queue RPCs (20260905000063) are SECURITY DEFINER and gate on
+// is_admin() themselves, because pending_actions has no write policy to lean
+// on. is_admin() reads auth.jwt(), which the local stub takes from the
+// request.jwt.claims setting - unset on a plain pool connection, so the RPCs
+// would answer "not the admin" even though the app-level bypass let the
+// request through. Run them in one transaction with the admin claim set for
+// that transaction only; the setting dies with it and the pool stays clean.
+async function asAdmin<T>(run: (q: Pool["query"]) => Promise<T>): Promise<T> {
+  const client = await db().connect();
+  try {
+    await client.query("begin");
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ email: FREE_ENTRY_OWNER_EMAIL }),
+    ]);
+    const result = await run(client.query.bind(client) as Pool["query"]);
+    await client.query("commit");
+    return result;
+  } catch (e) {
+    await client.query("rollback").catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 let rawPool: Pool | null = null;
 function rawDb(): Pool {
   if (!rawPool)
@@ -332,25 +357,30 @@ export const adminLocalPgBackend: AdminBackend = {
     }));
   },
   async stagePending(a) {
-    const { rows } = await db().query(
-      "select admin_stage_pending($1,$2,$3,$4) as id",
-      [a.kind, a.payload, a.sourceMessageId, a.actor],
+    const { rows } = await asAdmin((query) =>
+      query("select admin_stage_pending($1,$2,$3,$4) as id", [
+        a.kind,
+        a.payload,
+        a.sourceMessageId,
+        a.actor,
+      ]),
     );
     return rows[0].id;
   },
   async approvePending(a) {
-    const { rows } = await db().query(
-      "select admin_approve_pending($1,$2,$3) as res",
-      [a.id, a.note, a.actor],
+    const { rows } = await asAdmin((query) =>
+      query("select admin_approve_pending($1,$2,$3) as res", [
+        a.id,
+        a.note,
+        a.actor,
+      ]),
     );
     return rows[0].res;
   },
   async dismissPending(a) {
-    await db().query("select admin_dismiss_pending($1,$2,$3)", [
-      a.id,
-      a.note,
-      a.actor,
-    ]);
+    await asAdmin((query) =>
+      query("select admin_dismiss_pending($1,$2,$3)", [a.id, a.note, a.actor]),
+    );
   },
   async recordPayment(a) {
     const { rows } = await db().query(

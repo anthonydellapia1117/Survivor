@@ -255,6 +255,23 @@ begin
   return v_new_id;
 end $$;
 
+-- The five-argument form, restated unchanged so this file carries both live
+-- signatures of admin_submit_pick together (tests/unit/rpc-positional-args
+-- reads the last migration that defines a function).
+create or replace function admin_submit_pick(
+  p_entry_id uuid,
+  p_week int,
+  p_team text,
+  p_source text,
+  p_actor text
+) returns uuid
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  return admin_submit_pick(p_entry_id, p_week, p_team, p_source, p_actor, null::timestamptz);
+end $$;
+
 -- create or replace keeps the grants of 63: execute revoked from public and
 -- anon, granted to authenticated. Restated so a fresh database gets the same.
 revoke execute on function admin_approve_pending(uuid, text, text) from public;

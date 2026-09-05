@@ -46,6 +46,18 @@ listing rows.
     are the only write path. Anon has no privilege on it. Nothing public reads
     it.
 
+2f. Who calls `admin_stage_pending`. Nothing in this repo: the hourly sweep
+    is the "Survivor Gmail Sweep" Routine at claude.ai/code, and it reaches
+    the database through the Supabase connector (`execute_sql`, project
+    `rpbzsmeqaqzdymfxkrzr`), the same path its prompt names for every write.
+    `is_admin()` reads the JWT email, so the call sets the claim for its own
+    transaction and then calls the RPC, in one statement batch:
+    `select set_config('request.jwt.claims', '{"email":"anthonydellapia@gmail.com"}', true); select admin_stage_pending('payment', '{...}'::jsonb, '<gmail message id>', 'sweep');`
+    The sweep prompt's step 3 ("stage entry additions, stage payment
+    candidates") is where it belongs, before step 5 marks the mail handled.
+    Until that line is in the Routine, the queue stays empty and the sweep
+    keeps reporting those items in NEEDS ANTHONY as it does today.
+
 3. Payload shapes the dispatch reads
 | kind | required | optional |
 | --- | --- | --- |
