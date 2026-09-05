@@ -18,6 +18,12 @@
 --   * the row's target moved on since it was staged: a payment or entries
 --     row whose owner was merged or archived, a pick whose entry was voided.
 --
+-- Lock order, in one line: mint_free_entries advisory lock, then the
+-- (entry, week) advisory lock, then row locks. Both functions here take them
+-- in that order; every other writer takes the mint lock first through the
+-- statement-level lock_free_entry_rule trigger, and the merge takes it before
+-- its owner rows.
+--
 -- Known and left alone: admin_set_result and the Lynne import (20260821
 -- migrations 7 and 9) each look up the current pick unlocked and then
 -- update it by id. An approve landing in that gap could supersede the row
@@ -77,6 +83,15 @@ begin
     raise exception 'pending action % is already %', p_id, r.resolution;
   end if;
   v_before := to_jsonb(r);
+
+  -- Lock order. The mint lock is the outermost lock in this schema: every
+  -- writer to entries, owners, config, payments or picks takes it first
+  -- (lock_free_entry_rule, statement-level BEFORE, 20260904000047), and the
+  -- merge takes it before its owner rows (20260904000052). Take it here,
+  -- before any row lock below, so an approve never holds an owner or entry
+  -- row while waiting for a writer that holds the mint lock. Re-acquiring
+  -- inside the same transaction is free.
+  perform pg_advisory_xact_lock(hashtext('mint_free_entries')::bigint);
 
   case r.kind
     when 'payment' then
@@ -260,6 +275,10 @@ declare
   v_losses int;
   v_bye_used boolean;
 begin
+  -- Lock order: the mint lock first (the picks insert below takes it anyway
+  -- through lock_free_entry_rule; taking it here keeps mint -> (entry, week)
+  -- -> rows the one order every path uses), then the (entry, week) lock.
+  perform pg_advisory_xact_lock(hashtext('mint_free_entries')::bigint);
   perform pg_advisory_xact_lock(
     hashtext('picks:' || p_entry_id::text || ':' || p_week::text)::bigint);
 
