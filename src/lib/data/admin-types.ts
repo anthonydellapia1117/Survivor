@@ -73,11 +73,50 @@ export interface AuditRow {
   after: Record<string, unknown> | null;
 }
 
+/** One NEEDS ANTHONY item, staged by the sweep through admin_stage_pending
+ *  and resolved at /admin/queue. Only open rows (resolvedAt null) are listed;
+ *  the resolution columns are here so the audit viewer's diff reads. */
+export interface PendingAction {
+  id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  sourceMessageId: string | null;
+  stagedAt: string;
+  stagedBy: string | null;
+  resolvedAt: string | null;
+  resolution: "approved" | "dismissed" | null;
+  resolutionNote: string | null;
+  resolvedBy: string | null;
+}
+
+/** What admin_approve_pending reports back: whether the kind had an RPC and
+ *  it ran, and what that RPC returned (a payment id, a pick id). */
+export interface ApproveResult {
+  id: string;
+  kind: string;
+  applied: boolean;
+  result: Record<string, unknown> | null;
+}
+
 export interface AdminBackend {
   listOwners(): Promise<AdminOwner[]>;
   listEntries(): Promise<AdminEntry[]>;
   listPayments(): Promise<AdminPayment[]>;
   auditTail(limit: number): Promise<AuditRow[]>;
+  /** Open queue rows, oldest first. */
+  listPendingActions(): Promise<PendingAction[]>;
+  stagePending(args: {
+    kind: string;
+    payload: Record<string, unknown>;
+    sourceMessageId: string | null;
+    actor: string;
+  }): Promise<string>;
+  approvePending(args: {
+    id: string;
+    note: string;
+    actor: string;
+  }): Promise<ApproveResult>;
+  dismissPending(args: { id: string; note: string; actor: string }): Promise<void>;
 
   createOwner(args: {
     firstName: string;

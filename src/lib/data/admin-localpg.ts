@@ -314,6 +314,44 @@ export const adminLocalPgBackend: AdminBackend = {
     await db().query("select admin_void_entry($1,$2)", [a.entryId, a.actor]);
   },
 
+  async listPendingActions() {
+    const { rows } = await db().query(
+      "select id, kind, payload, source_message_id, staged_at, staged_by, resolved_at, resolution, resolution_note, resolved_by from pending_actions where resolved_at is null order by staged_at",
+    );
+    return rows.map((r: any) => ({
+      id: r.id,
+      kind: r.kind,
+      payload: r.payload ?? {},
+      sourceMessageId: r.source_message_id,
+      stagedAt: iso(r.staged_at),
+      stagedBy: r.staged_by,
+      resolvedAt: iso(r.resolved_at),
+      resolution: r.resolution,
+      resolutionNote: r.resolution_note,
+      resolvedBy: r.resolved_by,
+    }));
+  },
+  async stagePending(a) {
+    const { rows } = await db().query(
+      "select admin_stage_pending($1,$2,$3,$4) as id",
+      [a.kind, a.payload, a.sourceMessageId, a.actor],
+    );
+    return rows[0].id;
+  },
+  async approvePending(a) {
+    const { rows } = await db().query(
+      "select admin_approve_pending($1,$2,$3) as res",
+      [a.id, a.note, a.actor],
+    );
+    return rows[0].res;
+  },
+  async dismissPending(a) {
+    await db().query("select admin_dismiss_pending($1,$2,$3)", [
+      a.id,
+      a.note,
+      a.actor,
+    ]);
+  },
   async recordPayment(a) {
     const { rows } = await db().query(
       "select admin_record_payment($1,$2,$3,$4,$5,$6,$7,$8) as id",
