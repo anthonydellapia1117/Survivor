@@ -83,8 +83,10 @@ begin
       -- against the live owner or dismisses. Null owner_id (unmatched) is
       -- still allowed through, that is quarantine.
       if (r.payload->>'owner_id') is not null then
+        -- FOR UPDATE: a merge in flight holds this row, so the read waits
+        -- for it to commit and then sees the archived owner.
         select (o.deleted_at is null and o.merged_into_owner_id is null) into v_owner_live
-          from owners o where o.id = (r.payload->>'owner_id')::uuid;
+          from owners o where o.id = (r.payload->>'owner_id')::uuid for update;
         if not coalesce(v_owner_live, false) then
           raise exception 'owner % was merged or archived after this was staged - re-stage against the live owner or dismiss',
             r.payload->>'owner_id';
@@ -111,7 +113,7 @@ begin
       -- voided entry is off the roster and out of standings, so refuse and
       -- leave the row open.
       select (en.voided_at is null) into v_entry_live
-        from entries en where en.id = (r.payload->>'entry_id')::uuid;
+        from entries en where en.id = (r.payload->>'entry_id')::uuid for update;
       if not coalesce(v_entry_live, false) then
         raise exception 'entry % is voided or missing since this was staged - dismiss the row',
           r.payload->>'entry_id';
@@ -135,11 +137,16 @@ begin
       -- the write cannot be split by a submission committing in between.
       perform pg_advisory_xact_lock(
         hashtext('picks:' || (r.payload->>'entry_id') || ':' || (r.payload->>'week'))::bigint);
+      -- FOR UPDATE on the current pick: admin_set_result and the Lynne
+      -- import update that same row to write a result, so a scorer in
+      -- flight holds it and this read waits, then sees the result and
+      -- refuses. Same one-admin caveat as the advisory lock; same cost.
       select p.submitted_at, p.result into v_cur_at, v_cur_result
         from picks p
        where p.entry_id = (r.payload->>'entry_id')::uuid
          and p.week = (r.payload->>'week')::int
-         and p.is_current;
+         and p.is_current
+         for update;
       if v_cur_result in ('win', 'loss', 'tie_loss', 'missed') then
         raise exception 'the pick for this entry and week is already % - nothing in the queue replaces a scored pick',
           v_cur_result;
@@ -168,7 +175,7 @@ begin
       -- Same owner check as payment: entries added under an archived owner
       -- are hidden from every roster and finance view.
       select (o.deleted_at is null and o.merged_into_owner_id is null) into v_owner_live
-        from owners o where o.id = (r.payload->>'owner_id')::uuid;
+        from owners o where o.id = (r.payload->>'owner_id')::uuid for update;
       if not coalesce(v_owner_live, false) then
         raise exception 'owner % was merged or archived after this was staged - re-stage against the live owner or dismiss',
           r.payload->>'owner_id';
