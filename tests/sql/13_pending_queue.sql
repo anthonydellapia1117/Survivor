@@ -514,6 +514,24 @@ begin
     raise exception 'superseding through the queue must leave the override_pick audit row';
   end if;
 
+  -- No arrival time and a pick already current: indeterminate, refused. The
+  -- guard compares arrival against the current pick, and now() is not an
+  -- arrival; without it an old reply would read as newer than anything.
+  ok := false;
+  begin
+    perform admin_approve_pending(
+      admin_stage_pending('pick',
+        jsonb_build_object('entry_id', e, 'week', 1, 'team', 'NYJ'),
+        'gmail-msg-13', 'sweep'),
+      null, 'admin@test.local');
+  exception when others then
+    ok := sqlerrm like '%received_at%';
+  end;
+  if not ok then raise exception 'a queued pick without received_at must be refused when a pick is already current'; end if;
+  if not exists (select 1 from picks where entry_id = e and week = 1 and is_current and team = 'DAL') then
+    raise exception 'the refused no-arrival pick must not touch the current pick';
+  end if;
+
   -- Scored: nothing from the queue replaces it, however new the reply.
   perform admin_set_result(e, 1, 'win', 'manual', 'admin@test.local');
   after_score := admin_stage_pending('pick',

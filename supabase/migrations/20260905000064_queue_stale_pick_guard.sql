@@ -14,7 +14,8 @@
 --   * the current pick for that entry and week already carries a result
 --     (win, loss, tie_loss, missed): nothing in the queue replaces it;
 --   * the current pick was submitted later than this reply arrived
---     (payload.received_at, or now() when absent): the queued reply is stale;
+--     (payload.received_at): the queued reply is stale; and a reply with no
+--     received_at cannot replace a current pick at all (indeterminate);
 --   * the row's target moved on since it was staged: a payment or entries
 --     row whose owner was merged or archived, a pick whose entry was voided.
 --
@@ -180,6 +181,13 @@ begin
       if v_cur_result in ('win', 'loss', 'tie_loss', 'missed') then
         raise exception 'the pick for this entry and week is already % - nothing in the queue replaces a scored pick',
           v_cur_result;
+      end if;
+      -- Replacing a current pick needs the reply's arrival time to compare
+      -- against; now() is not an arrival, and reading it as one would let
+      -- any old reply supersede anything. First pick for the week needs no
+      -- comparison and may still be stamped now().
+      if v_cur_at is not null and v_received is null then
+        raise exception 'a pick is already current for this entry and week and the queued reply carries no received_at - cannot tell which is newer; re-stage with the arrival time or dismiss';
       end if;
       if v_cur_at is not null and v_cur_at > coalesce(v_received, now()) then
         raise exception 'stale: a newer pick (submitted %) is already current; this reply arrived %',

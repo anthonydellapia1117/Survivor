@@ -64,7 +64,7 @@ listing rows.
 | kind | required | optional |
 | --- | --- | --- |
 | payment | amount_cents, paid_on | owner_id (null = unmatched), method (default venmo), venmo_txn_id, note, corrects, sender |
-| pick | entry_id, week, team | received_at (when the mail arrived; the pick is stamped and judged late at that time, not at approval), source (default admin), entry_name |
+| pick | entry_id, week, team | received_at (when the mail arrived; the pick is stamped and judged late at that time, not at approval; required whenever a pick is already current for that entry and week), source (default admin), entry_name |
 | entries | owner_id, entry_names[] | name_is_default, is_free, owner_name |
 
 The screen's copy of the dispatch table is `KIND_DISPATCH` in
