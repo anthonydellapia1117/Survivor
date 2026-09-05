@@ -15,8 +15,10 @@ is applied by hand, after the SQL suites pass locally; until then
 
 2. Write path
 2a. The sweep stages with `admin_stage_pending(kind, payload,
-    source_message_id, actor)`. Re-staging an identical open item returns the
-    existing id and writes nothing, so an hourly re-read does not stack rows.
+    source_message_id, actor)`. Re-staging an identical item, open or already
+    resolved, returns the existing id and writes nothing, so an hourly re-read
+    does not stack rows and a message Anthony already resolved cannot come
+    back as a second row.
 2b. `admin_approve_pending(id, note, actor)` applies the row **only by calling
     an existing admin_* RPC chosen by kind**: `payment` to
     `admin_record_payment`, `pick` to `admin_submit_pick`, `entries` to
@@ -40,7 +42,7 @@ is applied by hand, after the SQL suites pass locally; until then
 | kind | required | optional |
 | --- | --- | --- |
 | payment | amount_cents, paid_on | owner_id (null = unmatched), method (default venmo), venmo_txn_id, note, corrects, sender |
-| pick | entry_id, week, team | source (default admin), entry_name |
+| pick | entry_id, week, team | received_at (when the mail arrived; the pick is stamped and judged late at that time, not at approval), source (default admin), entry_name |
 | entries | owner_id, entry_names[] | name_is_default, is_free, owner_name |
 
 The screen's copy of the dispatch table is `KIND_DISPATCH` in
@@ -51,7 +53,8 @@ the two drift.
 4a. `tests/sql/13_pending_queue.sql`: RLS denies anon, RPCs refuse a non-admin,
     the admin cannot write the table directly, stage then approve applies
     through the RPC and audits, a refused RPC leaves the row open, dismiss
-    applies nothing. Runs via `scripts/db/test-db.sh`; it has not been run on
-    a Mac without Postgres.
+    applies nothing, a resolved item re-staged is a no-op, an approved pick
+    keeps its mail's arrival time. Runs via `scripts/db/test-db.sh` (13 of 13
+    pass locally on Postgres 16, 2026-09-05).
 4b. `tests/unit/queue.test.ts`: payload summaries, kind labels, dispatch table,
     and the SQL seam.

@@ -79,10 +79,14 @@ end $$;
 -- ---------------------------------------------------------------------------
 -- admin_stage_pending: the sweep's write.
 --
--- Idempotent on (kind, source_message_id, payload) while the row is open: the
--- sweep runs hourly and re-reading the same message must not stack duplicates.
--- Returning the existing id is the whole no-op, so no audit row is written in
--- that case - nothing changed. It is a lookup under an advisory lock, not a
+-- Idempotent on (kind, source_message_id, payload) whether the matching row is
+-- open or already resolved: the sweep runs hourly and re-reading the same
+-- message must not stack duplicates, and a message Anthony has already
+-- approved or dismissed must not come back as a second row when the sweep's
+-- Gmail label write failed and it re-reads the same mail an hour later (the
+-- same top-up approved twice is the expensive case). Returning the existing
+-- id is the whole no-op, so no audit row is written in that case - nothing
+-- changed. It is a lookup under an advisory lock, not a
 -- unique index, because one message legitimately carries two items of the
 -- same kind (a $200 Venmo settling two owners is two payment rows from one
 -- receipt) that differ only in payload.
@@ -123,10 +127,10 @@ begin
 
   select id into v_id
     from pending_actions
-   where resolved_at is null
-     and kind = v_kind
+   where kind = v_kind
      and source_message_id is not distinct from v_source
      and payload = p_payload
+   order by staged_at
    limit 1;
   if v_id is not null then
     return v_id;
@@ -140,6 +144,100 @@ begin
   values (p_actor, 'stage_pending', 'pending_actions', v_id::text,
           (select to_jsonb(a) from pending_actions a where a.id = v_id));
   return v_id;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- admin_submit_pick with the submission time as an argument.
+--
+-- The five-argument admin_submit_pick (20260822000014) stamps submitted_at
+-- and decides `late` with now(). That is right for a pick keyed in by hand
+-- and wrong for a pick the queue applies later than it arrived: a reply that
+-- beat Wednesday noon, staged because the name was ambiguous and approved on
+-- Thursday, would be recorded late. This overload is the same function with
+-- the clock as a parameter; the five-argument form now delegates to it with
+-- null, so every existing caller behaves exactly as before. Only
+-- admin_approve_pending passes a time, and only the one the sweep read off
+-- the mail (payload.received_at).
+create or replace function admin_submit_pick(
+  p_entry_id uuid,
+  p_week int,
+  p_team text,
+  p_source text,
+  p_actor text,
+  p_submitted_at timestamptz
+) returns uuid
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_at timestamptz := coalesce(p_submitted_at, now());
+  v_deadline timestamptz;
+  v_old_id uuid;
+  v_new_id uuid;
+  v_double_through int;
+  v_losses int;
+  v_bye_used boolean;
+begin
+  select pick_deadline(p_week, p_team) into v_deadline;
+  if v_deadline is null then
+    raise exception 'week % does not exist', p_week;
+  end if;
+
+  if p_team = 'SKIP_WEEK' then
+    select double_elim_through_week into v_double_through from config;
+    if p_week <= v_double_through then
+      raise exception 'bye may only be used from week % on', v_double_through + 1;
+    end if;
+    select count(*) filter (where p.result in ('loss','tie_loss','missed') and p.week <= v_double_through),
+           bool_or(p.team = 'SKIP_WEEK')
+      into v_losses, v_bye_used
+      from picks p
+     where p.entry_id = p_entry_id and p.is_current;
+    if coalesce(v_losses, 0) > 0 then
+      raise exception 'bye not earned: entry took a loss in weeks 1-%', v_double_through;
+    end if;
+    if coalesce(v_bye_used, false) then
+      raise exception 'bye already used';
+    end if;
+  end if;
+
+  select id into v_old_id from picks
+   where entry_id = p_entry_id and week = p_week and is_current;
+
+  if v_old_id is not null then
+    update picks set is_current = false where id = v_old_id;
+  end if;
+
+  insert into picks (entry_id, week, team, source, supersedes_id, late, result, submitted_at)
+  values (p_entry_id, p_week, p_team,
+          coalesce(nullif(p_source, ''), 'admin'),
+          v_old_id,
+          v_at > v_deadline,
+          case when p_team = 'SKIP_WEEK' then 'bye' else 'pending' end,
+          v_at)
+  returning id into v_new_id;
+
+  insert into audit_log (actor, action, target_table, target_id, after)
+  values (p_actor,
+          case when v_old_id is null then 'submit_pick' else 'override_pick' end,
+          'picks', v_new_id::text,
+          jsonb_build_object('entry_id', p_entry_id, 'week', p_week,
+                             'team', p_team, 'supersedes', v_old_id));
+  return v_new_id;
+end $$;
+
+create or replace function admin_submit_pick(
+  p_entry_id uuid,
+  p_week int,
+  p_team text,
+  p_source text,
+  p_actor text
+) returns uuid
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  return admin_submit_pick(p_entry_id, p_week, p_team, p_source, p_actor, null::timestamptz);
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -171,6 +269,7 @@ declare
   v_result jsonb := null;
   v_uuid uuid;
   v_names text[];
+  v_received timestamptz;
 begin
   if not is_admin() then
     raise exception 'admin_approve_pending: not the admin'
@@ -210,14 +309,24 @@ begin
          or nullif(r.payload->>'team', '') is null then
         raise exception 'pick payload needs entry_id, week and team';
       end if;
+      -- The pick's time is when the player's mail arrived (payload.received_at,
+      -- set by the sweep), not when Anthony clicks Approve: a reply that beat
+      -- its deadline stays on time however long it waited here. The overload
+      -- above records and judges lateness at that timestamp; absent, it is
+      -- now(), the same as a pick keyed in by hand.
+      v_received := nullif(r.payload->>'received_at', '')::timestamptz;
+      if v_received is not null and v_received > now() then
+        raise exception 'pick payload received_at is in the future';
+      end if;
       v_uuid := admin_submit_pick(
         (r.payload->>'entry_id')::uuid,
         (r.payload->>'week')::int,
         r.payload->>'team',
         coalesce(nullif(r.payload->>'source', ''), 'admin'),
-        p_actor);
+        p_actor,
+        v_received);
       v_applied := true;
-      v_result := jsonb_build_object('pick_id', v_uuid);
+      v_result := jsonb_build_object('pick_id', v_uuid, 'submitted_at', v_received);
 
     when 'entries' then
       if (r.payload->>'owner_id') is null
@@ -315,15 +424,18 @@ end $$;
 revoke execute on function admin_stage_pending(text, jsonb, text, text) from public;
 revoke execute on function admin_approve_pending(uuid, text, text) from public;
 revoke execute on function admin_dismiss_pending(uuid, text, text) from public;
+revoke execute on function admin_submit_pick(uuid, int, text, text, text, timestamptz) from public;
 
 do $$
 begin
   revoke execute on function admin_stage_pending(text, jsonb, text, text) from anon;
   revoke execute on function admin_approve_pending(uuid, text, text) from anon;
   revoke execute on function admin_dismiss_pending(uuid, text, text) from anon;
+  revoke execute on function admin_submit_pick(uuid, int, text, text, text, timestamptz) from anon;
   grant execute on function admin_stage_pending(text, jsonb, text, text) to authenticated;
   grant execute on function admin_approve_pending(uuid, text, text) to authenticated;
   grant execute on function admin_dismiss_pending(uuid, text, text) to authenticated;
+  grant execute on function admin_submit_pick(uuid, int, text, text, text, timestamptz) to authenticated;
 exception when undefined_object then
   null; -- roles absent outside supabase-shaped databases
 end $$;

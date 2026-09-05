@@ -52,7 +52,7 @@ end $$;
 
 -- ------------------------------------------------------------ fixture
 create temp table _q (k text primary key, v text);
-grant select on _q to anon, authenticated;
+grant select, insert on _q to anon, authenticated;
 
 do $$
 declare
@@ -219,7 +219,7 @@ begin
   end;
   if not ok then raise exception 'non-object payload must be refused'; end if;
 
-  insert into _q values ('pay1', id1::text), ('pay2', id3::text);
+  insert into _q values ('pay1', id1::text), ('pay2', id3::text), ('pay1_payload', payload::text);
 end $$;
 
 -- ------------------------------------------------------------ admin: approve applies via the RPC
@@ -281,6 +281,18 @@ begin
     raise exception 'the refused second approve must not touch the ledger';
   end if;
 
+  -- Resolved is still deduplicated. The sweep stages, its Gmail Done-label
+  -- write fails, Anthony approves the row, and an hour later the sweep reads
+  -- the same mail again: it must get the existing id back and add nothing,
+  -- or the same top-up could be staged and approved twice.
+  if admin_stage_pending('payment', (select v from _q where k = 'pay1_payload')::jsonb,
+                         'gmail-msg-1', 'sweep') <> id1 then
+    raise exception 're-staging a RESOLVED item must return the same id';
+  end if;
+  if (select count(*) from pending_actions where source_message_id = 'gmail-msg-1') <> 2 then
+    raise exception 're-staging a resolved item must not add a row';
+  end if;
+
   -- The dedupe the RPC carries holds for the queue too: the second row on the
   -- same message reuses the txn id against the same owner, so approving it is
   -- refused by admin_record_payment and the row stays OPEN.
@@ -302,19 +314,19 @@ end $$;
 -- ------------------------------------------------------------ admin: bad payload leaves the row open
 do $$
 declare
-  id uuid;
+  qid uuid;
   ok boolean := false;
   ledger int;
 begin
   select count(*) into ledger from payments;
-  id := admin_stage_pending('payment', '{"note": "no amount, no date"}'::jsonb, 'gmail-msg-2', 'sweep');
+  qid := admin_stage_pending('payment', '{"note": "no amount, no date"}'::jsonb, 'gmail-msg-2', 'sweep');
   begin
-    perform admin_approve_pending(id, null, 'admin@test.local');
+    perform admin_approve_pending(qid, null, 'admin@test.local');
   exception when others then
     ok := sqlerrm like '%amount_cents and paid_on%';
   end;
   if not ok then raise exception 'a payment without amount and date must be refused'; end if;
-  if (select resolved_at from pending_actions where id = id) is not null then
+  if (select resolved_at from pending_actions where id = qid) is not null then
     raise exception 'a refused payload must leave the row open';
   end if;
   if (select count(*) from payments) <> ledger then
@@ -325,26 +337,26 @@ end $$;
 -- ------------------------------------------------------------ admin: no RPC for the kind
 do $$
 declare
-  id uuid;
+  qid uuid;
   owners_before int;
   res jsonb;
 begin
   select count(*) into owners_before from owners;
-  id := admin_stage_pending('new_owner',
+  qid := admin_stage_pending('new_owner',
     '{"first_name": "Queue", "last_name": "Person", "email": "queue@example.com"}'::jsonb,
     'gmail-msg-3', 'sweep');
-  res := admin_approve_pending(id, 'add him on Quick add', 'admin@test.local');
+  res := admin_approve_pending(qid, 'add him on Quick add', 'admin@test.local');
   if (res->>'applied')::boolean then
     raise exception 'a kind with no RPC must not report applied';
   end if;
   if (select count(*) from owners) <> owners_before then
     raise exception 'approving new_owner must create nothing - that is Anthony''s click on Quick add';
   end if;
-  if not exists (select 1 from pending_actions where id = id and resolution = 'approved') then
+  if not exists (select 1 from pending_actions where id = qid and resolution = 'approved') then
     raise exception 'the decision must still be recorded';
   end if;
   if not exists (select 1 from audit_log where action = 'approve_pending'
-                  and target_id = id::text and not (after->>'applied')::boolean) then
+                  and target_id = qid::text and not (after->>'applied')::boolean) then
     raise exception 'approve_pending audit row must say applied = false';
   end if;
 end $$;
@@ -353,33 +365,33 @@ end $$;
 do $$
 declare
   e uuid := (select v from _q where k = 'entry')::uuid;
-  id uuid;
+  qid uuid;
   picks_before int;
   ok boolean := false;
 begin
   select count(*) into picks_before from picks;
-  id := admin_stage_pending('pick',
+  qid := admin_stage_pending('pick',
     jsonb_build_object('entry_id', e, 'entry_name', 'Pumpy321', 'week', 1, 'team', 'PHI'),
     'gmail-msg-4', 'sweep');
 
-  perform admin_dismiss_pending(id, 'he changed his mind in the next mail', 'admin@test.local');
+  perform admin_dismiss_pending(qid, 'he changed his mind in the next mail', 'admin@test.local');
 
   if (select count(*) from picks) <> picks_before then
     raise exception 'dismiss must not write a pick';
   end if;
   if not exists (select 1 from pending_actions
-                  where id = id and resolution = 'dismissed' and resolved_at is not null
+                  where id = qid and resolution = 'dismissed' and resolved_at is not null
                     and resolved_by = 'admin@test.local'
                     and resolution_note = 'he changed his mind in the next mail') then
     raise exception 'dismissed row not resolved as expected';
   end if;
   if not exists (select 1 from audit_log where action = 'dismiss_pending'
-                  and target_id = id::text and note = 'he changed his mind in the next mail') then
+                  and target_id = qid::text and note = 'he changed his mind in the next mail') then
     raise exception 'dismiss_pending audit row missing';
   end if;
 
   begin
-    perform admin_approve_pending(id, null, 'admin@test.local');
+    perform admin_approve_pending(qid, null, 'admin@test.local');
   exception when others then
     ok := sqlerrm like '%already dismissed%';
   end;
@@ -387,7 +399,7 @@ begin
 
   ok := false;
   begin
-    perform admin_dismiss_pending(id, null, 'admin@test.local');
+    perform admin_dismiss_pending(qid, null, 'admin@test.local');
   exception when others then
     ok := sqlerrm like '%already dismissed%';
   end;
@@ -396,7 +408,7 @@ begin
   -- The admin cannot reopen or edit a row by hand either.
   ok := false;
   begin
-    update pending_actions set resolved_at = null, resolution = null, resolved_by = null where id = id;
+    update pending_actions set resolved_at = null, resolution = null, resolved_by = null where id = qid;
   exception when insufficient_privilege then
     ok := true;
   end;
@@ -413,20 +425,45 @@ end $$;
 do $$
 declare
   e uuid := (select v from _q where k = 'entry')::uuid;
-  id uuid;
+  qid uuid;
+  id_future uuid;
   res jsonb;
   pick uuid;
+  received timestamptz := '2026-09-01 16:00:00+00';
+  ok boolean := false;
 begin
-  id := admin_stage_pending('pick',
-    jsonb_build_object('entry_id', e, 'week', 1, 'team', 'PHI'),
+  -- The reply arrived on Sep 1 and Anthony approves it now. The pick has to
+  -- carry the arrival time and be judged late or not at THAT time, not at the
+  -- approval: a reply that beat its deadline stays on time however long it
+  -- waited in the queue.
+  qid := admin_stage_pending('pick',
+    jsonb_build_object('entry_id', e, 'week', 1, 'team', 'PHI', 'received_at', received),
     'gmail-msg-5', 'sweep');
-  res := admin_approve_pending(id, null, 'admin@test.local');
+  res := admin_approve_pending(qid, null, 'admin@test.local');
   pick := (res->'result'->>'pick_id')::uuid;
   if pick is null or not exists (select 1 from picks where id = pick and entry_id = e and week = 1 and team = 'PHI' and is_current) then
     raise exception 'pick approve must write the pick through admin_submit_pick';
   end if;
+  if not exists (select 1 from picks where id = pick and submitted_at = received and late = false) then
+    raise exception 'the approved pick must carry the mail''s arrival time, not the approval time';
+  end if;
   if not exists (select 1 from audit_log where action = 'submit_pick' and target_id = pick::text) then
     raise exception 'submit_pick audit row missing - was the RPC bypassed?';
+  end if;
+
+  -- A received_at in the future is not a time a mail can have arrived; the
+  -- approve is refused and the row stays open.
+  id_future := admin_stage_pending('pick',
+    jsonb_build_object('entry_id', e, 'week', 2, 'team', 'DAL', 'received_at', now() + interval '1 day'),
+    'gmail-msg-6', 'sweep');
+  begin
+    perform admin_approve_pending(id_future, null, 'admin@test.local');
+  exception when others then
+    ok := sqlerrm like '%received_at is in the future%';
+  end;
+  if not ok then raise exception 'a future received_at must be refused'; end if;
+  if (select resolved_at from pending_actions where id = id_future) is not null then
+    raise exception 'a refused pick must leave the row open';
   end if;
 end $$;
 reset role;
