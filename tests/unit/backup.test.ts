@@ -163,6 +163,7 @@ describe("backup coverage and filename", () => {
       "lynne_imports",
       "archive_2025_entries",
       "archive_2025_weekly",
+      "pending_actions",
       "audit_log",
     ]);
   });

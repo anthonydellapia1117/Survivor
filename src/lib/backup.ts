@@ -27,6 +27,7 @@ export const BACKUP_TABLES: { table: string; orderBy: string | null }[] = [
   { table: "lynne_imports", orderBy: "imported_at" },
   { table: "archive_2025_entries", orderBy: "lynne_number" },
   { table: "archive_2025_weekly", orderBy: "week" },
+  { table: "pending_actions", orderBy: "staged_at" },
   { table: "audit_log", orderBy: "id" },
 ];
 

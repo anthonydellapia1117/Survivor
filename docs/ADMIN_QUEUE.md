@@ -31,7 +31,10 @@ listing rows.
     transaction, unknown week) the whole approve rolls back and the row stays
     open. A queued `pick` is also refused, row left open, when the entry's
     current pick for that week was submitted after the reply arrived (stale)
-    or already carries a result (scored); a newer reply still supersedes.
+    or already carries a result (scored); a newer reply still supersedes. The
+    check and the write hold one advisory lock per entry and week, the same
+    lock every pick submission takes, so a submission cannot land between
+    them (migration 64).
 2c. A kind with no RPC (`new_owner`, `identity`, anything new) is recorded as
     approved and **not applied**; Anthony enters it on its own screen.
     `new_owner` is manual on purpose: the duplicate-owner search lives on Quick
@@ -64,3 +67,6 @@ the two drift.
     locally on Postgres 16, 2026-09-05).
 4b. `tests/unit/queue.test.ts`: payload summaries, kind labels, dispatch table,
     and the SQL seam.
+4c. `pending_actions` is in `BACKUP_TABLES` (`src/lib/backup.ts`), so the
+    one-step backup carries open and resolved queue rows and a restore does
+    not leave audit rows pointing at a queue that no longer exists.
