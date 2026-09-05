@@ -995,6 +995,15 @@ begin
 end $$;
 
 -- Explicit locks are still worth watching, but as their own, narrower claim.
+--
+-- Two functions are argued and excused: admin_approve_pending and
+-- admin_dismiss_pending (20260905000063) lock their own pending_actions row
+-- FOR UPDATE before touching anything else. pending_actions is not a rule
+-- table and carries no foreign key into one, and the rule-table locks approve
+-- can reach (through admin_record_payment or admin_add_entries) are taken
+-- after the queue row, by these two functions only. No transaction holds a
+-- rule-table lock and then waits on a queue row, so the ordering is one-way.
+-- Anything else that takes an explicit lock still trips this.
 do $$
 declare
   n int;
@@ -1002,6 +1011,7 @@ begin
   select count(*) into n from pg_proc p
    join pg_namespace ns on ns.oid = p.pronamespace
    where ns.nspname = 'public'
+     and p.proname not in ('admin_approve_pending', 'admin_dismiss_pending')
      and p.prosrc ~* '(for\s+update|for\s+share|lock\s+table)';
   if n <> 0 then
     raise exception

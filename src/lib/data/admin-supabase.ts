@@ -10,6 +10,7 @@ import type {
   AdminEntry,
   AdminOwner,
   AdminPayment,
+  ApproveResult,
   AuditRow,
 } from "./admin-types";
 
@@ -405,6 +406,66 @@ export const adminSupabaseBackend: AdminBackend = {
     });
     if (error) throw error;
     return data as string;
+  },
+
+  async listPendingActions() {
+    const c = await createSupabaseServerClient();
+    const { data, error } = await c
+      .from("pending_actions")
+      .select(
+        "id, kind, payload, source_message_id, staged_at, staged_by, resolved_at, resolution, resolution_note, resolved_by",
+      )
+      .is("resolved_at", null)
+      .order("staged_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      kind: r.kind,
+      payload: r.payload ?? {},
+      sourceMessageId: r.source_message_id,
+      stagedAt: r.staged_at,
+      stagedBy: r.staged_by,
+      resolvedAt: r.resolved_at,
+      resolution: r.resolution,
+      resolutionNote: r.resolution_note,
+      resolvedBy: r.resolved_by,
+    }));
+  },
+
+  async stagePending(a) {
+    const { data, error } = await (
+      await createSupabaseServerClient()
+    ).rpc("admin_stage_pending", {
+      p_kind: a.kind,
+      p_payload: a.payload,
+      p_source_message_id: a.sourceMessageId,
+      p_actor: a.actor,
+    });
+    if (error) throw error;
+    return data as string;
+  },
+
+  async approvePending(a) {
+    const { data, error } = await (
+      await createSupabaseServerClient()
+    ).rpc("admin_approve_pending", {
+      p_id: a.id,
+      p_note: a.note,
+      p_actor: a.actor,
+    });
+    if (error) throw error;
+    return data as ApproveResult;
+  },
+
+  async dismissPending(a) {
+    const { error } = await (
+      await createSupabaseServerClient()
+    ).rpc("admin_dismiss_pending", {
+      p_id: a.id,
+      p_note: a.note,
+      p_actor: a.actor,
+    });
+    if (error) throw error;
   },
 
   async submitPick(a) {

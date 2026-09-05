@@ -704,3 +704,46 @@ export async function setResultAction(input: {
     return { ok: true };
   });
 }
+
+// The NEEDS ANTHONY queue. Rows are staged by the sweep through
+// admin_stage_pending and resolved here. Approve applies a row only by way of
+// an existing admin_* RPC chosen by kind inside admin_approve_pending, so
+// every rule those RPCs carry holds; a kind with no RPC is recorded as
+// approved and applied by hand. See docs/ADMIN_QUEUE.md.
+
+export async function stagePendingAction(input: {
+  kind: string;
+  payload: Record<string, unknown>;
+  sourceMessageId: string | null;
+}): Promise<ActionResult> {
+  return guarded(async (actor) => {
+    const id = await getAdminData().stagePending({ ...input, actor });
+    revalidatePath("/admin/queue");
+    return { ok: true, id };
+  });
+}
+
+export async function approvePendingAction(input: {
+  id: string;
+  note: string;
+}): Promise<ActionResult & { applied?: boolean }> {
+  return guarded(async (actor) => {
+    const res = await getAdminData().approvePending({ ...input, actor });
+    // An applied payment, pick or entry changes what every other screen
+    // shows, so revalidate the lot, the same as the direct actions do.
+    revalidateAll();
+    revalidatePath("/admin/queue");
+    return { ok: true, id: res.id, applied: res.applied };
+  });
+}
+
+export async function dismissPendingAction(input: {
+  id: string;
+  note: string;
+}): Promise<ActionResult> {
+  return guarded(async (actor) => {
+    await getAdminData().dismissPending({ ...input, actor });
+    revalidatePath("/admin/queue");
+    return { ok: true, id: input.id };
+  });
+}

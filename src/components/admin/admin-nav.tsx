@@ -20,6 +20,7 @@ const links = [
   { href: "/admin/recap", label: "Recap" },
   { href: "/admin/import", label: "Import" },
   { href: "/admin/deadline", label: "Deadline" },
+  { href: "/admin/queue", label: "Queue" },
   { href: "/admin/audit", label: "Audit" },
   { href: "/admin/account", label: "Account" },
 ];
