@@ -34,7 +34,9 @@ listing rows.
     or already carries a result (scored); a newer reply still supersedes. The
     check and the write hold one advisory lock per entry and week, the same
     lock every pick submission takes, so a submission cannot land between
-    them (migration 64).
+    them (migration 64). A row whose target moved on since it was staged is
+    refused the same way: a `payment` or `entries` row whose owner was merged
+    or archived, a `pick` whose entry was voided.
 2c. A kind with no RPC (`new_owner`, `identity`, anything new) is recorded as
     approved and **not applied**; Anthony enters it on its own screen.
     `new_owner` is manual on purpose: the duplicate-owner search lives on Quick

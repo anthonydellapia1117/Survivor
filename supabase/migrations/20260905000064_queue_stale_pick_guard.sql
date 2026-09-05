@@ -14,7 +14,9 @@
 --   * the current pick for that entry and week already carries a result
 --     (win, loss, tie_loss, missed): nothing in the queue replaces it;
 --   * the current pick was submitted later than this reply arrived
---     (payload.received_at, or now() when absent): the queued reply is stale.
+--     (payload.received_at, or now() when absent): the queued reply is stale;
+--   * the row's target moved on since it was staged: a payment or entries
+--     row whose owner was merged or archived, a pick whose entry was voided.
 -- A queued reply newer than the current pick still supersedes it, at its own
 -- arrival time, exactly as before. Only the pick branch changes; the function
 -- is restated whole because that is how a plpgsql body is replaced.
@@ -51,6 +53,8 @@ declare
   v_received timestamptz;
   v_cur_at timestamptz;
   v_cur_result text;
+  v_owner_live boolean;
+  v_entry_live boolean;
 begin
   if not is_admin() then
     raise exception 'admin_approve_pending: not the admin'
@@ -73,6 +77,19 @@ begin
       if (r.payload->>'amount_cents') is null or (r.payload->>'paid_on') is null then
         raise exception 'payment payload needs amount_cents and paid_on';
       end if;
+      -- The owner may have been merged or archived since this was staged.
+      -- Money recorded against the archived row would sit outside the live
+      -- owner's totals, so refuse and leave the row open: Anthony re-stages
+      -- against the live owner or dismisses. Null owner_id (unmatched) is
+      -- still allowed through, that is quarantine.
+      if (r.payload->>'owner_id') is not null then
+        select (o.deleted_at is null and o.merged_into_owner_id is null) into v_owner_live
+          from owners o where o.id = (r.payload->>'owner_id')::uuid;
+        if not coalesce(v_owner_live, false) then
+          raise exception 'owner % was merged or archived after this was staged - re-stage against the live owner or dismiss',
+            r.payload->>'owner_id';
+        end if;
+      end if;
       v_uuid := admin_record_payment(
         (r.payload->>'owner_id')::uuid,
         (r.payload->>'amount_cents')::int,
@@ -89,6 +106,15 @@ begin
       if (r.payload->>'entry_id') is null or (r.payload->>'week') is null
          or nullif(r.payload->>'team', '') is null then
         raise exception 'pick payload needs entry_id, week and team';
+      end if;
+      -- The entry may have been voided since this was staged; a pick on a
+      -- voided entry is off the roster and out of standings, so refuse and
+      -- leave the row open.
+      select (en.voided_at is null) into v_entry_live
+        from entries en where en.id = (r.payload->>'entry_id')::uuid;
+      if not coalesce(v_entry_live, false) then
+        raise exception 'entry % is voided or missing since this was staged - dismiss the row',
+          r.payload->>'entry_id';
       end if;
       -- The pick's time is when the player's mail arrived (payload.received_at,
       -- set by the sweep), not when Anthony clicks Approve: a reply that beat
@@ -138,6 +164,14 @@ begin
          or jsonb_typeof(r.payload->'entry_names') <> 'array'
          or jsonb_array_length(r.payload->'entry_names') = 0 then
         raise exception 'entries payload needs owner_id and a non-empty entry_names array';
+      end if;
+      -- Same owner check as payment: entries added under an archived owner
+      -- are hidden from every roster and finance view.
+      select (o.deleted_at is null and o.merged_into_owner_id is null) into v_owner_live
+        from owners o where o.id = (r.payload->>'owner_id')::uuid;
+      if not coalesce(v_owner_live, false) then
+        raise exception 'owner % was merged or archived after this was staged - re-stage against the live owner or dismiss',
+          r.payload->>'owner_id';
       end if;
       select array_agg(x) into v_names
         from jsonb_array_elements_text(r.payload->'entry_names') x;

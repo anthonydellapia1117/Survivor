@@ -536,6 +536,92 @@ end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);
 
+-- ------------------------------------------------------------ admin: a row whose target moved on is refused
+-- Staged against an owner that is merged away before approval, or a pick for
+-- an entry voided before approval: nothing is written to the archived owner
+-- or the dead entry, the row stays open, and Anthony re-stages or dismisses.
+set local role authenticated;
+select set_config('request.jwt.claims', '{"email":"admin@test.local"}', true);
+do $$
+declare
+  o uuid := (select v from _q where k = 'owner')::uuid;
+  e uuid := (select v from _q where k = 'entry')::uuid;
+  tgt uuid;
+  pay uuid; adds uuid; pk uuid;
+  ledger int; entries_before int; picks_before int;
+  ok boolean;
+begin
+  select ow.id into tgt from owners ow
+   where ow.id <> o and ow.deleted_at is null and ow.merged_into_owner_id is null
+   order by ow.created_at limit 1;
+  if tgt is null then raise exception 'fixture: need a second live owner'; end if;
+
+  pay := admin_stage_pending('payment',
+    jsonb_build_object('owner_id', o, 'amount_cents', 3000, 'paid_on', '2026-09-05', 'venmo_txn_id', 'QUEUE-TEST-TXN-MERGED'),
+    'gmail-msg-10', 'sweep');
+  adds := admin_stage_pending('entries',
+    jsonb_build_object('owner_id', o, 'entry_names', jsonb_build_array('Pumpy321 #2')),
+    'gmail-msg-11', 'sweep');
+
+  perform admin_merge_owner(o, tgt, 'admin@test.local');
+  if not exists (select 1 from owners where id = o and merged_into_owner_id = tgt) then
+    raise exception 'fixture: merge did not archive the source owner';
+  end if;
+
+  select count(*) into ledger from payments;
+  ok := false;
+  begin
+    perform admin_approve_pending(pay, null, 'admin@test.local');
+  exception when others then
+    ok := sqlerrm like '%merged%';
+  end;
+  if not ok then raise exception 'a payment staged against an owner merged since must be refused'; end if;
+  if (select count(*) from payments) <> ledger then
+    raise exception 'the refused payment must write nothing to the ledger';
+  end if;
+  if (select resolved_at from pending_actions where id = pay) is not null then
+    raise exception 'the refused payment row must stay open';
+  end if;
+
+  select count(*) into entries_before from entries;
+  ok := false;
+  begin
+    perform admin_approve_pending(adds, null, 'admin@test.local');
+  exception when others then
+    ok := sqlerrm like '%merged%';
+  end;
+  if not ok then raise exception 'entries staged against an owner merged since must be refused'; end if;
+  if (select count(*) from entries) <> entries_before then
+    raise exception 'the refused entries must add nothing';
+  end if;
+  if (select resolved_at from pending_actions where id = adds) is not null then
+    raise exception 'the refused entries row must stay open';
+  end if;
+
+  -- The entry moved to the target in the merge and is still live; void it,
+  -- then a queued pick for it is refused.
+  pk := admin_stage_pending('pick',
+    jsonb_build_object('entry_id', e, 'week', 3, 'team', 'BUF', 'received_at', '2026-09-04 12:00:00+00'::timestamptz),
+    'gmail-msg-12', 'sweep');
+  perform admin_void_entry(e, 'admin@test.local');
+  select count(*) into picks_before from picks;
+  ok := false;
+  begin
+    perform admin_approve_pending(pk, null, 'admin@test.local');
+  exception when others then
+    ok := sqlerrm like '%voided%';
+  end;
+  if not ok then raise exception 'a queued pick for an entry voided since must be refused'; end if;
+  if (select count(*) from picks) <> picks_before then
+    raise exception 'the refused pick must write nothing';
+  end if;
+  if (select resolved_at from pending_actions where id = pk) is not null then
+    raise exception 'the refused pick row must stay open';
+  end if;
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
 -- ------------------------------------------------------------ non-admin sees no rows
 set local role authenticated;
 select set_config('request.jwt.claims', '{"email":"stranger@example.com"}', true);
