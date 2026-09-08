@@ -189,6 +189,13 @@ owners silent: a NEEDS ANTHONY section led by the number of entries at stake.
     true: drafts only.` and the routine stays a reporter. Turning it off is
     removing the variable; no code change is involved either way.
 
+    Never run two autosends at once (a hand run of `npm run chase --send`
+    while the routine is firing): the once-per-recipient-per-lock-day check
+    is read from audit_log immediately before each send, not reserved in
+    the database, so two overlapping runs could each mail one recipient.
+    One admin, one run at a time is the standing assumption (CLAUDE.md,
+    Working rules).
+
 ## 4. Deadline Close Check
 
 Name: **Survivor Deadline Close Check**
