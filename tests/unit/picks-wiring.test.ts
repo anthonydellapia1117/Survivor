@@ -16,6 +16,12 @@ function code(src: string): string {
 }
 
 describe("picks wiring", () => {
+  it("reads a pasted block's week from its unquoted text, the same way as a Gmail message", () => {
+    const c = code(CLI);
+    expect(c).not.toMatch(/weekNamedIn\(leadingLines\(text\)\)/);
+    expect(c).toMatch(/weekFor\(weekOfMessage\("",\s*text\)\)/);
+  });
+
   it("pushes the kind and the week of a staged row, never its reason, line, team or pick", () => {
     const c = code(CLI);
     const calls = [...c.matchAll(/needsAnthonyLine\(([^;]*)\)/g)].map((m) => m[1]);

@@ -135,6 +135,10 @@ import { takeValue, weekArg } from "../../scripts/lib/args";
 import type { EntryRow as ER, OwnerRow as OR } from "../../scripts/lib/db";
 
 describe("weekOfMessage", () => {
+  it("never takes a week from the quoted history under a reply that names none", () => {
+    const pasted = "Eagles for both\n\nOn Tue, Sep 8, 2026 Anthony wrote:\n> Week 1 picks - Kris - 2 entries\n> reply with a team";
+    expect(weekOfMessage("", pasted)).toBeNull();
+  });
   it("prefers the week the player wrote over the thread's subject", () => {
     expect(weekOfMessage("Re: Survivor - Week 1 picks posted", "Week 2: Chiefs\n\nOn Sun wrote:\n> old")).toBe(2);
   });

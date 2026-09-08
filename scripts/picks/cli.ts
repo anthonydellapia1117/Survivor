@@ -44,7 +44,6 @@ import { confirm, readStdin } from "../lib/prompt";
 import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from "./lib/deadline";
 import {
   effectiveSubmitTime,
-  leadingLines,
   overrideDecision,
   parsePickLines,
   pendingKind,
@@ -60,7 +59,6 @@ import {
   repeatedWeek,
   stripQuotedReply,
   stripWeekHeading,
-  weekNamedIn,
   weekOfMessage,
   type RosterEntry,
 } from "./lib/resolve";
@@ -250,7 +248,10 @@ async function main(): Promise<void> {
       fromOwnerId,
       messageId: null,
       // The pasted block's own week wins; --week is the fallback.
-      week: weekFor(weekNamedIn(leadingLines(text))),
+      // The week is read from the unquoted text, the same way a Gmail
+      // message's is: a pasted reply whose own lines name no week falls back
+      // to --week, never to a week named in the quoted history under it.
+      week: weekFor(weekOfMessage("", text)),
       receivedAt: null,
     });
   } else {
