@@ -11,7 +11,11 @@
     "test:db": "scripts/db/test-db.sh tests/sql/*.sql",
     "picks": "tsx scripts/picks/cli.ts",
     "lynne": "tsx scripts/lynne/cli.ts",
-    "gmail:auth": "tsx scripts/picks/gmail-auth.ts"
+    "gmail:auth": "tsx scripts/picks/gmail-auth.ts",
+    "chase": "tsx scripts/chase/cli.ts",
+    "results": "tsx scripts/results/cli.ts",
+    "distribute": "tsx scripts/distribute/cli.ts",
+    "notify": "tsx scripts/notify/cli.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

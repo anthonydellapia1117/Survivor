@@ -44,6 +44,8 @@ export interface OwnerRow {
   first_name: string;
   last_name: string;
   email: string | null;
+  /** confirmed | declined | ...: only confirmed owners are on any list. */
+  participation_status: string;
 }
 
 export interface EntryRow {
@@ -51,10 +53,29 @@ export interface EntryRow {
   owner_id: string;
   entry_name: string;
   player_email: string | null;
+  is_gifted: boolean;
   is_free_entry: boolean;
   lynne_number: number | null;
   lynne_label: string | null;
   voided_at: string | null;
+}
+
+/** One row of v_entry_standing: the app's own local calculation. */
+export interface StandingRow {
+  entry_id: string;
+  status: string;
+  losses: number;
+  bye_used: boolean;
+}
+
+export interface LynneImportRow {
+  id: string;
+  week: number | null;
+  filename: string;
+  file_sha256: string;
+  imported_at: string;
+  row_count: number | null;
+  matched_count: number | null;
 }
 
 export interface WeekBoundsRow {
@@ -75,6 +96,8 @@ export interface CurrentPickRow {
   team: string;
   late: boolean;
   submitted_at: string;
+  /** win | loss | tie_loss | bye | pending | missed, or null before scoring. */
+  result: string | null;
 }
 
 function unwrap<T>(r: { data: T | null; error: { message: string } | null }, what: string): T {
@@ -87,7 +110,7 @@ export async function loadOwners(client: SupabaseClient): Promise<OwnerRow[]> {
   return unwrap(
     await client
       .from("owners")
-      .select("id, first_name, last_name, email")
+      .select("id, first_name, last_name, email, participation_status")
       .is("deleted_at", null)
       .returns<OwnerRow[]>(),
     "owners",
@@ -99,7 +122,7 @@ export async function loadLiveEntries(client: SupabaseClient): Promise<EntryRow[
     await client
       .from("entries")
       .select(
-        "id, owner_id, entry_name, player_email, is_free_entry, lynne_number, lynne_label, voided_at",
+        "id, owner_id, entry_name, player_email, is_gifted, is_free_entry, lynne_number, lynne_label, voided_at",
       )
       .is("voided_at", null)
       .returns<EntryRow[]>(),
@@ -133,11 +156,150 @@ export async function loadCurrentPicks(client: SupabaseClient, week: number): Pr
   return unwrap(
     await client
       .from("picks")
-      .select("entry_id, team, late, submitted_at")
+      .select("entry_id, team, late, submitted_at, result")
       .eq("week", week)
       .eq("is_current", true)
       .returns<CurrentPickRow[]>(),
     "picks",
+  );
+}
+
+export async function loadStandings(client: SupabaseClient): Promise<StandingRow[]> {
+  return unwrap(
+    await client
+      .from("v_entry_standing")
+      .select("entry_id, status, losses, bye_used")
+      .returns<StandingRow[]>(),
+    "v_entry_standing",
+  );
+}
+
+/** Teams each entry has already used in weeks before `week` (current picks only). */
+export async function loadUsedTeams(client: SupabaseClient, week: number): Promise<Map<string, Set<string>>> {
+  const rows = unwrap(
+    await client
+      .from("picks")
+      .select("entry_id, team")
+      .lt("week", week)
+      .eq("is_current", true)
+      .returns<{ entry_id: string; team: string }[]>(),
+    "picks (used teams)",
+  );
+  const used = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!used.has(r.entry_id)) used.set(r.entry_id, new Set());
+    used.get(r.entry_id)!.add(r.team);
+  }
+  return used;
+}
+
+export async function loadLynneImports(client: SupabaseClient): Promise<LynneImportRow[]> {
+  return unwrap(
+    await client
+      .from("lynne_imports")
+      .select("id, week, filename, file_sha256, imported_at, row_count, matched_count")
+      .order("imported_at", { ascending: false })
+      .returns<LynneImportRow[]>(),
+    "lynne_imports",
+  );
+}
+
+/** True when this exact file was committed before: the dedupe the RPC also enforces. */
+export async function importExists(client: SupabaseClient, sha256: string): Promise<LynneImportRow | null> {
+  const rows = unwrap(
+    await client
+      .from("lynne_imports")
+      .select("id, week, filename, file_sha256, imported_at, row_count, matched_count")
+      .eq("file_sha256", sha256)
+      .returns<LynneImportRow[]>(),
+    "lynne_imports (sha256)",
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * The weekly result importer, the same RPC /admin/import commits through.
+ * Results only: it never sets a Lynne number and never touches money.
+ */
+export async function applyLynneImport(
+  client: SupabaseClient,
+  p: {
+    week: number;
+    filename: string;
+    sha256: string;
+    rows: unknown[];
+    rowCount: number;
+    matchedCount: number;
+    unmatched: unknown[];
+    variances: unknown[];
+    applies: { entry_id: string; result: string }[];
+    actor: string;
+  },
+): Promise<string> {
+  const { data, error } = await client.rpc("admin_apply_lynne_import", {
+    p_week: p.week,
+    p_filename: p.filename,
+    p_sha256: p.sha256,
+    p_rows: p.rows,
+    p_row_count: p.rowCount,
+    p_matched_count: p.matchedCount,
+    p_unmatched: p.unmatched,
+    p_variances: p.variances,
+    p_applies: p.applies,
+    p_actor: p.actor,
+  });
+  if (error) throw new Error(`admin_apply_lynne_import: ${error.message}`);
+  return String(data);
+}
+
+export interface AuditWrite {
+  actor: string;
+  action: string;
+  targetTable: string;
+  targetId: string;
+  after: Record<string, unknown>;
+  note?: string | null;
+}
+
+/**
+ * One audit row for an action that has no data row of its own (a sent
+ * email). Written by the admin under RLS, the same table every RPC writes.
+ */
+export async function recordAudit(client: SupabaseClient, a: AuditWrite): Promise<number> {
+  const { data, error } = await client
+    .from("audit_log")
+    .insert({
+      actor: a.actor,
+      action: a.action,
+      target_table: a.targetTable,
+      target_id: a.targetId,
+      after: a.after,
+      note: a.note ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(`audit_log insert: ${error.message}`);
+  return Number((data as { id: number }).id);
+}
+
+export interface AuditRow {
+  id: number;
+  at: string;
+  actor: string;
+  action: string;
+  target_id: string | null;
+  after: Record<string, unknown> | null;
+}
+
+export async function loadAuditByAction(client: SupabaseClient, action: string): Promise<AuditRow[]> {
+  return unwrap(
+    await client
+      .from("audit_log")
+      .select("id, at, actor, action, target_id, after")
+      .eq("action", action)
+      .order("id")
+      .returns<AuditRow[]>(),
+    `audit_log (${action})`,
   );
 }
 

@@ -1,6 +1,7 @@
 // Gmail for the local commands, as Anthony, through OAuth on his own
 // account. Reading, labelling and drafting are all this module can do;
-// there is no send anywhere in it and there must never be one.
+// there is no send in it. The one send path in scripts/ is scripts/lib/send.ts,
+// allowlisted by template name and gated on REMINDER_AUTOSEND=true.
 
 import fs from "node:fs";
 import http from "node:http";
@@ -144,6 +145,133 @@ export async function listUnreadFrom(gmail: gmail_v1.Gmail, addresses: string[])
   }
   out.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   return out;
+}
+
+/** The address the token belongs to: the sender of every draft. */
+export async function profileAddress(gmail: gmail_v1.Gmail): Promise<string> {
+  const res = await gmail.users.getProfile({ userId: "me" });
+  const a = res.data.emailAddress ?? "";
+  if (!a) throw new Error("Gmail profile has no address.");
+  return a;
+}
+
+export interface MessageRef {
+  id: string;
+  threadId: string;
+}
+
+/** Message ids for a Gmail query, newest first, every page. */
+export async function searchMessages(gmail: gmail_v1.Gmail, q: string, max = 200): Promise<MessageRef[]> {
+  const out: MessageRef[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await gmail.users.messages.list({ userId: "me", q, pageToken, maxResults: Math.min(100, max - out.length) });
+    for (const m of res.data.messages ?? []) if (m.id) out.push({ id: m.id, threadId: m.threadId ?? "" });
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken && out.length < max);
+  return out;
+}
+
+export interface AttachmentRef {
+  filename: string;
+  mimeType: string;
+  attachmentId: string;
+  size: number;
+}
+
+export interface MessageMeta {
+  id: string;
+  threadId: string;
+  from: string;
+  fromAddress: string;
+  subject: string;
+  date: string;
+  /** Epoch ms from Gmail's internalDate: what "newest" is measured on. */
+  internalMs: number;
+  attachments: AttachmentRef[];
+}
+
+/** Headers and attachment references, without downloading anything. */
+export async function getMessageMeta(gmail: gmail_v1.Gmail, id: string): Promise<MessageMeta> {
+  const res = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+  const headers = res.data.payload?.headers;
+  const from = header(headers, "From");
+  const attachments: AttachmentRef[] = [];
+  const walk = (p: gmail_v1.Schema$MessagePart | undefined) => {
+    if (!p) return;
+    if (p.filename && p.body?.attachmentId) {
+      attachments.push({
+        filename: p.filename,
+        mimeType: p.mimeType ?? "application/octet-stream",
+        attachmentId: p.body.attachmentId,
+        size: p.body.size ?? 0,
+      });
+    }
+    for (const c of p.parts ?? []) walk(c);
+  };
+  walk(res.data.payload);
+  return {
+    id,
+    threadId: res.data.threadId ?? "",
+    from,
+    fromAddress: addressOf(from),
+    subject: header(headers, "Subject"),
+    date: header(headers, "Date"),
+    internalMs: Number(res.data.internalDate ?? 0),
+    attachments,
+  };
+}
+
+/** The bytes of one attachment. */
+export async function getAttachment(gmail: gmail_v1.Gmail, messageId: string, attachmentId: string): Promise<Buffer> {
+  const res = await gmail.users.messages.attachments.get({ userId: "me", messageId, id: attachmentId });
+  const data = res.data.data ?? "";
+  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+export interface OutboundMessage {
+  to?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  /** Reply headers, when the message continues a thread. */
+  inReplyTo?: string;
+  references?: string;
+}
+
+/** RFC 822 text, base64url, the shape drafts.create and messages.send take. */
+export function encodeRaw(m: OutboundMessage): string {
+  const lines = [
+    m.to && m.to.length ? `To: ${m.to.join(", ")}` : "",
+    m.bcc && m.bcc.length ? `Bcc: ${m.bcc.join(", ")}` : "",
+    `Subject: ${m.subject}`,
+    m.inReplyTo ? `In-Reply-To: ${m.inReplyTo}` : "",
+    m.references ? `References: ${m.references}` : "",
+    "Content-Type: text/plain; charset=UTF-8",
+    "MIME-Version: 1.0",
+  ].filter((l) => l !== "");
+  return Buffer.from([...lines, "", m.body].join("\r\n"), "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+export interface CreatedDraft {
+  draftId: string;
+  messageId: string;
+}
+
+/** A new draft (not a reply). Never sent here. */
+export async function createDraft(gmail: gmail_v1.Gmail, m: OutboundMessage, threadId?: string): Promise<CreatedDraft> {
+  if (!(m.to && m.to.length) && !(m.bcc && m.bcc.length)) {
+    throw new Error("A draft needs at least one To or Bcc address.");
+  }
+  const res = await gmail.users.drafts.create({
+    userId: "me",
+    requestBody: { message: { raw: encodeRaw(m), ...(threadId ? { threadId } : {}) } },
+  });
+  return { draftId: res.data.id ?? "", messageId: res.data.message?.id ?? "" };
 }
 
 let labelCache: Map<string, string> | null = null;

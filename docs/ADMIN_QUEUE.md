@@ -1,9 +1,11 @@
 # Admin queue (NEEDS ANTHONY as rows)
 
 Shipped as migration `20260905000063_pending_actions_queue.sql`, applied to
-production on 2026-09-05. Migration `20260905000064_queue_stale_pick_guard.sql`
-(a queued pick cannot replace a newer or a scored pick) is written and
-suite-tested but NOT yet applied; apply it by hand, then this note goes.
+production on 2026-09-05. Migration `20260908180000_queue_stale_pick_guard.sql`
+(a queued pick cannot replace a newer or a scored pick; renumbered from
+20260905000064 on 2026-09-08 so it sorts above the applied
+20260908171220) is written and suite-tested but NOT yet applied; it is
+applied attended on merge day together with the code, then this note goes.
 Until 63 is applied /admin/queue says the table is not available instead of
 listing rows.
 

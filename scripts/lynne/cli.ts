@@ -15,9 +15,7 @@ import { adminClient, loadCurrentPicks, loadGames, loadLiveEntries } from "../li
 import { createDraftReply, findThreadBySubject, gmailClient } from "../lib/gmail";
 import { gameDayFor, type GameLite } from "../picks/lib/deadline";
 import { draftBody, isLockDay, LOCK_LABEL, selectForLock, type OutboundPick } from "./lib/outbound";
-
-const THREAD_SUBJECT = "Survivor - DellaPia | 2026 Entry List";
-const LYNNE = "lynnepiazza10@gmail.com";
+import { ENTRY_LIST_SUBJECT as THREAD_SUBJECT, LYNNE_EMAIL as LYNNE } from "../lib/constants";
 
 function parseArgs(argv: string[]): { week: number; lock: "tue" | "wed" | "thu" | "fri"; draft: boolean } {
   let week: number | null = null;

@@ -26,6 +26,7 @@ import {
   type CurrentPickRow,
 } from "../lib/db";
 import { gmailClient, listUnreadFrom, markProcessed, type InboundMessage } from "../lib/gmail";
+import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm, readStdin } from "../lib/prompt";
 import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from "./lib/deadline";
 import {
@@ -298,6 +299,7 @@ async function main(): Promise<void> {
       actor,
     });
     console.log(`staged ${u.kind}: ${u.line}`);
+    await notify(needsAnthonyLine("picks", u.kind, `${u.reason} - "${u.line}" - /admin/queue`), { tags: "warning" });
     if (u.item.messageId) touched.add(u.item.messageId);
   }
   if (touched.size && !args.keepUnread && !args.paste && !args.file) {
@@ -309,6 +311,7 @@ async function main(): Promise<void> {
     console.log(`${touched.size} message(s) marked read and filed under ${DONE_LABEL}.`);
   }
   console.log(`\nDone. ${toWrite.length} written, ${unresolved.length} staged.`);
+  await notify(finishedLine("picks", `week ${week}: ${toWrite.length} written, ${unresolved.length} staged`));
 }
 
 main().catch((e: unknown) => {
