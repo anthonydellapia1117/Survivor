@@ -26,7 +26,10 @@ prompt is a bug.
     service-role key, by design. Every routine works from the mail record
     and the game rows in the repo, and says so when the app is the only
     place a fact can be settled. Gmail returns timestamps in UTC; every
-    prompt converts to ET before comparing with a deadline.
+    prompt converts to ET before comparing with a deadline. The one
+    exception is section 3e: an environment that carries the admin login
+    and the Gmail token can run `npm run chase`, which reads the live roster
+    through the admin's own RLS session, never a service-role key.
 
 1c. The hourly sweep these sit beside: "Survivor Gmail Sweep", every hour
     07-23 UTC. It reads unread mail under the label **Pool-Survivor** and
@@ -45,9 +48,10 @@ prompt is a bug.
     team); a name is never dropped to fit, and the cap yields to completeness.
 
 1e. Standing limits in every prompt: read CLAUDE.md first, never mark Paid,
-    never resolve or suggest an identity, never send or draft anything,
-    never write to Lynne, never report, quote or name anything that belongs
-    to another pool.
+    never resolve or suggest an identity, never send or draft anything
+    (the single, gated exception is the pick_reminder template in section
+    3e), never write to Lynne, never report, quote or name anything that
+    belongs to another pool.
 
 1f. Clock. Routines store cron in UTC. Every cron below is given at the
     EDT offset (UTC-4). From Sunday 2026-11-01 (EST) each fires one hour
@@ -147,6 +151,43 @@ You are the Pick Gap Check for the Survivor sub-pool. Hyphens only, no emojis.
 
 Expected on a quiet Wednesday: NO ACTION. Expected on Friday 09-11 with two
 owners silent: a NEEDS ANTHONY section led by the number of entries at stake.
+
+3e. Autosend: the pick_reminder template. Set by Anthony on 2026-09-08.
+
+    The reporter above never writes. Chasing is a separate command,
+    `npm run chase` (docs/PICKS_INTAKE.md section 4), which by default
+    leaves one Gmail draft per recipient with no pick and creates nothing
+    else. It can send instead, under exactly these conditions, all enforced
+    in `scripts/lib/send.ts` and none of them a prompt's to relax:
+
+    - the template is `pick_reminder`, the only name on the send allowlist
+    - the environment has `REMINDER_AUTOSEND=true`; unset (the default) or
+      any other value means drafts only, whatever flags are passed
+    - the recipient has no current pick for the week, from the live roster,
+      never from Gmail
+    - at most one send per recipient per ET lock day, judged from
+      `audit_log` rows with action `pick_reminder_sent`; a re-run in the
+      same lock day reports "already sent" and skips
+    - every send writes that audit row with the recipient, the week, the
+      lock day, the deadline and the Gmail message id
+
+    To let the Pick Gap Check use it, the Routine's environment needs, in
+    addition to the Gmail connector: `ADMIN_EMAIL`, `SURVIVOR_ADMIN_PASSWORD`,
+    `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`,
+    `GMAIL_OAUTH_TOKEN_JSON` (the contents of
+    `~/.config/survivor/gmail-token.json` after `npm run gmail:auth`),
+    `REMINDER_AUTOSEND=true`, and optionally `NTFY_TOPIC`. The Supabase
+    URL and anon key are in `.env.production` in the repo. Then add this
+    step to the prompt, after step 4 and before step 5, pasted whole
+    (Anthony pastes it; nothing in this repo edits a Routine):
+
+    ```
+    4e. Sending, only when the environment has REMINDER_AUTOSEND=true and only on a day a tier closes: run `npm run chase -- --week N --send --yes` from the repo root. It mails the pick_reminder template to each recipient with no pick on the live roster, once per recipient per lock day, and writes an audit row per send. Report its output under NEEDS ANTHONY as one line per line it printed that starts with "sent", "already sent", "NEEDS ANTHONY" or "refused"; if REMINDER_AUTOSEND is not true it exits with "drafts only" and you write nothing for this step. Never run it with --bcc, never run it twice in one run, and never send anything any other way.
+    ```
+
+    Without that environment the step exits with `REMINDER_AUTOSEND is not
+    true: drafts only.` and the routine stays a reporter. Turning it off is
+    removing the variable; no code change is involved either way.
 
 ## 4. Deadline Close Check
 
@@ -343,9 +384,11 @@ The routines above say when each is due.
 | ----------------------------------- | --------------------------------- | -------------------------------------- |
 | Commit the missed-pick sweep        | /admin/deadline                   | Never automatic without a click        |
 | Enter or fetch scores               | /admin/scores                     | Fetch pre-fills, never auto-commit     |
-| Import Lynne's sheet                | /admin/import                     | Preview, then explicit commit          |
+| Import Lynne's sheet                | /admin/import or `npm run results` | Preview, then explicit commit; a sha256 seen before is refused |
 | Forward the recap                   | /admin/recap                      | A draft is never a send                |
 | Send pick requests                  | /admin/emails/picks               | Never sent on Anthony's behalf         |
+| Chase entries with no pick          | `npm run chase`                   | Drafts; sends only under section 3e    |
+| Post the week's picks after the lock | `npm run distribute`             | One BCC draft, never sent here         |
 | Send roster additions and removals  | /admin/entries                    | Never sent on Anthony's behalf         |
 | Chase unpaid owners                 | /admin/payments, /admin/emails    | Ledger only; Gmail cannot say who paid |
 | Set Lynne numbers, chase names      | /admin/entries                    | Database only                          |
@@ -354,8 +397,11 @@ The routines above say when each is due.
 | Back up                             | /api/admin/backup                 | Admin login only                       |
 
 Anthony sends her the roster by hand; the Friday roster-drift line first
-fires 09-11. Picks arrive through `npm run picks` and the per-lock list goes
-out through `npm run lynne` (docs/PICKS_INTAKE.md).
+fires 09-11. Picks arrive through `npm run picks`, the per-lock list goes
+out through `npm run lynne`, the unpicked are chased with `npm run chase`,
+her sheet comes back in through `npm run results`, and the week's picks go
+out through `npm run distribute` (docs/PICKS_INTAKE.md). Each of those posts
+one line to ntfy when `NTFY_TOPIC` is set, and prints it otherwise.
 
 ## 9. Housekeeping
 

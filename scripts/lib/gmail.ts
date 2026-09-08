@@ -53,12 +53,23 @@ export async function authorizeInteractive(): Promise<void> {
   console.log(`Token saved to ${TOKEN_PATH}`);
 }
 
-export function gmailClient(): gmail_v1.Gmail {
+/**
+ * The stored token: GMAIL_OAUTH_TOKEN_JSON when set (a Routine container has
+ * no home directory token, so the JSON that `npm run gmail:auth` wrote is
+ * pasted into that environment), else the file on this machine.
+ */
+function storedToken(): Record<string, unknown> {
+  const fromEnv = process.env.GMAIL_OAUTH_TOKEN_JSON?.trim();
+  if (fromEnv) return JSON.parse(fromEnv) as Record<string, unknown>;
   if (!fs.existsSync(TOKEN_PATH)) {
-    throw new Error(`No Gmail token at ${TOKEN_PATH}. Run: npm run gmail:auth`);
+    throw new Error(`No Gmail token at ${TOKEN_PATH} and GMAIL_OAUTH_TOKEN_JSON is not set. Run: npm run gmail:auth`);
   }
+  return JSON.parse(fs.readFileSync(TOKEN_PATH, "utf8")) as Record<string, unknown>;
+}
+
+export function gmailClient(): gmail_v1.Gmail {
   const auth = oauth();
-  auth.setCredentials(JSON.parse(fs.readFileSync(TOKEN_PATH, "utf8")));
+  auth.setCredentials(storedToken());
   return google.gmail({ version: "v1", auth });
 }
 
