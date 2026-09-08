@@ -4,8 +4,13 @@
 # edits as it works, so this job reads that comment and the review threads
 # and writes the check the main ruleset requires (docs/MERGE_AUTOMATION.md).
 #
-# It re-runs on every event that can change the answer: a push to the PR,
-# Codex editing its summary, a review, a thread resolved or unresolved.
+# It re-runs on the events that can change the answer: a push to the PR,
+# Codex editing its summary, a review. GitHub offers no workflow event for a
+# review thread being resolved (pull_request_review_thread is refused as a
+# trigger), so after resolving threads the gate is re-run by hand with the
+# PR number: Actions > codex-gate > Run workflow, or the API's
+# workflow_dispatch. Comment and review events run the file on the default
+# branch, so they reach a PR only once this workflow is on main.
 name: codex-gate
 
 on:
@@ -15,8 +20,12 @@ on:
     types: [created, edited]
   pull_request_review:
     types: [submitted, dismissed]
-  pull_request_review_thread:
-    types: [resolved, unresolved]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to gate
+        required: true
+        type: string
 
 permissions:
   checks: write
@@ -34,7 +43,7 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const number = context.payload.pull_request?.number ?? context.payload.issue?.number;
+            const number = context.payload.pull_request?.number ?? context.payload.issue?.number ?? Number(context.payload.inputs?.pr);
             if (!number) { core.info("Not a pull request event; nothing to gate."); return; }
             const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
             if (pr.state !== "open") { core.info(`PR #${number} is ${pr.state}; nothing to gate.`); return; }

@@ -11,7 +11,7 @@ section 3.
 | File | Name | What it does |
 | --- | --- | --- |
 | `ci.yml` | `ci` | Lint, typecheck, unit tests, production build, SQL suites on a fresh database built from `supabase/migrations`. On every pull request and every push to main. |
-| `codex-gate.yml` | `codex-gate` | Writes one check on the PR head that passes only when Codex has concluded on that exact commit and every review thread is resolved. Re-runs when the PR moves, when Codex edits its summary, on a review, and when a thread is resolved or unresolved. |
+| `codex-gate.yml` | `codex-gate` | Writes one check on the PR head that passes only when Codex has concluded on that exact commit and every review thread is resolved. Re-runs when the PR moves, when Codex edits its summary, and on a review. GitHub has no workflow event for a thread being resolved, so after resolving threads re-run it by hand: Actions > codex-gate > Run workflow > the PR number. Comment and review events run the copy on main, so they reach a PR only once the workflow is merged. |
 | `migrate.yml` | `migrate` | On a push to main touching `supabase/migrations`, applies each unapplied file to production in one transaction with the smoke check, rolls back and opens an issue on failure. Needs `SUPABASE_DB_URL`. |
 
 Codex posts no check of its own, only a summary comment it edits as it
