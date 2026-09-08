@@ -55,3 +55,14 @@ export function refuseWeekMismatch(latestFilledWeek: number | null, week: number
   const which = latestFilledWeek < week ? `predates Week ${week}` : `is a later sheet than Week ${week}'s and would spend its sha256 on the wrong week`;
   return `Her sheet's latest filled week is ${latestFilledWeek}, not ${week}: ${filename} ${which}. Pass --message-id for the message that carries her Week ${week} sheet.`;
 }
+
+/**
+ * A legacy per-week file (entry, team, result columns) carries no week of
+ * its own, so the newest such file cannot be taken as Week N's: a delayed
+ * run would record the next week's file, sha256 and rows, under Week N.
+ * It is imported only from a message Anthony named with --message-id.
+ */
+export function refuseUnverifiedLegacy(format: "grid" | "legacy", explicitMessage: boolean, week: number, filename: string): string | null {
+  if (format !== "legacy" || explicitMessage) return null;
+  return `${filename} is a per-week file that carries no week of its own, so it is not taken by date. Pass --message-id for the message that carries her Week ${week} file.`;
+}

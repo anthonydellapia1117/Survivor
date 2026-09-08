@@ -34,7 +34,7 @@ import {
   varianceTable,
 } from "./lib/format";
 import { buildResultsPlan, sha256Of } from "./lib/plan";
-import { footballAttachment, refuseDuplicateImport, refuseWeekMismatch, selectFootballMessage, type FootballSelection } from "./lib/select";
+import { footballAttachment, refuseDuplicateImport, refuseUnverifiedLegacy, refuseWeekMismatch, selectFootballMessage, type FootballSelection } from "./lib/select";
 
 interface Args {
   week: number;
@@ -124,6 +124,9 @@ async function main(): Promise<void> {
     const mismatch = refuseWeekMismatch(plan.latestFilledWeek, week, attachment.filename);
     if (mismatch !== null) throw new Error(mismatch);
   }
+  // A legacy file has no week to check, so it is never picked by date.
+  const unverified = refuseUnverifiedLegacy(plan.format, args.messageId !== null, week, attachment.filename);
+  if (unverified !== null) throw new Error(unverified);
   console.log(`\nWeek ${week} import plan for ${attachment.filename}`);
   for (const line of planSummaryLines(plan)) console.log(line);
   const conflictCount = plan.format === "grid" ? plan.conflicts.length : 0;

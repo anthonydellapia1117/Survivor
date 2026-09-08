@@ -28,6 +28,7 @@ import {
   loadLiveEntries,
   loadOwners,
   loadPriorPicks,
+  loadStandings,
   loadWeeks,
   stagePending,
   submitPick,
@@ -37,7 +38,7 @@ import { gmailClient, listUnreadFrom, markProcessed, type InboundMessage } from 
 import { takeValue, weekArg } from "../lib/args";
 import { ADMIN_MAILBOX } from "../lib/constants";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
-import { confirmedOwners, intakeAddresses } from "../lib/roster";
+import { aliveEntries, confirmedOwners, intakeAddresses } from "../lib/roster";
 import { resolveFromArg } from "./lib/from";
 import { confirm, readStdin } from "../lib/prompt";
 import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from "./lib/deadline";
@@ -53,6 +54,7 @@ import {
   scopeEntriesFor,
   senderUnplaced,
   conflictedKeys,
+  itemIdentity,
   repeatedWeek,
   stripQuotedReply,
   stripWeekHeading,
@@ -93,6 +95,8 @@ function parseArgs(argv: string[]): Args {
 }
 
 interface Item {
+  /** The identity for per-message checks: the Gmail message id, or label plus ordinal for pasted text. */
+  id: string;
   label: string;
   text: string;
   source: "email" | "text";
@@ -119,6 +123,7 @@ interface Proposal {
   how: string;
   messageId: string | null;
   itemLabel: string;
+  itemId: string;
 }
 
 interface WeekContext {
@@ -146,7 +151,7 @@ function pad(s: string, n: number): string {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const { client, actor } = await adminClient();
-  const [owners, entries, weeks] = await Promise.all([loadOwners(client), loadLiveEntries(client), loadWeeks(client)]);
+  const [owners, entries, weeks, standings] = await Promise.all([loadOwners(client), loadLiveEntries(client), loadWeeks(client), loadStandings(client)]);
   const now = new Date();
   // The week a message names wins; --week, then the open week, is only the
   // fallback for a message that names none. A Week 1 reply read on Saturday
@@ -187,7 +192,14 @@ async function main(): Promise<void> {
   // participation_status does not void their entries, and the app's own
   // views keep the same line.
   const ownerById = new Map(confirmedOwners(owners).map((o) => [o.id, o]));
-  const roster: RosterEntry[] = entries.filter((e) => ownerById.has(e.owner_id)).map((e) => {
+  // An eliminated entry is off the intake roster, as it is off the pick-email
+  // screen: a reply naming it resolves to nothing and is staged, never
+  // written. Named here so nothing drops out silently.
+  const { alive, out } = aliveEntries(entries.filter((e) => ownerById.has(e.owner_id)), standings);
+  if (out.length) {
+    console.log(`Not taking picks (${out.length}): ${out.map((x) => `${x.entry.entry_name} (${x.why})`).join(", ")}`);
+  }
+  const roster: RosterEntry[] = alive.map((e) => {
     const o = ownerById.get(e.owner_id);
     return {
       id: e.id,
@@ -226,8 +238,10 @@ async function main(): Promise<void> {
       sender = scope.address;
       fromOwnerId = scope.ownerId;
     }
+    const label = args.file ?? "pasted text";
     items.push({
-      label: args.file ?? "pasted text",
+      id: itemIdentity(null, label, items.length),
+      label,
       text,
       source: pickSourceFor("paste", args.source),
       senderAddress: sender,
@@ -246,6 +260,7 @@ async function main(): Promise<void> {
     const msgs: InboundMessage[] = await listUnreadFrom(gmail, addresses);
     for (const m of msgs) {
       items.push({
+        id: itemIdentity(m.id, m.subject, items.length),
         label: `${m.from} | ${m.subject || "(no subject)"} | ${m.date}`,
         text: m.body,
         source: pickSourceFor("gmail", args.source),
@@ -264,7 +279,8 @@ async function main(): Promise<void> {
   const unresolved: Unresolved[] = [];
   /** Repeated teams staged as eliminations, kept so the one-entry-one-team check still sees them. */
   const stagedRepeats: { key: string; team: string; entryName: string; usedIn: number; item: Item }[] = [];
-  const keyFor = (label: string, week: number, entryId: string) => `${label}|${week}|${entryId}`;
+  // Keyed by the item's identity (the Gmail message id), never its label.
+  const keyFor = (itemId: string, week: number, entryId: string) => `${itemId}|${week}|${entryId}`;
   for (const item of items) {
     const ctx = await contextFor(item.week);
     const madeAt = effectiveSubmitTime(item.receivedAt, now);
@@ -336,7 +352,7 @@ async function main(): Promise<void> {
         // Anthony records it knowingly on /admin/queue or dismisses it.
         const usedIn = repeatedWeek(p.team, ctx.priorByEntry.get(t.entry.id));
         if (usedIn !== null) {
-          stagedRepeats.push({ key: keyFor(item.label, item.week, t.entry.id), team: p.team, entryName: t.entry.entryName, usedIn, item });
+          stagedRepeats.push({ key: keyFor(item.id, item.week, t.entry.id), team: p.team, entryName: t.entry.entryName, usedIn, item });
           unresolved.push({
             kind: "pick",
             reason: `${t.entry.entryName} -> ${p.team}: already used in week ${usedIn}; a repeated team is an ELIMINATION in her pool`,
@@ -359,6 +375,7 @@ async function main(): Promise<void> {
           how: t.how,
           messageId: item.messageId,
           itemLabel: item.label,
+          itemId: item.id,
         });
       }
     }
@@ -366,7 +383,7 @@ async function main(): Promise<void> {
 
   // ---- one entry, one team, per message: two teams for one entry are staged,
   // a repeated team staged as an elimination counting as one of them.
-  const keyOf = (p: Proposal) => keyFor(p.itemLabel, p.week, p.entry.id);
+  const keyOf = (p: Proposal) => keyFor(p.itemId, p.week, p.entry.id);
   const conflicts = conflictedKeys(
     proposals.map((p) => ({ key: keyOf(p), team: p.team })),
     stagedRepeats.map((s) => ({ key: s.key, team: s.team })),
@@ -375,7 +392,7 @@ async function main(): Promise<void> {
     const byKey = new Map<string, { entryName: string; teams: string[]; item: Item }>();
     for (const p of proposals) {
       if (!conflicts.has(keyOf(p))) continue;
-      const g = byKey.get(keyOf(p)) ?? { entryName: p.entry.entryName, teams: [], item: items.find((i) => i.label === p.itemLabel)! };
+      const g = byKey.get(keyOf(p)) ?? { entryName: p.entry.entryName, teams: [], item: items.find((i) => i.id === p.itemId)! };
       g.teams.push(p.team);
       byKey.set(keyOf(p), g);
     }
@@ -389,7 +406,7 @@ async function main(): Promise<void> {
     // when the same message also names another team, the question is which
     // team was meant, so the pick row is withdrawn and the conflict row asks.
     const withdrawn = new Set(stagedRepeats.filter((s) => conflicts.has(s.key)).map((s) => s.key));
-    const kept = unresolved.filter((u) => !(u.pick && withdrawn.has(keyFor(u.item.label, u.pick.week, u.pick.entryId))));
+    const kept = unresolved.filter((u) => !(u.pick && withdrawn.has(keyFor(u.item.id, u.pick.week, u.pick.entryId))));
     unresolved.length = 0;
     unresolved.push(...kept);
     for (const g of byKey.values()) {

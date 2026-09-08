@@ -37,7 +37,11 @@ export function resolveFromArg(raw: string, owners: OwnerRow[], entries: EntryRo
       (o.email ?? "").toLowerCase().includes(needle) ||
       live.some((e) => e.owner_id === o.id && !e.is_gifted && e.entry_name.toLowerCase().includes(needle)),
   );
-  const people = players.length + ownerHits.length;
+  // One person may be both: an owner who also plays a gift addressed to the
+  // same mailbox is one person, counted once by address (the recipient model
+  // merges the roles the same way). Owners with no address are each their own.
+  const addressed = new Set([...players, ...ownerHits.map((o) => (o.email ?? "").toLowerCase()).filter(Boolean)]);
+  const people = addressed.size + ownerHits.filter((o) => !o.email).length;
   if (people === 0) {
     const orphan = live.find((e) => e.is_gifted && !e.player_email && e.entry_name.toLowerCase().includes(needle));
     if (orphan) {
@@ -47,9 +51,9 @@ export function resolveFromArg(raw: string, owners: OwnerRow[], entries: EntryRo
     }
   }
   if (people === 1) {
-    if (players.length === 1) return { address: players[0], ownerId: null };
-    return { address: ownerHits[0].email?.toLowerCase() ?? null, ownerId: ownerHits[0].id };
+    if (ownerHits.length === 0) return { address: players[0], ownerId: null };
+    return { address: ownerHits[0].email?.toLowerCase() ?? players[0] ?? null, ownerId: ownerHits[0].id };
   }
-  const named = [...players, ...ownerHits.map((o) => `${o.first_name} ${o.last_name}`)];
+  const named = [...new Set([...players, ...ownerHits.map((o) => `${o.first_name} ${o.last_name}`)])];
   throw new Error(`--from "${raw}" matches ${people} people: ${named.join(", ") || "none"}. Use the address.`);
 }

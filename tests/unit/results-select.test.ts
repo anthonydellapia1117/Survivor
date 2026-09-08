@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MessageMeta } from "../../scripts/lib/gmail";
-import { footballAttachment, isFootballXlsx, refuseWeekMismatch, selectFootballMessage } from "../../scripts/results/lib/select";
+import { footballAttachment, isFootballXlsx, refuseUnverifiedLegacy, refuseWeekMismatch, selectFootballMessage } from "../../scripts/results/lib/select";
 
 function msg(id: string, internalMs: number, files: string[]): MessageMeta {
   return {
@@ -112,5 +112,15 @@ describe("refuseWeekMismatch", () => {
   });
   it("refuses a newer sheet, which is the next week's file and must keep its sha256 for that import", () => {
     expect(refuseWeekMismatch(3, 2, "Football 2026-4.xlsx")).toMatch(/latest filled week is 3, not 2: Football 2026-4.xlsx is a later sheet/);
+  });
+});
+
+describe("refuseUnverifiedLegacy", () => {
+  it("never takes a legacy per-week file by date; it needs --message-id", () => {
+    expect(refuseUnverifiedLegacy("legacy", false, 2, "Week2.xlsx")).toMatch(/Week2.xlsx is a per-week file that carries no week of its own.*--message-id.*Week 2/);
+    expect(refuseUnverifiedLegacy("legacy", true, 2, "Week2.xlsx")).toBeNull();
+  });
+  it("leaves the grid to the filled-week check", () => {
+    expect(refuseUnverifiedLegacy("grid", false, 2, "Football 2026-3.xlsx")).toBeNull();
   });
 });

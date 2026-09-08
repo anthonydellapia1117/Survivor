@@ -81,6 +81,30 @@ export function splitRecipients(
  * Live entries with no current pick for the week that are still playing.
  * An eliminated entry has nothing to pick; a voided one is not on the roster.
  */
+/**
+ * The entries that still take a pick: live, and alive on the app's own
+ * standings. An eliminated entry is off the intake roster (the pick-email
+ * screen filters by standing the same way), and so is one with no standings
+ * row, which is not on the roster the views carry; both are returned by
+ * name so the command prints them rather than dropping them silently.
+ */
+export function aliveEntries(
+  entries: EntryRow[],
+  standings: StandingRow[],
+): { alive: EntryRow[]; out: { entry: EntryRow; why: string }[] } {
+  const status = new Map(standings.map((s) => [s.entry_id, s.status]));
+  const alive: EntryRow[] = [];
+  const out: { entry: EntryRow; why: string }[] = [];
+  for (const e of entries) {
+    if (e.voided_at !== null) continue;
+    const st = status.get(e.id);
+    if (st === undefined) out.push({ entry: e, why: "no standings row" });
+    else if (st === "eliminated") out.push({ entry: e, why: "eliminated" });
+    else alive.push(e);
+  }
+  return { alive, out };
+}
+
 export function unpickedEntries(
   entries: EntryRow[],
   currentPickEntryIds: Iterable<string>,

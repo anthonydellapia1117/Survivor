@@ -57,7 +57,10 @@ gate in section 4c and is left unset unless you mean it.
 any player email on their live entries, whatever its subject and whatever
 label it carries. Your own mailbox is never on that list (the free entries
 sit under your owner row), so your self-sent copies and DECISION notes are
-not read as picks; picks for the AAA entries go in by paste (2b):
+not read as picks; picks for the AAA entries go in by paste (2b). An
+entry the standings mark eliminated is off the intake roster, as it is off
+the pick-email screen: the command names it at the start, and a reply for
+it is staged, never written:
 
 ```
 npm run picks
@@ -213,7 +216,9 @@ prompt. The sheet's latest filled week must be the week being imported: an
 older sheet has an empty Week N column and would record every entry as
 missing, and a newer one is the next week's file and must keep its sha256
 for that import. Either is refused by name; `--message-id` picks the right
-message.
+message. A legacy per-week file carries no week of its own, so it is never
+taken by date at all: it imports only from a message named with
+`--message-id`.
 
 ## 6. The week's picks, after the lock
 

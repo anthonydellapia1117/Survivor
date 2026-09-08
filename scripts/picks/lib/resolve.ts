@@ -524,3 +524,15 @@ export function senderUnplaced(item: { senderAddress: string | null; fromOwnerId
 export function conflictedKeys(proposals: { key: string; team: string }[], stagedRepeats: { key: string; team: string }[]): Set<string> {
   return conflictingKeys([...proposals, ...stagedRepeats]);
 }
+
+/**
+ * What identifies one message for the per-message checks (one entry, one
+ * team; conflicts; duplicates): the Gmail message id, never the display
+ * label. Two replies from one sender with the same subject and Date header
+ * are two messages, and the later one is a correction, not a contradiction.
+ * Pasted or filed text, which has no message id, gets its label and the
+ * ordinal of the item in this run.
+ */
+export function itemIdentity(messageId: string | null, label: string, ordinal: number): string {
+  return messageId ?? `${label}#${ordinal}`;
+}

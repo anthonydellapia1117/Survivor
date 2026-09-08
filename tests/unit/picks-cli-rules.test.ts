@@ -207,7 +207,8 @@ describe("the token stage is exact on words, never fuzzy (CLAUDE.md, Matching)",
   });
 });
 
-import { conflictedKeys, conflictingKeys, repeatedWeek, scopeEntriesFor, senderUnplaced, stripWeekHeading, type RosterEntry } from "../../scripts/picks/lib/resolve";
+import { conflictedKeys, conflictingKeys, itemIdentity, repeatedWeek, scopeEntriesFor, senderUnplaced, stripWeekHeading, type RosterEntry } from "../../scripts/picks/lib/resolve";
+import { aliveEntries } from "../../scripts/lib/roster";
 import { resolveFromArg } from "../../scripts/picks/lib/from";
 
 describe("stripWeekHeading", () => {
@@ -273,6 +274,11 @@ describe("resolveFromArg", () => {
     expect(resolveFromArg("Tomasco", owners, entries)).toEqual({ address: "kris@x.com", ownerId: "kris" });
     expect(resolveFromArg("Pumpy", owners, entries)).toEqual({ address: null, ownerId: "tim" });
   });
+  it("counts an owner who also plays a gift to the same mailbox as one person", () => {
+    const withChas: OR[] = [...owners, { id: "chas", first_name: "Chas", last_name: "Flaster", email: "chas.flaster@gmail.com", participation_status: "confirmed" }];
+    const withOwn: ER[] = [...entries, e("cx", "chas", "Flaster Own")];
+    expect(resolveFromArg("Flaster", withChas, withOwn)).toEqual({ address: "chas.flaster@gmail.com", ownerId: "chas" });
+  });
   it("refuses a gifted entry with no address rather than scoping its buyer", () => {
     const orphaned = [...entries, e("l1", "kris", "Lou Orphan #1", { is_gifted: true, player_email: null })];
     expect(() => resolveFromArg("Lou Orphan", owners, orphaned)).toThrow("no player address on file");
@@ -308,5 +314,31 @@ describe("scopeEntriesFor and senderUnplaced", () => {
     expect(senderUnplaced({ senderAddress: null, fromOwnerId: "no-entries" }, 0)).toBe(true);
     expect(senderUnplaced({ senderAddress: null, fromOwnerId: null }, 0)).toBe(false);
     expect(senderUnplaced({ senderAddress: null, fromOwnerId: "kris" }, 2)).toBe(false);
+  });
+});
+
+describe("itemIdentity", () => {
+  it("is the Gmail message id, so two replies with one label are two messages", () => {
+    expect(itemIdentity("m1", "Re: Week 1 picks", 0)).not.toBe(itemIdentity("m2", "Re: Week 1 picks", 1));
+    expect(itemIdentity("m1", "Re: Week 1 picks", 0)).toBe("m1");
+  });
+  it("tells pasted items apart by ordinal when there is no message id", () => {
+    expect(itemIdentity(null, "pasted text", 0)).not.toBe(itemIdentity(null, "pasted text", 1));
+  });
+});
+
+describe("aliveEntries", () => {
+  const e = (id: string, name: string, voided: string | null = null): ER => ({
+    id, owner_id: "o", entry_name: name, player_email: null, is_gifted: false, is_free_entry: false, lynne_number: null, lynne_label: null, voided_at: voided,
+  });
+  const entries = [e("a", "Alive"), e("b", "Gone"), e("c", "Unlisted"), e("v", "Voided", "2026-09-04T00:00:00Z")];
+  const standings = [
+    { entry_id: "a", status: "at_risk", losses: 1, bye_used: false },
+    { entry_id: "b", status: "eliminated", losses: 2, bye_used: false },
+  ];
+  it("keeps only entries alive on the standings and names the rest", () => {
+    const r = aliveEntries(entries, standings);
+    expect(r.alive.map((x) => x.entry_name)).toEqual(["Alive"]);
+    expect(r.out.map((x) => `${x.entry.entry_name}: ${x.why}`)).toEqual(["Gone: eliminated", "Unlisted: no standings row"]);
   });
 });
