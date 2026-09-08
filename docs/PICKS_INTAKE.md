@@ -242,7 +242,12 @@ npm run notify -- "one line"
 
 Posts the line to ntfy.sh/`NTFY_TOPIC` when the topic is set, prints it
 otherwise. picks, chase, results and distribute call the same function when
-they stage a NEEDS ANTHONY row and when a run finishes.
+they stage a NEEDS ANTHONY row and when a run finishes. A push about a
+staged pick row says the kind and the week and points at /admin/queue,
+never the reason or the line: both can carry a team, and a pick is not
+public before kickoff. The push about a correction that beat the lock is
+the same; the lock is judged at the moment the mail arrived, not when the
+command ran.
 
 ## 8. Rules these commands keep
 

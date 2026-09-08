@@ -53,6 +53,8 @@ import {
   scopeCheck,
   scopeEntriesFor,
   senderUnplaced,
+  stagedDetail,
+  unparsedReason,
   conflictedKeys,
   itemIdentity,
   repeatedWeek,
@@ -298,7 +300,8 @@ async function main(): Promise<void> {
         item,
       });
     for (const u of unparsed) {
-      if (/[A-Za-z]{3,}/.test(u) && !/^(hi|hey|hello|thanks|thank you|thx)\b/i.test(u)) fail("no team recognised on this line", u);
+      const why = unparsedReason(u);
+      if (why !== null) fail(why, u);
     }
     // A known address, or a --from owner, with no live entry behind it (a
     // declined owner, a voided roster) may name anything; nothing it names
@@ -342,7 +345,7 @@ async function main(): Promise<void> {
       for (const t of targets) {
         const deadline = deadlineFor(p.team, ctx.bounds, ctx.games);
         const existing = ctx.currentByEntry.get(t.entry.id) ?? null;
-        const decision = overrideDecision(existing, madeAt, ctx.bounds.lateDeadlineAt, now);
+        const decision = overrideDecision(existing, madeAt, ctx.bounds.lateDeadlineAt);
         if (!decision.ok && existing && existing.team !== p.team) {
           fail(`${t.entry.entryName} -> ${p.team}: ${decision.reason}`, p.line);
           continue;
@@ -531,9 +534,10 @@ async function main(): Promise<void> {
       actor,
     });
     console.log(`staged ${u.kind}: ${u.line}`);
-    // The line itself may carry a team, and a pick is not public before
-    // kickoff: the push says what kind of row and why, never the text.
-    await notify(needsAnthonyLine("picks", u.kind, `${u.reason} - week ${u.item.week} - /admin/queue`), { tags: "warning" });
+    // The reason and the line can both carry a team, and a pick is not
+    // public before kickoff: the push says the kind and the week, nothing
+    // else. The detail is on /admin/queue.
+    await notify(needsAnthonyLine("picks", u.kind, stagedDetail(u.item.week)), { tags: "warning" });
     if (u.item.messageId) touched.add(u.item.messageId);
   }
   await fileMessages(touched);

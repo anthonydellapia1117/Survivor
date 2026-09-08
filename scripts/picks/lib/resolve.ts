@@ -412,8 +412,8 @@ const FINAL_RESULTS = new Set(["win", "loss", "tie_loss", "missed"]);
  *     roll a result back
  *   - the current pick is newer than this message: an older unread mail
  *     never overrides a later choice
- *   - the week is locked and a pick is already on file: a change after the
- *     lock is Anthony's call
+ *   - the message arrived after the lock and a pick is already on file: a
+ *     change after the lock is Anthony's call
  * A first pick after the lock is not blocked here; it is written with its
  * late flag, which is what the flag is for.
  */
@@ -421,7 +421,6 @@ export function overrideDecision(
   existing: ExistingPick | null,
   madeAt: Date,
   lateDeadlineIso: string,
-  now: Date,
 ): { ok: true } | { ok: false; reason: string } {
   if (!existing) return { ok: true };
   if (existing.result && FINAL_RESULTS.has(existing.result)) {
@@ -430,7 +429,10 @@ export function overrideDecision(
   if (new Date(existing.submitted_at).getTime() > madeAt.getTime()) {
     return { ok: false, reason: `older than the current pick (${existing.team}, made later); Anthony decides` };
   }
-  if (now.getTime() > new Date(lateDeadlineIso).getTime()) {
+  // Judged at the moment the message arrived (madeAt), never at the moment
+  // the command happened to run: a correction that beat the lock stays a
+  // correction however long it waited to be read.
+  if (madeAt.getTime() > new Date(lateDeadlineIso).getTime()) {
     return { ok: false, reason: `after the lock with ${existing.team} already on file; a change needs Anthony` };
   }
   return { ok: true };
@@ -535,4 +537,33 @@ export function conflictedKeys(proposals: { key: string; team: string }[], stage
  */
 export function itemIdentity(messageId: string | null, label: string, ordinal: number): string {
   return messageId ?? `${label}#${ordinal}`;
+}
+
+/**
+ * What the push notification says about a staged row: the kind and the
+ * week, never the reason or the line. Both can carry a team, and a pick is
+ * not public before kickoff (the same rule the notification contract in
+ * docs/PICKS_INTAKE.md states).
+ */
+export function stagedDetail(week: number): string {
+  return `week ${week} - /admin/queue`;
+}
+
+/** Two-letter team text that names two teams: staged as a question, never dropped as noise. */
+const AMBIGUOUS_TEAM_TEXT = new Set(["la", "ny"]);
+
+/**
+ * Why a line that parsed as no pick still needs Anthony, or null when it
+ * is noise (a greeting, thanks, a word or two with no team in it). "LA" and
+ * "NY" are the exception to the short-line rule: strictTeam cannot choose
+ * between the two local teams, so the line is surfaced as a question rather
+ * than left unread to come round again on every run.
+ */
+export function unparsedReason(line: string): string | null {
+  const t = line.trim();
+  const letters = t.replace(/[^A-Za-z]/g, "").toLowerCase();
+  if (AMBIGUOUS_TEAM_TEXT.has(letters)) return `"${t}" names two teams; which one?`;
+  if (!/[A-Za-z]{3,}/.test(t)) return null;
+  if (/^(hi|hey|hello|thanks|thank you|thx)\b/i.test(t)) return null;
+  return "no team recognised on this line";
 }

@@ -86,27 +86,36 @@ describe("overrideDecision", () => {
   const before = new Date("2026-09-10T12:00:00Z");
   const after = new Date("2026-09-12T12:00:00Z");
   it("lets a first pick through, late or not", () => {
-    expect(overrideDecision(null, before, late, before)).toEqual({ ok: true });
-    expect(overrideDecision(null, after, late, after)).toEqual({ ok: true });
+    expect(overrideDecision(null, before, late)).toEqual({ ok: true });
+    expect(overrideDecision(null, after, late)).toEqual({ ok: true });
   });
   it("stages a change to a pick that is already scored", () => {
-    const d = overrideDecision({ team: "SEA", submitted_at: "2026-09-08T12:00:00Z", result: "loss" }, after, late, after);
+    const d = overrideDecision({ team: "SEA", submitted_at: "2026-09-08T12:00:00Z", result: "loss" }, after, late);
     expect(d.ok).toBe(false);
     if (!d.ok) expect(d.reason).toContain("already scored");
   });
   it("stages an older mail that would override a newer pick", () => {
-    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-10T15:00:00Z", result: null }, before, late, before);
+    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-10T15:00:00Z", result: null }, before, late);
     expect(d.ok).toBe(false);
     if (!d.ok) expect(d.reason).toContain("older than the current pick");
   });
   it("stages a change after the lock when a pick is already on file", () => {
-    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-10T15:00:00Z", result: null }, after, late, after);
+    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-10T15:00:00Z", result: null }, after, late);
     expect(d.ok).toBe(false);
     if (!d.ok) expect(d.reason).toContain("after the lock");
   });
   it("allows a newer mail to change an unscored pick before the lock", () => {
-    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-09T15:00:00Z", result: null }, before, late, before);
+    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-09T15:00:00Z", result: null }, before, late);
     expect(d).toEqual({ ok: true });
+  });
+  it("judges the lock at receipt time: a correction that arrived before the lock is written however late it is read", () => {
+    // The lock is in the past for this test so that a check against the
+    // command's own clock (processing time) would refuse it.
+    const pastLock = "2026-09-04T16:00:00Z";
+    const arrived = new Date("2026-09-04T15:00:00Z");
+    expect(overrideDecision({ team: "PHI", submitted_at: "2026-09-04T14:00:00Z", result: null }, arrived, pastLock)).toEqual({ ok: true });
+    const arrivedLate = new Date("2026-09-04T17:00:00Z");
+    expect(overrideDecision({ team: "PHI", submitted_at: "2026-09-04T14:00:00Z", result: null }, arrivedLate, pastLock)).toMatchObject({ ok: false });
   });
 });
 
@@ -207,7 +216,7 @@ describe("the token stage is exact on words, never fuzzy (CLAUDE.md, Matching)",
   });
 });
 
-import { conflictedKeys, conflictingKeys, itemIdentity, repeatedWeek, scopeEntriesFor, senderUnplaced, stripWeekHeading, type RosterEntry } from "../../scripts/picks/lib/resolve";
+import { conflictedKeys, conflictingKeys, itemIdentity, repeatedWeek, scopeEntriesFor, senderUnplaced, stagedDetail, stripWeekHeading, unparsedReason, type RosterEntry } from "../../scripts/picks/lib/resolve";
 import { aliveEntries } from "../../scripts/lib/roster";
 import { resolveFromArg } from "../../scripts/picks/lib/from";
 
@@ -340,5 +349,26 @@ describe("aliveEntries", () => {
     const r = aliveEntries(entries, standings);
     expect(r.alive.map((x) => x.entry_name)).toEqual(["Alive"]);
     expect(r.out.map((x) => `${x.entry.entry_name}: ${x.why}`)).toEqual(["Gone: eliminated", "Unlisted: no standings row"]);
+  });
+});
+
+describe("unparsedReason", () => {
+  it("surfaces LA and NY as a question instead of dropping them as noise", () => {
+    expect(unparsedReason("LA")).toMatch(/names two teams/);
+    expect(unparsedReason("ny.")).toMatch(/names two teams/);
+  });
+  it("drops greetings, thanks and a word or two with no team", () => {
+    expect(unparsedReason("thanks!")).toBeNull();
+    expect(unparsedReason("ok")).toBeNull();
+    expect(unparsedReason("Hi Anthony")).toBeNull();
+  });
+  it("reports any other line with words in it", () => {
+    expect(unparsedReason("go birds")).toBe("no team recognised on this line");
+  });
+});
+
+describe("stagedDetail", () => {
+  it("carries the week and the queue only", () => {
+    expect(stagedDetail(2)).toBe("week 2 - /admin/queue");
   });
 });
