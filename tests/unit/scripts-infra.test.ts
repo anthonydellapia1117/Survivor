@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { notify } from "../../scripts/lib/notify";
-import { alreadySent, isSendable, lockDayKey, type PriorSend } from "../../scripts/lib/send";
+import { alreadySent, isSendable, lockDayKey, priorSendFrom, type PriorSend } from "../../scripts/lib/send";
 import { encodeRaw } from "../../scripts/lib/gmail";
 import { buildRecipientOwners, earliestOpenDeadline, unpickedEntries } from "../../scripts/lib/roster";
 import type { EntryRow, OwnerRow, StandingRow } from "../../scripts/lib/db";
@@ -68,6 +68,17 @@ describe("send gate", () => {
     expect(lockDayKey("2026-09-11T16:00:00+00:00")).toBe("2026-09-11");
     // 10 PM ET on the 10th is 02:00Z on the 11th; the lock day is still the 10th.
     expect(lockDayKey("2026-09-11T02:00:00Z")).toBe("2026-09-10");
+  });
+
+  it("counts a claim row with no message id as a prior send", () => {
+    const claim = priorSendFrom({
+      at: "2026-09-11T14:00:00Z",
+      target_id: "chas.flaster@gmail.com:2026-09-11",
+      after: { recipient: "chas.flaster@gmail.com", lock_day: "2026-09-11" },
+    });
+    expect(claim).toEqual({ recipient: "chas.flaster@gmail.com", lockDay: "2026-09-11", messageId: "chas.flaster@gmail.com:2026-09-11", at: "2026-09-11T14:00:00Z" });
+    expect(alreadySent([claim!], "chas.flaster@gmail.com", "2026-09-11")).not.toBeNull();
+    expect(priorSendFrom({ at: "", target_id: null, after: { recipient: "x@y.com" } })).toBeNull();
   });
 
   it("finds a prior send by recipient and lock day, case-insensitively", () => {

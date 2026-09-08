@@ -147,8 +147,11 @@ skips the y prompt (for a Routine). `--week` defaults to the open week.
 - no `pick_reminder_sent` audit row exists for that recipient on that ET
   lock day (a re-run prints `already sent ... skipped`)
 
-Every send writes an audit row (action `pick_reminder_sent`) with the
-recipient, week, lock day, deadline and Gmail message id. `--send` with
+Every send writes two audit rows: a claim (action `pick_reminder_claim`)
+before the Gmail call, and the send (action `pick_reminder_sent`) after it
+with the Gmail message id. A claim with no sent row means the run died
+mid-send; later runs treat it as sent, so nobody is mailed twice, and the
+push names the recipient so you can check /admin/audit. `--send` with
 `--bcc` is refused. `pick_reminder` is the only template on the allowlist in
 `scripts/lib/send.ts`; adding one is a code change, not a flag. How the Pick
 Gap Check routine is told to use this is in docs/ROUTINES.md section 3e.

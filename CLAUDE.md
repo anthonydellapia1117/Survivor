@@ -643,10 +643,11 @@ in any of them.**
   `scripts/lib/send.ts`, which sends exactly one template, `pick_reminder`,
   only when the environment has `REMINDER_AUTOSEND=true`, only to a
   recipient with no current pick, at most once per recipient per ET lock
-  day (judged from `audit_log` rows with action `pick_reminder_sent`), and
-  every send writes that audit row with the recipient and the Gmail message
-  id. Unset is the default and means drafts only. Adding a second template
-  is a reviewed change to the allowlist, never a flag.
+  day (judged from `audit_log` rows with actions `pick_reminder_claim` and
+  `pick_reminder_sent`), and every send writes a claim row before the Gmail
+  call and a sent row with the Gmail message id after it. Unset is the
+  default and means drafts only. Adding a second template is a reviewed
+  change to the allowlist, never a flag.
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
   Anthony's to choose and is never invented.

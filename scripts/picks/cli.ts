@@ -371,7 +371,9 @@ async function main(): Promise<void> {
       actor,
     });
     console.log(`staged ${u.kind}: ${u.line}`);
-    await notify(needsAnthonyLine("picks", u.kind, `${u.reason} - "${u.line}" - /admin/queue`), { tags: "warning" });
+    // The line itself may carry a team, and a pick is not public before
+    // kickoff: the push says what kind of row and why, never the text.
+    await notify(needsAnthonyLine("picks", u.kind, `${u.reason} - week ${u.item.week} - /admin/queue`), { tags: "warning" });
     if (u.item.messageId) touched.add(u.item.messageId);
   }
   if (touched.size && !args.keepUnread && !args.paste && !args.file) {

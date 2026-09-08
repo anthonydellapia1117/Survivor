@@ -257,22 +257,34 @@ async function main(): Promise<void> {
     let sent = 0;
     let skipped = 0;
     for (const c of chases) {
-      const out = await sendAllowlisted(gmail, client, prior, {
-        template: "pick_reminder",
-        to: c.recipient.email,
-        subject: c.subject,
-        body: c.body,
-        week,
-        deadlineIso: c.deadline.deadlineIso,
-        entryNames: c.recipient.entries.map((e) => e.entryName),
-        actor,
-      });
+      let out;
+      try {
+        out = await sendAllowlisted(gmail, client, prior, {
+          template: "pick_reminder",
+          to: c.recipient.email,
+          subject: c.subject,
+          body: c.body,
+          week,
+          deadlineIso: c.deadline.deadlineIso,
+          entryNames: c.recipient.entries.map((e) => e.entryName),
+          actor,
+        });
+      } catch (e: unknown) {
+        // A send whose sent row failed, or a Gmail refusal after the claim,
+        // is surfaced before the run stops: the push names the recipient and
+        // the state, so it is not found only by reading the terminal.
+        const why = e instanceof Error ? e.message : String(e);
+        console.log(`FAILED -> ${c.recipient.email}: ${why}`);
+        await notify(needsAnthonyLine("chase", "send failed", `${c.recipient.email} - ${why} - ${sent} sent before this, run stopped`), { tags: "warning" });
+        throw e;
+      }
       if (out.kind === "sent") {
         sent++;
         console.log(`sent ${out.messageId} -> ${c.recipient.email}`);
       } else {
         skipped++;
-        console.log(`already sent ${out.prior.messageId} on lock day ${out.lockDay} -> ${c.recipient.email}, skipped`);
+        const what = out.prior.messageId ? `already sent ${out.prior.messageId}` : "already claimed (outcome on /admin/audit)";
+        console.log(`${what} on lock day ${out.lockDay} -> ${c.recipient.email}, skipped`);
       }
     }
     console.log(`\nDone. ${sent} sent, ${skipped} skipped.`);

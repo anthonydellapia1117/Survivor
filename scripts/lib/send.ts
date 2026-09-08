@@ -9,7 +9,8 @@
 //   - at most once per recipient per lock day, judged from audit_log rows
 //     with action pick_reminder_sent, so a re-run never sends twice
 //   - every send writes an audit row carrying the recipient, the lock day
-//     and the Gmail message id
+//     and the Gmail message id, and a claim row goes in BEFORE the Gmail
+//     call so at most once holds even if the run dies mid-send
 //
 // Anything else that wants to send has to come here and add itself to the
 // allowlist in a reviewed change. gmail.ts stays send-free.
@@ -30,6 +31,12 @@ import { loadAuditByAction, recordAudit } from "./db";
 export const SEND_ALLOWLIST = ["pick_reminder"] as const;
 export type SendableTemplate = (typeof SEND_ALLOWLIST)[number];
 export const SEND_AUDIT_ACTION = "pick_reminder_sent";
+/**
+ * Written BEFORE the Gmail call. A claim with no matching sent row means a
+ * send was attempted and its outcome is unknown; the next run treats it as
+ * sent (never a second mail) and Anthony reads it on /admin/audit.
+ */
+export const SEND_CLAIM_ACTION = "pick_reminder_claim";
 
 export function isSendable(template: string): template is SendableTemplate {
   return (SEND_ALLOWLIST as readonly string[]).includes(template);
@@ -60,16 +67,29 @@ export interface PriorSend {
   at: string;
 }
 
-/** Every pick_reminder send on record, from audit_log. */
+/** One audit row as a prior send; null when it names no recipient or lock day. */
+export function priorSendFrom(r: { at: string; target_id: string | null; after: Record<string, unknown> | null }): PriorSend | null {
+  const a = r.after ?? {};
+  const recipient = String(a.recipient ?? "").toLowerCase();
+  const lockDay = String(a.lock_day ?? "");
+  if (!recipient || !lockDay) return null;
+  return { recipient, lockDay, messageId: String(a.message_id ?? r.target_id ?? ""), at: r.at };
+}
+
+/**
+ * Every pick_reminder claim and send on record, from audit_log. A claim
+ * counts as a send: once a run has claimed a recipient for a lock day, no
+ * run mails them again that day, whatever happened after the claim.
+ */
 export async function priorSends(client: SupabaseClient): Promise<PriorSend[]> {
-  const rows = await loadAuditByAction(client, SEND_AUDIT_ACTION);
+  const [claims, sends] = await Promise.all([
+    loadAuditByAction(client, SEND_CLAIM_ACTION),
+    loadAuditByAction(client, SEND_AUDIT_ACTION),
+  ]);
   const out: PriorSend[] = [];
-  for (const r of rows) {
-    const a = r.after ?? {};
-    const recipient = String(a.recipient ?? "").toLowerCase();
-    const lockDay = String(a.lock_day ?? "");
-    if (!recipient || !lockDay) continue;
-    out.push({ recipient, lockDay, messageId: String(a.message_id ?? r.target_id ?? ""), at: r.at });
+  for (const r of [...claims, ...sends]) {
+    const p = priorSendFrom(r);
+    if (p) out.push(p);
   }
   return out;
 }
@@ -127,6 +147,27 @@ export async function sendAllowlisted(
     return { kind: "already_sent", prior: dupNow, lockDay };
   }
 
+  // Claim first. If the process dies between here and the sent row, the
+  // claim alone stops every later run from mailing this person today.
+  const recipientKey = req.to.trim().toLowerCase();
+  await recordAudit(client, {
+    actor: req.actor,
+    action: SEND_CLAIM_ACTION,
+    targetTable: "gmail",
+    targetId: `${recipientKey}:${lockDay}`,
+    after: {
+      template: req.template,
+      recipient: recipientKey,
+      week: req.week,
+      lock_day: lockDay,
+      deadline_at: req.deadlineIso,
+      subject: req.subject,
+      entry_names: req.entryNames,
+    },
+    note: `pick_reminder claim for ${req.to}, week ${req.week}, lock day ${lockDay}; a sent row follows on success`,
+  });
+  prior.push({ recipient: recipientKey, lockDay, messageId: "", at: new Date().toISOString() });
+
   const m: OutboundMessage = { to: [req.to], subject: req.subject, body: req.body };
   const res = await gmail.users.messages.send({ userId: "me", requestBody: { raw: encodeRaw(m) } });
   const messageId = res.data.id ?? "";
@@ -152,9 +193,8 @@ export async function sendAllowlisted(
   } catch (e: unknown) {
     const why = e instanceof Error ? e.message : String(e);
     throw new Error(
-      `SENT to ${req.to} as Gmail message ${messageId} but the audit row failed (${why}). Record it by hand before running again, or the same recipient can be mailed twice.`,
+      `SENT to ${req.to} as Gmail message ${messageId} but the sent audit row failed (${why}). The claim row stands, so no run mails them again today; record message ${messageId} against it on /admin/audit.`,
     );
   }
-  prior.push({ recipient: req.to.trim().toLowerCase(), lockDay, messageId, at: new Date().toISOString() });
   return { kind: "sent", messageId, auditId, lockDay };
 }

@@ -169,7 +169,9 @@ owners silent: a NEEDS ANTHONY section led by the number of entries at stake.
       `audit_log` rows with action `pick_reminder_sent`; a re-run in the
       same lock day reports "already sent" and skips
     - every send writes that audit row with the recipient, the week, the
-      lock day, the deadline and the Gmail message id
+      lock day, the deadline and the Gmail message id, and a claim row
+      (`pick_reminder_claim`) goes in before the Gmail call, so a run that
+      dies mid-send still blocks a second mail that day
 
     To let the Pick Gap Check use it, the Routine's environment needs, in
     addition to the Gmail connector: `ADMIN_EMAIL`, `SURVIVOR_ADMIN_PASSWORD`,
