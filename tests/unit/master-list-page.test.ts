@@ -28,7 +28,7 @@ vi.mock("../../src/lib/data", () => ({
       { entryId: "e-983", week: 1, team: "PHI", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
       { entryId: "e-1005", week: 1, team: "LOCKED", result: null, late: true, submittedAt: "2026-09-08T00:00:00Z", source: "email", resultSource: null },
       { entryId: "e-1089", week: 2, team: "BUF", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
-      { entryId: "someone-else", week: 1, team: "KC", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
+      { entryId: "someone-else", week: 7, team: "KC", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
     ],
     getLynneImports: async () => [
       {
@@ -77,8 +77,9 @@ describe("Master List, signed out", () => {
     expect(html).toContain(">46<");
     expect(html).toContain("1,272");
     expect(html).toContain("$28,620");
-    expect(html).not.toMatch(/22\.5/);
-    expect(html).not.toMatch(/per entry/i);
+    // Neither quotient of her pot, by paying entries or by total, in any form.
+    for (const s of ["$22.50", "22.5", "$21.71", "21.71", "2250", "2171"]) expect(html).not.toContain(s);
+    expect(html).not.toMatch(/per (paying )?entry|apiece|each entry|\/\s*entry/i);
   });
 
   it("never shows the uploaded filename or the runner's name, and keeps the weekly files", async () => {
@@ -97,15 +98,18 @@ describe("Master List, signed out", () => {
     expect(html).toContain("Adriana Flacco ");
     expect(html).toContain("Andrew Dicicco #1");
     expect(html).toContain("Showing 4 of 4");
-    // Her Dallas against our PHI on 983: a variance, hers kept, ours beside it.
-    expect(html).toMatch(/Dallas[\s\S]{0,300}ours PHI/);
+    // Her Dallas against our PHI on 983: a variance, hers kept in the cell, ours beside it.
+    expect(html).toMatch(/<td[^>]*><span>Dallas<\/span><span[^>]*>ours PHI<\/span><\/td>/);
+    // Row 1 is not ours: her cell alone.
+    expect(html).toMatch(/<td[^>]*>Dallas<\/td>/);
     // 1089 has our Week 2 pick and she has no Week 2 column yet: ours only.
     expect(html).toContain("Week 2");
     expect(html).toContain("ours BUF");
     // 1005's pick is still masked by the public view: nothing about it.
     expect(html).not.toContain("LOCKED");
     expect(html).not.toContain("ours SEA");
-    // Someone else's cell belongs to no row here.
+    // Someone else's cell belongs to no row here, so its week adds no column.
     expect(html).not.toContain("ours KC");
+    expect(html).not.toContain("Week 7");
   });
 });

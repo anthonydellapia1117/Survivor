@@ -160,8 +160,9 @@ export const localPgBackend: DataBackend = {
     const { rows } = await db().query(
       "select row_no, names, cells, sheet_loaded_at, entry_id from v_master_list order by row_no",
     );
+    const at = rows[0]?.sheet_loaded_at;
     return {
-      loadedAt: rows[0]?.sheet_loaded_at ?? null,
+      loadedAt: at instanceof Date ? at.toISOString() : ((at as string | undefined) ?? null),
       rows: rows.map((r) => ({
         no: Number(r.row_no),
         names: r.names as string,

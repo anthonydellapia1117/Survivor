@@ -36,7 +36,7 @@ begin
     and column_name ~ 'free|recruit'
     -- pool_free_count is the master pool's own published "Free" line, not
     -- this group's split (20260908224500); it is public by Anthony's call.
-    and column_name not like 'pool\_%';
+    and column_name not in ('pool_free_count', 'pool_paid_count');
   if n <> 0 then
     raise exception 'a public view exposes the recruited/free split';
   end if;
@@ -67,7 +67,7 @@ begin
     and column_name ~ 'due|paid|collected|amount|owed|remit|margin'
     -- pool_paid_count is the master pool's own published "Total" (paying
     -- entries) line, a count and not this group's money (20260908224500).
-    and column_name not like 'pool\_%';
+    and column_name not in ('pool_free_count', 'pool_paid_count');
   if n <> 0 then
     raise exception 'a public view carries a money column';
   end if;
@@ -97,9 +97,9 @@ begin
 
   begin
     perform admin_set_pool_pot(-1, null, null, null, 'test');
-    raise exception 'negative pool entry count accepted';
-  exception when others then
-    if sqlerrm not like '%negative%' then raise; end if;
+    raise exception 'REFUSAL MISSING: -1 pool entry count was accepted';
+  exception when raise_exception then
+    if sqlerrm not like '%cannot be negative%' then raise; end if;
   end;
 end $$;
 rollback;

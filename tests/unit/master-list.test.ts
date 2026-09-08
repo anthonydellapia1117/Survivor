@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { GridCell } from "../../src/lib/data/types";
 import {
+  defaultTeamsSource,
   filterRows,
   herCell,
+  herOut,
   matchPick,
+  mergeWeekColumns,
+  poolAsEntries,
   poolDistribution,
   poolStats,
   poolWeekFilled,
@@ -111,5 +115,40 @@ describe("poolStats", () => {
     expect(poolStats({ poolEntryCount: 1318, poolFreeCount: null, poolPaidCount: null, poolPotCents: null })).toEqual([
       { label: "Total in Pool", value: "1,318" },
     ]);
+  });
+});
+
+describe("poolAsEntries", () => {
+  it("turns her rows into the Teams shapes: OUT eliminates, team names become picks, other text is left alone", () => {
+    const { entries, cells } = poolAsEntries({ loadedAt: "2026-09-08T21:53:00Z", rows: ROWS });
+    expect(entries).toHaveLength(6);
+    const one = entries.find((e) => e.id === "pool-1")!;
+    expect(one.entryName).toBe("1 Lynne P");
+    expect(one.status).toBe("active");
+    expect(one.teamsUsed).toEqual(["DAL", "BUF"]);
+    expect(cells.filter((c) => c.entryId === "pool-1").map((c) => [c.week, c.team])).toEqual([[1, "DAL"], [2, "BUF"]]);
+    expect(entries.find((e) => e.id === "pool-674")!.status).toBe("eliminated");
+    expect(cells.some((c) => c.entryId === "pool-674")).toBe(false);
+    expect(cells.some((c) => c.entryId === "pool-1319")).toBe(false);
+    expect(entries.find((e) => e.id === "pool-983")!.isAdminEntry).toBe(true);
+    expect(entries.find((e) => e.id === "pool-1")!.isAdminEntry).toBe(false);
+    expect(cells[0].submittedAt).toBe("2026-09-08T21:53:00Z");
+    expect(herOut(ROWS[1])).toBe(true);
+    expect(herOut(ROWS[0])).toBe(false);
+  });
+});
+
+describe("mergeWeekColumns and defaultTeamsSource", () => {
+  it("adds a plain column only for a week she has not published, keeping her key for one she has", () => {
+    expect(mergeWeekColumns([{ week: 1, key: "WEEK 1" }], [1, 3])).toEqual([
+      { week: 1, key: "WEEK 1" },
+      { week: 3, key: "Week 3" },
+    ]);
+  });
+
+  it("opens the Teams page on the pool only once a sheet is loaded and carries a pick", () => {
+    expect(defaultTeamsSource(true, true)).toBe("pool");
+    expect(defaultTeamsSource(true, false)).toBe("ours");
+    expect(defaultTeamsSource(false, false)).toBe("ours");
   });
 });

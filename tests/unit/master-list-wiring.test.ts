@@ -25,7 +25,7 @@ describe("Master List wiring", () => {
     const mention = src.filter((f) => /\bperEntry\b|Implied .* per/.test(fs.readFileSync(f, "utf8")));
     expect(mention.map((f) => path.relative(ROOT, f))).toEqual(["src/components/admin/pool-pot-form.tsx"]);
     for (const f of ["src/lib/master-list.ts", "src/app/master-list/page.tsx", "src/components/master-list/master-list-table.tsx", "src/app/page.tsx"]) {
-      expect(read(f), f).not.toMatch(/22\.5|\/\s*pool(Paid|Entry)Count|per entry/i);
+      expect(read(f), f).not.toMatch(/22\.5|\/\s*(?:[\w$.]+\.)?pool(Paid|Entry)Count\b|poolPotCents\s*\/|per (paying )?entry/i);
     }
   });
 
@@ -40,6 +40,10 @@ describe("Master List wiring", () => {
     expect(cols).toEqual(["row_no", "names", "cells", "sheet_loaded_at", "entry_id"]);
     expect(body).not.toMatch(/source_file|gmail_message_id|loaded_by/);
     expect(m).toMatch(/grant select on v_master_list to anon, authenticated/);
+  });
+
+  it("the Teams page opens on the pool only once she has published a week, through the shared default", () => {
+    expect(read("src/components/teams/teams-source.tsx")).toMatch(/useState<Source>\(defaultTeamsSource\(poolLoaded, poolHasPicks\)\)/);
   });
 
   it("the tab reads Master List and the old name is gone from the app", () => {

@@ -295,6 +295,22 @@ whole pool, so the public site defaults to it.
 - `v_master_list` exposes exactly five columns: `row_no`, `names`, `cells`,
   `sheet_loaded_at`, `entry_id`. No file name, Gmail id or loader reaches
   the public. The table itself stays admin-only under RLS.
+- **Her week cells obey the grid's reveal rule, in the view.** A cell that
+  names one of her teams is served once `pick_is_public` says that team's
+  game has kicked off (the same function `v_grid_cells` uses, override
+  included); a cell that is not a team name (OUT, a note, a typo) only once
+  every game of that week has kicked off; a column that is not a week never
+  leaves the table. So a sheet of hers loaded on Saturday cannot show one of
+  our 121's picks that `/grid` still masks. Her vocabulary is copied into
+  the view lower-cased and `tests/unit/lynne-team-names-sql.test.ts` holds
+  the two copies together.
+- **Her own row is on the list.** NO. 1 of her sheet is her own entry,
+  named as she named it. It is her data as published and the app never
+  rewrites her rows, so that name appears on `/master-list` and in the
+  Teams picker; it is the one place the runner's name reaches a public
+  route, by this decision of 2026-09-08. Copy, file names and Gmail ids
+  still never do. Reversing this means excluding the row by an explicit
+  admin-recorded rule, never by matching a name.
 
 ## Names
 

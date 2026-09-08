@@ -2,15 +2,15 @@
 
 // Which pool the Teams page reads: the Master List (every entry in the
 // master pool, from the published sheet) or our group (our recorded picks).
-// The Master List is the default, because that is what the group wants to
-// see; our 121 are the admin's concern. The choice is view state only.
+// The Master List is the default once she has published a week's picks,
+// because that is what the group wants to see; until then our group stands
+// in and says so. The choice is view state only.
 
 import { useState } from "react";
 import type { EntrySummary, GameRow, GridCell } from "@/lib/data/types";
+import { defaultTeamsSource, type TeamsSourceKind as Source } from "@/lib/master-list";
 import { TeamsClient } from "@/components/teams/teams-client";
 import { cn } from "@/lib/utils";
-
-type Source = "pool" | "ours";
 
 interface Dataset {
   entries: EntrySummary[];
@@ -29,7 +29,7 @@ interface Props {
 }
 
 export function TeamsSource({ ours, pool, poolLoaded, poolHasPicks, weekCount, games }: Props) {
-  const [source, setSource] = useState<Source>(poolLoaded ? "pool" : "ours");
+  const [source, setSource] = useState<Source>(defaultTeamsSource(poolLoaded, poolHasPicks));
   const active = source === "pool" ? pool : ours;
   const options: { key: Source; label: string; n: number; disabled?: boolean }[] = [
     { key: "pool", label: "Master List", n: pool.entries.length, disabled: !poolLoaded },

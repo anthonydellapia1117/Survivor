@@ -179,14 +179,17 @@ export const supabaseBackend: DataBackend = {
   async getMasterList(): Promise<MasterListData> {
     // PostgREST returns at most 1,000 rows per response and her sheet is
     // longer than that, so the view is read a page at a time in NO. order.
+    // The loop is driven by the exact count, not by a short page, so a
+    // lower response cap than the page size still reads the whole sheet;
+    // an empty page ends it either way.
     const c = client();
     const rows: MasterListRow[] = [];
     let loadedAt: string | null = null;
     const page = 1000;
-    for (let from = 0; ; from += page) {
-      const { data, error } = await c
+    for (let from = 0; ; ) {
+      const { data, error, count } = await c
         .from("v_master_list")
-        .select("*")
+        .select("*", { count: "exact" })
         .order("row_no")
         .range(from, from + page - 1);
       // Code can deploy ahead of its migration (a preview build, or a merge
@@ -206,7 +209,10 @@ export const supabaseBackend: DataBackend = {
         });
         loadedAt = loadedAt ?? r.sheet_loaded_at ?? null;
       }
-      if (!data || data.length < page) break;
+      if (!data || data.length === 0) break;
+      from += data.length; // by rows received, so a cap below the page size skips nothing
+      if (count !== null && count !== undefined && rows.length >= count) break;
+      if (data.length < page && (count === null || count === undefined)) break;
     }
     return { loadedAt, rows };
   },

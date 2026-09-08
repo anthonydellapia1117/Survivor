@@ -59,6 +59,20 @@ begin
     raise exception 'null counts must clear';
   end if;
 
+  -- Her two counts refuse a negative like the others do.
+  begin
+    perform admin_set_pool_pot(1318, -1, 1319, 2862000, 'test');
+    raise exception 'REFUSAL MISSING: a negative free count was accepted';
+  exception when raise_exception then
+    if sqlerrm not like '%cannot be negative%' then raise; end if;
+  end;
+  begin
+    perform admin_set_pool_pot(1318, 1319, -1, 2862000, 'test');
+    raise exception 'REFUSAL MISSING: a negative paid count was accepted';
+  exception when raise_exception then
+    if sqlerrm not like '%cannot be negative%' then raise; end if;
+  end;
+
   -- The old three-argument form is gone: one signature, no PostgREST ambiguity.
   select count(*) into n from pg_proc where proname = 'admin_set_pool_pot';
   if n <> 1 then raise exception 'expected exactly one admin_set_pool_pot, found %', n; end if;
@@ -130,5 +144,52 @@ begin
   if n <> 0 then raise exception 'anon must see no lynne_roster rows directly, saw %', n; end if;
 end $$;
 reset role;
+
+-- ------------------------------------------- the reveal gate on her cells
+-- Week 1's game has not kicked off; week 2's is long over; week 3 has none.
+insert into weeks (week, window_label, deadline_at)
+values (1, 'sat_mon', now() - interval '1 day'), (2, 'sat_mon', now() - interval '8 day'), (3, 'sat_mon', now() + interval '6 day')
+on conflict (week) do nothing;
+insert into nfl_games (id, week, kickoff_at, day_of_week, away_team, home_team) values
+  ('ml-w1-phi-dal', 1, now() + interval '1 day', 'Sunday', 'PHI', 'DAL'),
+  ('ml-w2-kc-buf', 2, now() - interval '7 day', 'Sunday', 'KC', 'BUF');
+-- The newer sheet below has to be the newest: date the earlier ones back.
+update lynne_roster set loaded_at = loaded_at - interval '1 hour';
+
+select set_config('app.admin_email', 'admin@test.local', true);
+set local role authenticated;
+select set_config('request.jwt.claims', '{"email":"admin@test.local"}', true);
+select admin_load_lynne_roster(repeat('c', 64), 'gated.xlsx', null,
+  '[{"no":983,"names":"Adriana Flacco ","row":2,"cells":{"Week 1":"dallas ","Week 2":"OUT","Phone":"555-0100","Week 3":"Buffalo"}}]'::jsonb,
+  'admin@test.local');
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+do $$
+declare v_cells jsonb; n int;
+begin
+  select count(*) into n from v_master_list;
+  if n <> 1 then raise exception 'the newest sheet has one row, the view shows %', n; end if;
+
+  -- Before kickoff: Week 1 (a team, its game ahead) is held; Week 2 (OUT, a
+  -- finished week) is served; Week 3 (a team with no game that week) stays
+  -- locked, never guessed; Phone is not a week and never leaves the table.
+  select cells into v_cells from v_master_list where row_no = 983;
+  if v_cells <> '{"Week 2": "OUT"}'::jsonb then
+    raise exception 'before kickoff the view must serve only the finished week, got %', v_cells;
+  end if;
+
+  -- After kickoff her Week 1 cell is served, as she wrote it.
+  update nfl_games set kickoff_at = now() - interval '1 hour' where id = 'ml-w1-phi-dal';
+  select cells into v_cells from v_master_list where row_no = 983;
+  if v_cells <> '{"Week 1": "dallas ", "Week 2": "OUT"}'::jsonb then
+    raise exception 'after kickoff her Week 1 cell must be served verbatim, got %', v_cells;
+  end if;
+
+  -- The admin reveal override masks it again, the same as the grid.
+  update nfl_games set reveal_override = false where id = 'ml-w1-phi-dal';
+  select cells into v_cells from v_master_list where row_no = 983;
+  if v_cells ? 'Week 1' then raise exception 'a reveal override must hold her cell back too, got %', v_cells; end if;
+end $$;
 
 rollback;

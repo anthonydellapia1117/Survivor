@@ -144,17 +144,73 @@ end $$;
 -- The newest loaded sheet, one row per NO. The newest sheet is the one
 -- with the latest loaded_at; every row of a load shares that timestamp
 -- because admin_load_lynne_roster writes them in one statement.
+--
+-- Her cells obey the grid's reveal rule, in the view, so PostgREST cannot
+-- serve what /grid still masks: a week cell that names one of her teams is
+-- served once pick_is_public says that team's game has kicked off (the same
+-- function v_grid_cells uses, override included); a week cell that is not a
+-- team name (OUT, a note, a typo) is served only once every game of that
+-- week has kicked off; a column that is not a week never leaves the table.
+-- Her team vocabulary is the list in src/lib/lynne/names.ts, lower-cased;
+-- tests/unit/lynne-team-names-sql.test.ts holds the two copies together.
 create view v_master_list as
 with newest as (
   select sheet_sha256, loaded_at
     from lynne_roster
    order by loaded_at desc
    limit 1
+),
+lynne_team_names(abbr, lname) as (
+  values
+    ('ARI', 'arizona'),
+    ('ATL', 'atlanta'),
+    ('BAL', 'baltimore'),
+    ('BUF', 'buffalo'),
+    ('CAR', 'carolina'),
+    ('CHI', 'chicago'),
+    ('CIN', 'cincinnati'),
+    ('CLE', 'cleveland'),
+    ('DAL', 'dallas'),
+    ('DEN', 'denver'),
+    ('DET', 'detroit'),
+    ('GB', 'green bay'),
+    ('HOU', 'houston'),
+    ('IND', 'indianapolis'),
+    ('JAX', 'jacksonville'),
+    ('KC', 'kansas city'),
+    ('LAC', 'la chargers'),
+    ('LAR', 'la rams'),
+    ('LV', 'lv raiders'),
+    ('MIA', 'miami'),
+    ('MIN', 'minnesota'),
+    ('NE', 'new england'),
+    ('NO', 'new orleans'),
+    ('NYG', 'ny giants'),
+    ('NYJ', 'ny jets'),
+    ('PHI', 'philadelphia'),
+    ('PIT', 'pittsburgh'),
+    ('SEA', 'seattle'),
+    ('SF', 'san francisco'),
+    ('TB', 'tampa bay'),
+    ('TEN', 'tennessee'),
+    ('WAS', 'washington')
 )
 select
   r.row_no,
   r.names,
-  r.cells,
+  (select coalesce(jsonb_object_agg(c.key, c.value), '{}'::jsonb)
+     from jsonb_each_text(r.cells) c
+     cross join lateral (
+       select (regexp_match(c.key, '^\s*(?:week|wk)\s*(\d{1,2})\s*$', 'i'))[1]::int as week
+     ) w
+     left join lynne_team_names t on t.lname = lower(btrim(c.value))
+    where w.week is not null
+      and case
+            when t.abbr is not null then pick_is_public(t.abbr, w.week)
+            else exists (select 1 from nfl_games g where g.week = w.week)
+                 and not exists (select 1 from nfl_games g where g.week = w.week and g.kickoff_at > now())
+          end
+  ) as cells,
   n.loaded_at as sheet_loaded_at,
   ours.id as entry_id
 from lynne_roster r
@@ -171,6 +227,6 @@ left join lateral (
 ) ours on true;
 
 comment on view v_master_list is
-  'Lynne''s newest sheet for the public Master List: her NO., her NAMES verbatim, her filled week cells, the load time, and this group''s entry id where the NO. is one of ours. Public by design; nothing else from lynne_roster is exposed.';
+  'Lynne''s newest sheet for the public Master List: her NO., her NAMES verbatim, her week cells once the grid''s reveal rule (pick_is_public) allows them, the load time, and this group''s entry id where the NO. is one of ours. Public by design; nothing else from lynne_roster is exposed.';
 
 grant select on v_master_list to anon, authenticated;
