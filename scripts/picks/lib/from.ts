@@ -27,16 +27,25 @@ export function resolveFromArg(raw: string, owners: OwnerRow[], entries: EntryRo
   const playedByEmail = live.filter((e) => (e.player_email ?? "").toLowerCase() === needle);
   if (ownerByEmail.length === 1 || playedByEmail.length > 0) return { address: needle, ownerId: ownerByEmail[0]?.id ?? null };
 
-  // 2. A name fragment. Gifted entries with an address point at their player.
+  // 2. A name fragment. Gifted entries with an address point at their player;
+  // a gifted entry with no address points at nobody, never at its buyer.
   const giftedHits = live.filter((e) => e.is_gifted && e.player_email && e.entry_name.toLowerCase().includes(needle));
   const players = [...new Set(giftedHits.map((e) => e.player_email!.toLowerCase()))];
   const ownerHits = owners.filter(
     (o) =>
       `${o.first_name} ${o.last_name}`.toLowerCase().includes(needle) ||
       (o.email ?? "").toLowerCase().includes(needle) ||
-      live.some((e) => e.owner_id === o.id && !(e.is_gifted && e.player_email) && e.entry_name.toLowerCase().includes(needle)),
+      live.some((e) => e.owner_id === o.id && !e.is_gifted && e.entry_name.toLowerCase().includes(needle)),
   );
   const people = players.length + ownerHits.length;
+  if (people === 0) {
+    const orphan = live.find((e) => e.is_gifted && !e.player_email && e.entry_name.toLowerCase().includes(needle));
+    if (orphan) {
+      throw new Error(
+        `--from "${raw}" is ${orphan.entry_name}, a gifted entry with no player address on file: nobody can be scoped to it until the address is recorded (CLAUDE.md, Gifted entries).`,
+      );
+    }
+  }
   if (people === 1) {
     if (players.length === 1) return { address: players[0], ownerId: null };
     return { address: ownerHits[0].email?.toLowerCase() ?? null, ownerId: ownerHits[0].id };

@@ -198,7 +198,7 @@ describe("typo tolerance on the token stage", () => {
   });
 });
 
-import { conflictingKeys, repeatedWeek, stripWeekHeading } from "../../scripts/picks/lib/resolve";
+import { conflictingKeys, repeatedWeek, scopeEntriesFor, senderUnplaced, stripWeekHeading, type RosterEntry } from "../../scripts/picks/lib/resolve";
 import { resolveFromArg } from "../../scripts/picks/lib/from";
 
 describe("stripWeekHeading", () => {
@@ -254,8 +254,40 @@ describe("resolveFromArg", () => {
     expect(resolveFromArg("Tomasco", owners, entries)).toEqual({ address: "kris@x.com", ownerId: "kris" });
     expect(resolveFromArg("Pumpy", owners, entries)).toEqual({ address: null, ownerId: "tim" });
   });
+  it("refuses a gifted entry with no address rather than scoping its buyer", () => {
+    const orphaned = [...entries, e("l1", "kris", "Lou Orphan #1", { is_gifted: true, player_email: null })];
+    expect(() => resolveFromArg("Lou Orphan", owners, orphaned)).toThrow("no player address on file");
+  });
   it("refuses nobody and more than one person", () => {
     expect(() => resolveFromArg("nobody", owners, entries)).toThrow("matches 0 people");
     expect(() => resolveFromArg("Flaster", [...owners, { id: "x", first_name: "Chas", last_name: "Flasterson", email: "cf@x.com", participation_status: "confirmed" }], entries)).toThrow("matches 2 people");
+  });
+});
+
+describe("scopeEntriesFor and senderUnplaced", () => {
+  const r = (id: string, ownerId: string, entryName: string, extra: Partial<RosterEntry> = {}): RosterEntry => ({
+    id, entryName, ownerId, ownerName: "Kris Tomasco", ownerEmail: null, playerEmail: null, isGifted: false, ...extra,
+  });
+  const roster: RosterEntry[] = [
+    r("k1", "kris", "Kris Tomasco #1"),
+    r("k2", "kris", "Kris Tomasco #2"),
+    r("c1", "kris", "Chas Flaster #1", { isGifted: true, playerEmail: "chas.flaster@gmail.com" }),
+    r("o1", "kris", "Orphan #1", { isGifted: true, playerEmail: null }),
+    r("p1", "tim", "Pumpy321", { ownerName: "Tim Flaherty" }),
+  ];
+  const entriesFor = (address: string) => roster.filter((e) => e.playerEmail === address);
+  it("gives a --from owner only the entries they play: no gifted entry, addressed or not", () => {
+    const scope = scopeEntriesFor({ senderAddress: null, fromOwnerId: "kris" }, roster, entriesFor);
+    expect(scope.map((e) => e.id)).toEqual(["k1", "k2"]);
+  });
+  it("gives a known address what entriesFor says", () => {
+    const scope = scopeEntriesFor({ senderAddress: "chas.flaster@gmail.com", fromOwnerId: null }, roster, entriesFor);
+    expect(scope.map((e) => e.id)).toEqual(["c1"]);
+  });
+  it("is unplaced for an identified sender with no live entry, by address or by --from, and never for plain pasted text", () => {
+    expect(senderUnplaced({ senderAddress: "declined@example.com", fromOwnerId: null }, 0)).toBe(true);
+    expect(senderUnplaced({ senderAddress: null, fromOwnerId: "no-entries" }, 0)).toBe(true);
+    expect(senderUnplaced({ senderAddress: null, fromOwnerId: null }, 0)).toBe(false);
+    expect(senderUnplaced({ senderAddress: null, fromOwnerId: "kris" }, 2)).toBe(false);
   });
 });

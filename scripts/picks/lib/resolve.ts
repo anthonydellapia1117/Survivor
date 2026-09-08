@@ -477,3 +477,34 @@ export function repeatedWeek(team: string, prior: Map<string, number> | undefine
   const w = prior?.get(team);
   return w === undefined ? null : w;
 }
+
+/**
+ * The entries a message's sender may pick for. A known address gets the
+ * entries it plays (entriesFor: own entries, plus gifts addressed to it); a
+ * --from owner matched by name gets the entries that owner plays themselves,
+ * never a gifted one, with or without an address. With an address the giftee
+ * is the one asked; without one the pick belongs to nobody the roster can
+ * reach yet, and the buyer's "for all" must not write it (CLAUDE.md, Gifted
+ * entries).
+ */
+export function scopeEntriesFor(
+  item: { senderAddress: string | null; fromOwnerId: string | null },
+  roster: RosterEntry[],
+  entriesFor: (address: string) => RosterEntry[],
+): RosterEntry[] {
+  if (item.senderAddress) return entriesFor(item.senderAddress);
+  if (item.fromOwnerId) return roster.filter((e) => e.ownerId === item.fromOwnerId && !e.isGifted);
+  return [];
+}
+
+/**
+ * A sender who was identified, by address or by --from, but has no live
+ * entry to pick for (a declined owner, a voided roster, an owner with no
+ * entries). Nothing such a message names is written: a named entry would
+ * otherwise resolve against the whole roster and record another owner's
+ * pick. Pasted text with no sender at all is Anthony transcribing and is
+ * not unplaced.
+ */
+export function senderUnplaced(item: { senderAddress: string | null; fromOwnerId: string | null }, scopeCount: number): boolean {
+  return (item.senderAddress !== null || item.fromOwnerId !== null) && scopeCount === 0;
+}

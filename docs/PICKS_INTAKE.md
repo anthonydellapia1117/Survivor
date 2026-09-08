@@ -75,7 +75,11 @@ npm run picks -- --paste --from philadelphiapoultryinc@gmail.com
 scopes bare lines and "for both" to that person's entries, and an entry it
 names outside those is staged, never written. A gifted entry's name resolves
 to the person who plays it, never to the buyer: `--from "Chas Flaster"` is
-Chas and his two, not Kris and his four. `--file picks.txt` reads a
+Chas and his two, not Kris and his four. A buyer's scope never holds a
+gifted entry, addressed or not, and a gifted entry with no address on file
+cannot be named by `--from` at all: it is picked by nobody until the address
+is recorded. A `--from` that names a person with no live entry to pick for
+writes nothing; every line is staged. `--file picks.txt` reads a
 file instead of stdin. A message that names a week in its subject or first
 lines ("Re: Week 1 picks - ...") is recorded in that week; `--week N`, then
 the open week, is only the fallback for a message that names none. Mail

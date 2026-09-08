@@ -50,6 +50,8 @@ import {
   pickSourceFor,
   resolveEntry,
   scopeCheck,
+  scopeEntriesFor,
+  senderUnplaced,
   conflictingKeys,
   repeatedWeek,
   stripQuotedReply,
@@ -263,11 +265,7 @@ async function main(): Promise<void> {
   for (const item of items) {
     const ctx = await contextFor(item.week);
     const madeAt = effectiveSubmitTime(item.receivedAt, now);
-    const scopeEntries = item.senderAddress
-      ? entriesFor(item.senderAddress)
-      : item.fromOwnerId
-        ? roster.filter((e) => e.ownerId === item.fromOwnerId && !(e.isGifted && e.playerEmail))
-        : [];
+    const scopeEntries = scopeEntriesFor(item, roster, entriesFor);
     const kind = pendingKind(item.senderAddress, scopeEntries.length);
     const preferredIds = new Set(scopeEntries.map((e) => e.id));
     const body = stripWeekHeading(stripQuotedReply(item.text));
@@ -283,11 +281,12 @@ async function main(): Promise<void> {
     for (const u of unparsed) {
       if (/[A-Za-z]{3,}/.test(u) && !/^(hi|hey|hello|thanks|thank you|thx)\b/i.test(u)) fail("no team recognised on this line", u);
     }
-    // A known address with no live entry behind it (a declined owner, a
-    // voided roster) may name anything; nothing it names is written.
-    const senderUnplaced = item.senderAddress !== null && scopeEntries.length === 0;
+    // A known address, or a --from owner, with no live entry behind it (a
+    // declined owner, a voided roster) may name anything; nothing it names
+    // is written.
+    const unplaced = senderUnplaced(item, scopeEntries.length);
     for (const p of picks) {
-      if (senderUnplaced) {
+      if (unplaced) {
         fail("sender matches no live entry on the roster", p.line);
         continue;
       }
