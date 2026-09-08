@@ -87,6 +87,20 @@ describe("supabaseBackend.getMasterList", () => {
     expect(state.calls).toEqual([[0, 999], [1000, 1999], [0, 999], [1000, 1999]]);
   });
 
+  it("starts over when a shorter replacement sheet makes the next page empty", async () => {
+    const OLD = "2026-09-08T21:53:00Z";
+    const NEW = "2026-09-15T18:00:00Z";
+    reset([
+      { data: rows(1, 1000, OLD), error: null, count: 1319 },
+      { data: [], error: null, count: 900 },
+      { data: rows(1, 900, NEW), error: null, count: 900 },
+    ]);
+    const m = await supabaseBackend.getMasterList();
+    expect(m.rows).toHaveLength(900);
+    expect(m.loadedAt).toBe(NEW);
+    expect(state.calls).toEqual([[0, 999], [1000, 1999], [0, 999]]);
+  });
+
   it("reads as no sheet when the view is not applied yet, and throws on any other error", async () => {
     reset([{ data: null, error: { code: "PGRST205", message: "Could not find the table 'public.v_master_list' in the schema cache" }, count: null }]);
     expect(await supabaseBackend.getMasterList()).toEqual({ loadedAt: null, rows: [] });

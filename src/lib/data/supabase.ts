@@ -197,13 +197,16 @@ export const supabaseBackend: DataBackend = {
     // The loop is driven by the exact count, not by a short page, so a
     // lower response cap than the page size still reads the whole sheet;
     // an empty page ends it either way. Every row carries the sheet's load
-    // time, so a sheet loaded between two pages shows as a changed
-    // sheet_loaded_at and the read starts over rather than mixing rosters.
+    // time and every page the sheet's exact count, so a sheet loaded between
+    // two pages shows as a changed sheet_loaded_at or a changed count (a
+    // shorter replacement can make the next page empty, with no row to carry
+    // a time) and the read starts over rather than mixing rosters.
     const c = client();
     const page = 1000;
     for (let attempt = 0; attempt < 3; attempt++) {
       const rows: MasterListRow[] = [];
       let loadedAt: string | null = null;
+      let expected: number | null = null;
       let changed = false;
       for (let from = 0; ; ) {
         const { data, error, count } = await c
@@ -219,6 +222,11 @@ export const supabaseBackend: DataBackend = {
           return { loadedAt: null, rows: [] };
         }
         if (error) throw error;
+        if (from === 0) expected = count ?? null;
+        else if ((count ?? null) !== expected) {
+          changed = true;
+          break;
+        }
         for (const r of data ?? []) {
           const at = (r.sheet_loaded_at as string | null) ?? null;
           if (loadedAt === null) loadedAt = at;
