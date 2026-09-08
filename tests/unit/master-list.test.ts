@@ -91,8 +91,9 @@ describe("poolDistribution", () => {
         { team: "SEA", count: 1, pct: 33 },
       ],
       other: 1,
+      revealed: 4,
     });
-    expect(poolDistribution(ROWS, 2)).toEqual({ rows: [{ team: "BUF", count: 1, pct: 100 }], other: 0 });
+    expect(poolDistribution(ROWS, 2)).toEqual({ rows: [{ team: "BUF", count: 1, pct: 100 }], other: 0, revealed: 1 });
     expect(poolDistribution(ROWS, 3)).toBeNull();
     expect(poolWeekFilled(ROWS, 1)).toBe(true);
     expect(poolWeekFilled(ROWS, 3)).toBe(false);

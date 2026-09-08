@@ -148,12 +148,27 @@ export const supabaseBackend: DataBackend = {
   },
 
   async getGridCells(): Promise<GridCell[]> {
-    const { data, error } = await client()
-      .from("v_grid_cells")
-      .select("*")
-      .order("week");
-    if (error) throw error;
-    return (data ?? []).map(mapCell);
+    // One current pick per entry per week: 121 entries pass PostgREST's
+    // 1,000-row cap by mid-season, so the view is read a page at a time,
+    // driven by the exact count and advancing by rows received.
+    const c = client();
+    const out: GridCell[] = [];
+    const page = 1000;
+    for (let from = 0; ; ) {
+      const { data, error, count } = await c
+        .from("v_grid_cells")
+        .select("*", { count: "exact" })
+        .order("week")
+        .order("entry_id")
+        .range(from, from + page - 1);
+      if (error) throw error;
+      for (const r of data ?? []) out.push(mapCell(r));
+      if (!data || data.length === 0) break;
+      from += data.length;
+      if (count !== null && count !== undefined && out.length >= count) break;
+      if (data.length < page && (count === null || count === undefined)) break;
+    }
+    return out;
   },
 
   async getPot(): Promise<PotSummary> {
@@ -181,40 +196,51 @@ export const supabaseBackend: DataBackend = {
     // longer than that, so the view is read a page at a time in NO. order.
     // The loop is driven by the exact count, not by a short page, so a
     // lower response cap than the page size still reads the whole sheet;
-    // an empty page ends it either way.
+    // an empty page ends it either way. Every row carries the sheet's load
+    // time, so a sheet loaded between two pages shows as a changed
+    // sheet_loaded_at and the read starts over rather than mixing rosters.
     const c = client();
-    const rows: MasterListRow[] = [];
-    let loadedAt: string | null = null;
     const page = 1000;
-    for (let from = 0; ; ) {
-      const { data, error, count } = await c
-        .from("v_master_list")
-        .select("*", { count: "exact" })
-        .order("row_no")
-        .range(from, from + page - 1);
-      // Code can deploy ahead of its migration (a preview build, or a merge
-      // before the attended apply): a view that is not there yet reads as
-      // no sheet loaded, so every page falls back to our group instead of
-      // failing. Any other error is still an error.
-      if (error && (error.code === "42P01" || error.code === "PGRST205")) {
-        return { loadedAt: null, rows: [] };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const rows: MasterListRow[] = [];
+      let loadedAt: string | null = null;
+      let changed = false;
+      for (let from = 0; ; ) {
+        const { data, error, count } = await c
+          .from("v_master_list")
+          .select("*", { count: "exact" })
+          .order("row_no")
+          .range(from, from + page - 1);
+        // Code can deploy ahead of its migration (a preview build, or a merge
+        // before the attended apply): a view that is not there yet reads as
+        // no sheet loaded, so every page falls back to our group instead of
+        // failing. Any other error is still an error.
+        if (error && (error.code === "42P01" || error.code === "PGRST205")) {
+          return { loadedAt: null, rows: [] };
+        }
+        if (error) throw error;
+        for (const r of data ?? []) {
+          const at = (r.sheet_loaded_at as string | null) ?? null;
+          if (loadedAt === null) loadedAt = at;
+          else if (at !== loadedAt) {
+            changed = true;
+            break;
+          }
+          rows.push({
+            no: Number(r.row_no),
+            names: r.names,
+            cells: (r.cells ?? {}) as Record<string, string>,
+            entryId: r.entry_id ?? null,
+          });
+        }
+        if (changed || !data || data.length === 0) break;
+        from += data.length; // by rows received, so a cap below the page size skips nothing
+        if (count !== null && count !== undefined && rows.length >= count) break;
+        if (data.length < page && (count === null || count === undefined)) break;
       }
-      if (error) throw error;
-      for (const r of data ?? []) {
-        rows.push({
-          no: Number(r.row_no),
-          names: r.names,
-          cells: (r.cells ?? {}) as Record<string, string>,
-          entryId: r.entry_id ?? null,
-        });
-        loadedAt = loadedAt ?? r.sheet_loaded_at ?? null;
-      }
-      if (!data || data.length === 0) break;
-      from += data.length; // by rows received, so a cap below the page size skips nothing
-      if (count !== null && count !== undefined && rows.length >= count) break;
-      if (data.length < page && (count === null || count === undefined)) break;
+      if (!changed) return { loadedAt, rows };
     }
-    return { loadedAt, rows };
+    throw new Error("The master list changed while it was being read; try again.");
   },
 
   async getLynneImports() {

@@ -141,12 +141,16 @@ export function poolWeekFilled(rows: Pick<MasterRow, "cells">[], week: number): 
 /**
  * The whole pool's picks for a week from her sheet: one count per team she
  * named, as a share of the cells that named a team. Cells that are not a
- * team name are left out of the shares and counted separately.
+ * team name are left out of the shares and counted separately. `revealed`
+ * is how many of her rows carry a cell for the week at all: the view serves
+ * a cell only once its game has kicked off, so during a week with staggered
+ * kickoffs this is the revealed subset, not the pool, and the caption has to
+ * say so.
  */
 export function poolDistribution(
   rows: Pick<MasterRow, "cells">[],
   week: number,
-): { rows: PoolDistributionRow[]; other: number } | null {
+): { rows: PoolDistributionRow[]; other: number; revealed: number } | null {
   const col = weekColumns(rows).find((c) => c.week === week);
   if (!col) return null;
   const counts = new Map<string, number>();
@@ -167,7 +171,7 @@ export function poolDistribution(
   const out = [...counts]
     .map(([team, count]) => ({ team, count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }))
     .sort((a, b) => b.count - a.count || a.team.localeCompare(b.team));
-  return { rows: out, other };
+  return { rows: out, other, revealed: total + other };
 }
 
 export interface PoolStat {
