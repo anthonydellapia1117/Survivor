@@ -418,12 +418,22 @@ from roughly the right place and can spot a big discrepancy immediately.
 **121 entries**, and **the pool is closed** - the season opens Wednesday
 2026-09-09 and no entry is added after this. **Free entries are final at 11**
 (FLOOR(110 / 10)); `AAA #11` was minted 2026-09-07 when the roster crossed
-110. **All 121 entries carry a Lynne number**: 972-1087 (116 entries, from
-her `Football 2026-2.xlsx` of 2026-09-06, loaded 2026-09-08 by
-`admin_update_entry`, 99 exact and 17 cosmetic name matches, 0 unmatched),
-1313-1316 (`Andrew DiCicco #1`-`#4`, from her message of 2026-09-07) and
-1317 (`AAA #11`, from her message of 2026-09-07, applied 2026-09-08). The
-load is `docs/2026-09-08_survivor_lynne_numbers.csv`. Money: $2,840 due,
+110. **All 121 entries carry a Lynne number, 972-1092 contiguous**, from
+her corrected master sheet `Football 2026-3.xlsx` of 2026-09-08 (sha256
+`cc7a987c...cb37a`, Gmail message `1a082df163b5a6e6`), applied that evening
+by `admin_update_entry` inside one transaction (audit rows 498-620: one
+clear, 121 updates, one summary; every number nulled first because
+`entries_lynne_number_key` is unique and a +1 shift collides). 10 unchanged
+(`AAA #1`-`#10` at 972-981) and 111 changed: `AAA #11` 1317 to 982, Adriana
+Flacco through thedrick's picks +1 (982-1087 to 983-1088), `Andrew DiCicco
+#1`-`#4` 1313-1316 to 1089-1092. Her NAMES text is the label verbatim
+(`Andrew Dicicco #1`, `Adriana Flacco ` with its trailing space); our entry
+names and `name_is_default` did not move. The mapping is
+`docs/2026-09-08_survivor_lynne_renumber.csv`; the earlier
+`docs/2026-09-08_survivor_lynne_numbers.csv` (972-1087 from `Football
+2026-2.xlsx`) is superseded by it. Her whole sheet, 1319 rows, is in
+`lynne_roster` under that sha256, duplicate names (Ian Lubin 1 and 2 at
+674-675 and again at 1319-1320) kept as separate rows. Money: $2,840 due,
 $1,830 collected, $1,010 outstanding, **$2,750 owed to Lynne** (110 x $25).
 Her buckets are clear (+0 / 0 / -0): the 2026-09-04 batch below went to her
 at 15:44 UTC that day, she replied "Got it.", and the marks were backdated
@@ -604,6 +614,9 @@ Two standing facts that are NOT snapshots and must survive:
   unapplied and had sorted below the applied `20260908171220`
   (`pick_source_text_email`, the file `20260908000063`). Supabase records a
   migration under the timestamp it was applied at, not the file name.
+  `20260908214000_lynne_roster.sql` is the one exception so far: applied
+  attended on 2026-09-08 with the smoke check at a savepoint, ahead of the
+  merge of the PR that carries it, on Anthony's instruction for that run.
 
 ## Gmail
 
