@@ -13,10 +13,10 @@
 //   --before-lock                allow a run before the tier has closed (the
 //                                list can still change until then)
 
-import { adminClient, loadCurrentPicks, loadGames, loadLiveEntries, loadWeeks } from "../lib/db";
+import { adminClient, loadCurrentPicks, loadGames, loadLiveEntries, loadStandings, loadWeeks } from "../lib/db";
 import { createDraftReply, findThreadBySubject, gmailClient } from "../lib/gmail";
 import { gameDayFor, type GameLite } from "../picks/lib/deadline";
-import { draftBody, isLockDay, LOCK_LABEL, lockDeadlineIso, selectForLock, type OutboundPick } from "./lib/outbound";
+import { buildOutboundPicks, draftBody, isLockDay, LOCK_LABEL, lockDeadlineIso, selectForLock } from "./lib/outbound";
 import { formatEt } from "../picks/lib/deadline";
 import { ENTRY_LIST_SUBJECT as THREAD_SUBJECT, LYNNE_EMAIL as LYNNE } from "../lib/constants";
 
@@ -41,11 +41,12 @@ function parseArgs(argv: string[]): { week: number; lock: "tue" | "wed" | "thu" 
 async function main(): Promise<void> {
   const { week, lock, draft, beforeLock } = parseArgs(process.argv.slice(2));
   const { client } = await adminClient();
-  const [entries, gameRows, current, weeks] = await Promise.all([
+  const [entries, gameRows, current, weeks, standings] = await Promise.all([
     loadLiveEntries(client),
     loadGames(client, week),
     loadCurrentPicks(client, week),
     loadWeeks(client),
+    loadStandings(client),
   ]);
   // The list is only final once the tier has closed; before that a player
   // can still change a pick and the draft would be stale the moment it is sent.
@@ -56,19 +57,10 @@ async function main(): Promise<void> {
     throw new Error(`The ${LOCK_LABEL[lock]} closes at ${formatEt(locksAt)}; the list is not final until then. Pass --before-lock to draft it anyway.`);
   }
   const games: GameLite[] = gameRows.map((g) => ({ week: g.week, dayOfWeek: g.day_of_week, homeTeam: g.home_team, awayTeam: g.away_team }));
-  const byId = new Map(entries.map((e) => [e.id, e]));
-  const picks: OutboundPick[] = [];
-  for (const p of current) {
-    const e = byId.get(p.entry_id);
-    if (!e) continue;
-    picks.push({
-      entryName: e.entry_name,
-      lynneNumber: e.lynne_number,
-      lynneLabel: e.lynne_label,
-      team: p.team,
-      gameDay: gameDayFor(p.team, games, week),
-    });
-  }
+  // Only an alive entry with a real team can go to her: a MISSED row and an
+  // eliminated entry's early pick are held back and named below.
+  const statusById = new Map(standings.map((s) => [s.entry_id, s.status]));
+  const { picks, skipped } = buildOutboundPicks(entries, current, statusById, (team) => gameDayFor(team, games, week));
   const result = selectForLock(picks, lock);
   console.log(`Week ${week} - ${LOCK_LABEL[lock]}: ${result.included.length} entries\n`);
   for (const line of result.lines) console.log(line);
@@ -77,6 +69,10 @@ async function main(): Promise<void> {
     for (const x of result.excluded) console.log(`- ${x.pick.entryName} -> ${x.pick.team}: ${x.why}`);
   } else {
     console.log("\nExcluded: none.");
+  }
+  if (skipped.length) {
+    console.log(`\nHeld back before the tier was chosen (${skipped.length}), not sent to Lynne:`);
+    for (const x of skipped) console.log(`- ${x.entryName} -> ${x.team}: ${x.why}`);
   }
   if (!draft) return;
   if (!result.lines.length) {

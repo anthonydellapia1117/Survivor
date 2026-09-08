@@ -50,9 +50,16 @@ jobs:
             const head = pr.head.sha;
             const short = head.slice(0, 7);
 
-            // 1. Codex's summary comment names the commit it reviewed and its status.
+            // 1. Codex's own summary comment names the commit it reviewed and its
+            // status. Only the Codex app's bot identity is trusted: anyone who can
+            // comment could paste the marker and a "Completed" row, so a lookalike
+            // from any other author is ignored.
+            const CODEX_LOGIN = "chatgpt-codex-connector[bot]";
+            const MARKER = "<!-- codex-pull-request-review-summary -->";
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 });
-            const summary = comments.find((c) => (c.body || "").includes("<!-- codex-pull-request-review-summary -->"));
+            const summary = comments.find(
+              (c) => c.user?.login === CODEX_LOGIN && c.user?.type === "Bot" && (c.body || "").includes(MARKER),
+            );
             let codex = "no Codex summary comment yet";
             let concluded = false;
             if (summary) {
@@ -62,12 +69,22 @@ jobs:
               else codex = `Codex is still running on ${short}`;
             }
 
-            // 2. Every review thread resolved (Codex and Copilot findings included).
-            const q = `query($owner: String!, $repo: String!, $n: Int!) {
+            // 2. Every review thread resolved (Codex and Copilot findings included),
+            // read page by page so a thread past the first hundred still counts.
+            const q = `query($owner: String!, $repo: String!, $n: Int!, $after: String) {
               repository(owner: $owner, name: $repo) { pullRequest(number: $n) {
-                reviewThreads(first: 100) { nodes { isResolved } } } } }`;
-            const r = await github.graphql(q, { owner, repo, n: number });
-            const unresolved = r.repository.pullRequest.reviewThreads.nodes.filter((t) => !t.isResolved).length;
+                reviewThreads(first: 100, after: $after) {
+                  nodes { isResolved }
+                  pageInfo { hasNextPage endCursor } } } } }`;
+            let unresolved = 0;
+            let after = null;
+            for (;;) {
+              const r = await github.graphql(q, { owner, repo, n: number, after });
+              const threads = r.repository.pullRequest.reviewThreads;
+              unresolved += threads.nodes.filter((t) => !t.isResolved).length;
+              if (!threads.pageInfo.hasNextPage) break;
+              after = threads.pageInfo.endCursor;
+            }
 
             const ok = concluded && unresolved === 0;
             const summaryText = `${codex}. Unresolved review threads: ${unresolved}.`;

@@ -128,7 +128,11 @@ refuses to run before that tier has closed (the list is not final until
 then; `--before-lock` overrides), prints `<number>  <label>  -  <team>` in
 her own team vocabulary (Seattle, Green Bay, BYE) sorted by her number,
 names any entry it refused (no Lynne number on file; a missing label means
-she holds our entry name, which is what goes out), and creates
+she holds our entry name, which is what goes out), names what it held back
+before the tier was even chosen (a MISSED row from the missed-pick sweep,
+which is a loss and not a team; an entry the standings mark eliminated,
+whose early pick for this week she must not receive; an entry with no
+standings row, which is not on the roster the views carry), and creates
 the same text as a draft in the "Survivor - DellaPia | 2026 Entry List"
 thread. You should see `Draft <id> created ... Not sent`. Open Gmail, check
 it, send. `--no-draft` prints only.

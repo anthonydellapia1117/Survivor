@@ -5,7 +5,11 @@
 import { SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
 import { LYNNE_TEAM_NAME } from "@/lib/lynne/names";
 import { pickDeadlineIso } from "@/lib/deadlines";
-import type { GameDay } from "@/lib/data/types";
+import { isAliveStatus } from "@/lib/alive";
+import type { EntryStatus, GameDay } from "@/lib/data/types";
+
+/** The missed-pick sweep's automatic-loss row. A sentinel, not a team; never sent to her. */
+export const MISSED = "MISSED";
 
 /** The lock day, noon ET, and the game days it closes. */
 export type LockDay = "tue" | "wed" | "thu" | "fri";
@@ -81,4 +85,56 @@ export function selectForLock(picks: OutboundPick[], lock: LockDay): OutboundRes
 
 export function draftBody(week: number, lock: LockDay, lines: string[]): string {
   return ["Hey Lynne,", "", `Week ${week} picks - ${LOCK_LABEL[lock]}:`, "", ...lines, "", "Thanks,", "Anthony", ""].join("\n");
+}
+
+export interface OutboundSkip {
+  entryName: string;
+  team: string;
+  why: string;
+}
+
+/**
+ * The current picks that can go to Lynne at all, before the tier is chosen:
+ * an entry that is still alive, with a real team. MISSED is the sweep's
+ * automatic loss and is no pick (src/lib/lynne/submit.ts treats it as
+ * missing); an entry the standings mark eliminated is already out of her
+ * pool, so a Week N pick it made early is never forwarded (the same
+ * isAliveStatus line /admin/lynne-submit draws); an entry with no standings
+ * row is not on the roster the views carry and is named, never assumed
+ * alive. Every skip is returned so the command prints it.
+ */
+export function buildOutboundPicks(
+  entries: { id: string; entry_name: string; lynne_number: number | null; lynne_label: string | null }[],
+  current: { entry_id: string; team: string }[],
+  statusById: Map<string, string>,
+  gameDay: (team: string) => GameDay | null,
+): { picks: OutboundPick[]; skipped: OutboundSkip[] } {
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const picks: OutboundPick[] = [];
+  const skipped: OutboundSkip[] = [];
+  for (const p of current) {
+    const e = byId.get(p.entry_id);
+    if (!e) continue;
+    const status = statusById.get(e.id);
+    if (p.team === MISSED) {
+      skipped.push({ entryName: e.entry_name, team: p.team, why: "missed-pick sweep row, not a team" });
+      continue;
+    }
+    if (status === undefined) {
+      skipped.push({ entryName: e.entry_name, team: p.team, why: "not on the standings (owner not confirmed?)" });
+      continue;
+    }
+    if (!isAliveStatus(status as EntryStatus)) {
+      skipped.push({ entryName: e.entry_name, team: p.team, why: `eliminated (status ${status})` });
+      continue;
+    }
+    picks.push({
+      entryName: e.entry_name,
+      lynneNumber: e.lynne_number,
+      lynneLabel: e.lynne_label,
+      team: p.team,
+      gameDay: gameDay(p.team),
+    });
+  }
+  return { picks, skipped };
 }

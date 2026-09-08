@@ -12,7 +12,7 @@ section 3.
 | --- | --- | --- |
 | `ci.yml` | `ci` | Lint, typecheck, unit tests, production build, SQL suites on a fresh database built from `supabase/migrations`. On every pull request and every push to main. |
 | `codex-gate.yml` | `codex-gate` | Writes one check on the PR head that passes only when Codex has concluded on that exact commit and every review thread is resolved. Re-runs when the PR moves, when Codex edits its summary, and on a review. GitHub has no workflow event for a thread being resolved, so after resolving threads re-run it by hand: Actions > codex-gate > Run workflow > the PR number. Comment and review events run the copy on main, so they reach a PR only once the workflow is merged. |
-| `migrate.yml` | `migrate` | On a push to main touching `supabase/migrations`, applies each unapplied file to production in one transaction with the smoke check, rolls back and opens an issue on failure. Needs `SUPABASE_DB_URL`. |
+| `migrate.yml` | `migrate` | On a push to main touching `supabase/migrations`, applies every unapplied file to production as one transaction for the whole batch, with the smoke check after each file; a failure anywhere rolls the whole batch back and opens an issue. Needs `SUPABASE_DB_URL`. |
 
 Codex posts no check of its own, only a summary comment it edits as it
 works; `codex-gate` turns that into a check the ruleset can require.
@@ -21,13 +21,15 @@ works; `codex-gate` turns that into a check the ruleset can require.
 
 `scripts/db/migrate-prod.sh` decides what is unapplied by name against
 `supabase_migrations.schema_migrations` (the versions there are the
-timestamps the Supabase tools applied at, not the file prefixes). For each
-file, one transaction: the migration, a savepoint, `scripts/db/smoke.sql`
-(entry count and money totals read back, one existing entry re-saved with
-its own values, one pick submitted on a scratch owner and entry), rollback
-to the savepoint so the scratch data never persists, the tracking row,
-commit. A raise anywhere rolls back the migration itself. The job then opens
-an issue with the log tail.
+timestamps the Supabase tools applied at, not the file prefixes). The whole
+pending batch is one transaction. For each file in turn: the migration, a
+savepoint, `scripts/db/smoke.sql` (entry count and money totals read back,
+one existing entry re-saved with its own values, one pick submitted on a
+scratch owner and entry), rollback to the savepoint so the scratch data
+never persists, the tracking row. One commit at the end. A raise anywhere,
+in the third file as much as the first, leaves the transaction open when
+psql stops, so nothing in the batch is applied and production is exactly as
+it was. The job then opens an issue with the log tail.
 
 The check runs as the admin through the JWT claims for that transaction
 only. Nothing it writes survives: the entry save and the scratch pick are

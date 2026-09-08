@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftBody, LOCK_GAME_DAYS, selectForLock, type OutboundPick } from "../../scripts/lynne/lib/outbound";
+import { buildOutboundPicks, draftBody, LOCK_GAME_DAYS, selectForLock, type OutboundPick } from "../../scripts/lynne/lib/outbound";
 
 const picks: OutboundPick[] = [
   { entryName: "E.A.T.", lynneNumber: 1004, lynneLabel: "E.A.T.", team: "SEA", gameDay: "Wednesday" },
@@ -69,5 +69,41 @@ describe("her label", () => {
     );
     expect(r.lines).toEqual(["1001  Pumpy321  -  Philadelphia"]);
     expect(r.excluded.map((x) => x.why)).toEqual(["no Lynne number on file"]);
+  });
+});
+
+describe("buildOutboundPicks", () => {
+  const entries = [
+    { id: "a", entry_name: "Pumpy321", lynne_number: 1001, lynne_label: null },
+    { id: "b", entry_name: "E.A.T.", lynne_number: 1004, lynne_label: "E.A.T." },
+    { id: "c", entry_name: "Nicco E", lynne_number: 1010, lynne_label: null },
+    { id: "d", entry_name: "TNat", lynne_number: 1020, lynne_label: null },
+  ];
+  const current = [
+    { entry_id: "a", team: "MISSED" },
+    { entry_id: "b", team: "SEA" },
+    { entry_id: "c", team: "KC" },
+    { entry_id: "d", team: "DET" },
+  ];
+  const statusById = new Map([
+    ["a", "active"],
+    ["b", "at_risk"],
+    ["c", "eliminated"],
+  ]);
+  const r = buildOutboundPicks(entries, current, statusById, (team) => (team === "SEA" ? "Wednesday" : "Sunday"));
+  it("never forwards the sweep's MISSED row as a team", () => {
+    expect(r.picks.map((p) => p.entryName)).not.toContain("Pumpy321");
+    expect(r.skipped).toContainEqual({ entryName: "Pumpy321", team: "MISSED", why: "missed-pick sweep row, not a team" });
+  });
+  it("never forwards an eliminated entry's pick, and names it", () => {
+    expect(r.picks.map((p) => p.entryName)).not.toContain("Nicco E");
+    expect(r.skipped).toContainEqual({ entryName: "Nicco E", team: "KC", why: "eliminated (status eliminated)" });
+  });
+  it("refuses an entry with no standings row rather than assuming it alive", () => {
+    expect(r.picks.map((p) => p.entryName)).not.toContain("TNat");
+    expect(r.skipped.find((x) => x.entryName === "TNat")?.why).toMatch(/not on the standings/);
+  });
+  it("keeps an alive entry with its number, her label and its game day", () => {
+    expect(r.picks).toEqual([{ entryName: "E.A.T.", lynneNumber: 1004, lynneLabel: "E.A.T.", team: "SEA", gameDay: "Wednesday" }]);
   });
 });

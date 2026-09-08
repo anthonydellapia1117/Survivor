@@ -1,10 +1,11 @@
 # Migrations go in with the code, never ahead of it: on every push to main
-# that touches supabase/migrations, apply each unapplied file to production
-# inside one transaction with a smoke check at a savepoint (entry count,
-# money totals, one entry save, one pick on a scratch entry). A failed check
-# rolls the migration back and opens an issue. Migrations 60 to 62 applied
-# ahead of their code on 2026-09-04 broke entry saves for hours; this is the
-# fix. Needs the repository secret SUPABASE_DB_URL (docs/MERGE_AUTOMATION.md).
+# that touches supabase/migrations, apply every unapplied file to production
+# as one transaction for the whole batch, with a smoke check at a savepoint
+# after each file (entry count, money totals, one entry save, one pick on a
+# scratch entry). A failure anywhere rolls the whole batch back and opens an
+# issue. Migrations 60 to 62 applied ahead of their code on 2026-09-04 broke
+# entry saves for hours; this is the fix. Needs the repository secret
+# SUPABASE_DB_URL (docs/MERGE_AUTOMATION.md).
 name: migrate
 
 on:
@@ -54,7 +55,7 @@ jobs:
               repo: context.repo.repo,
               title: `Migration job failed on ${sha}: production unchanged`,
               body: [
-                `The post-merge migration job failed on ${sha}. Every migration it tried was rolled back in the same transaction as its smoke check, so production carries no partial change.`,
+                `The post-merge migration job failed on ${sha}. The whole pending batch runs as one transaction that commits only at the end, so nothing it tried was applied and production carries no partial change.`,
                 "",
                 `Run: ${url}`,
                 "",
