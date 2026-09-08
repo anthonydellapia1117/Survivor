@@ -179,6 +179,22 @@ async function main(): Promise<void> {
     return;
   }
 
+  // On a mixed message (owned and gifted entries on one person) each gifted
+  // entry names its buyer, so the reader sees which is which. Owner-only and
+  // player-only messages carry no note: nothing there is ambiguous.
+  const ownerNameById = new Map(owners.map((o) => [o.id, `${o.first_name} ${o.last_name}`.trim()]));
+  const buyerByEntryId = new Map(entries.map((e) => [e.id, ownerNameById.get(e.owner_id) ?? ""]));
+  const giftedNotes = (r: Recipient): Record<string, string> | undefined => {
+    if (r.kind !== "mixed") return undefined;
+    const notes: Record<string, string> = {};
+    for (const e of r.entries) {
+      if (!e.isGifted) continue;
+      const buyer = buyerByEntryId.get(e.id);
+      if (buyer) notes[e.entryName] = `bought by ${buyer}`;
+    }
+    return notes;
+  };
+
   // ---- deadlines per recipient
   const chases: Chase[] = [];
   const closed: Recipient[] = [];
@@ -199,6 +215,7 @@ async function main(): Promise<void> {
         week,
         greetingName: r.greetingName,
         entryNames: r.entries.map((e) => e.entryName),
+        entryNotes: giftedNotes(r),
         tiers,
         lateDeadlineIso: bounds.lateDeadlineAt,
       }),

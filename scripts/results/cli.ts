@@ -117,6 +117,16 @@ async function main(): Promise<void> {
   const plan = buildResultsPlan({ buf, filename: attachment.filename, week, entries, standings, localPicks });
 
   // ---- show, before any write
+  // An older sheet can carry a Week N column with nothing in it yet: her
+  // headers run the whole season. Importing it as Week N would record every
+  // entry as missing on her sheet. The app's preview shows latestFilledWeek
+  // and leaves the click to Anthony; a command that can run with --yes
+  // refuses instead and names the file to use.
+  if (plan.format === "grid" && plan.latestFilledWeek !== null && plan.latestFilledWeek < week) {
+    throw new Error(
+      `Her sheet's latest filled week is ${plan.latestFilledWeek}, not ${week}: ${attachment.filename} predates Week ${week}. Pass --message-id for the message that carries her Week ${week} sheet.`,
+    );
+  }
   console.log(`\nWeek ${week} import plan for ${attachment.filename}`);
   for (const line of planSummaryLines(plan)) console.log(line);
   const conflictCount = plan.format === "grid" ? plan.conflicts.length : 0;

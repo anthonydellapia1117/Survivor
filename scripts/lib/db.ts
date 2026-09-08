@@ -112,6 +112,7 @@ export async function loadOwners(client: SupabaseClient): Promise<OwnerRow[]> {
       .from("owners")
       .select("id, first_name, last_name, email, participation_status")
       .is("deleted_at", null)
+      .order("created_at")
       .returns<OwnerRow[]>(),
     "owners",
   );
@@ -125,6 +126,8 @@ export async function loadLiveEntries(client: SupabaseClient): Promise<EntryRow[
         "id, owner_id, entry_name, player_email, is_gifted, is_free_entry, lynne_number, lynne_label, voided_at",
       )
       .is("voided_at", null)
+      .order("created_at")
+      .order("entry_index")
       .returns<EntryRow[]>(),
     "entries",
   );

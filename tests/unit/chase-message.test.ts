@@ -78,6 +78,19 @@ describe("subject", () => {
 });
 
 describe("recipientBody", () => {
+  it("on a mixed message each gifted entry says who bought it and owned ones stay bare", () => {
+    const body = recipientBody({
+      week: 1,
+      greetingName: "Chas",
+      entryNames: ["Chas Own #1", "Chas Flaster #1"],
+      entryNotes: { "Chas Flaster #1": "bought by Kris Tomasco" },
+      tiers: tuesdayTiers(),
+      lateDeadlineIso: WEEK1.lateDeadlineAt,
+    });
+    expect(body).toContain("\n  Chas Own #1\n");
+    expect(body).toContain("\n  Chas Flaster #1 (bought by Kris Tomasco)\n");
+  });
+
   it("lists every entry name verbatim, one per line, in roster order", () => {
     const body = recipientBody({ week: 1, greetingName: "Tom", entryNames: NAMES, tiers: tuesdayTiers(), lateDeadlineIso: WEEK1.lateDeadlineAt });
     const lines = body.split("\n");

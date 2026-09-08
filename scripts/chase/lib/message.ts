@@ -192,6 +192,13 @@ export interface RecipientMessageInput {
   greetingName: string;
   /** As stored. Printed one per line, verbatim. */
   entryNames: string[];
+  /**
+   * A note after an entry name, keyed by that name: on a mixed message
+   * (some entries the person owns, some bought for them) each gifted entry
+   * says who bought it, so one message says plainly which is which
+   * (CLAUDE.md, Gifted entries). The name itself is never altered.
+   */
+  entryNotes?: Record<string, string>;
   /** This person's open tiers, earliest first (openTiers merged across their entries). */
   tiers: Tier[];
   lateDeadlineIso: string;
@@ -199,11 +206,12 @@ export interface RecipientMessageInput {
 
 export function recipientBody(i: RecipientMessageInput): string {
   const plural = i.entryNames.length > 1;
+  const notes = i.entryNotes ?? {};
   return [
     `${i.greetingName},`,
     "",
     `I do not have a Week ${i.week} pick yet for:`,
-    ...i.entryNames.map((name) => `  ${name}`),
+    ...i.entryNames.map((name) => `  ${name}${notes[name] ? ` (${notes[name]})` : ""}`),
     "",
     replyLine(plural),
     "",
