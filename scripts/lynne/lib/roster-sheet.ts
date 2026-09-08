@@ -77,12 +77,15 @@ export function parseRosterSheet(buf: Buffer | Uint8Array): ParsedRosterSheet {
     const no = cellNumber(ws, r, 0);
     const names = cellText(ws, r, 1);
     const sheetRow = r + 1;
-    if (no === null && (names === null || names === "")) continue; // blank line
+    // A NAMES cell that is empty or only whitespace is no name. The test is
+    // on a trimmed copy; the stored value stays verbatim, trailing spaces kept.
+    const blank = names === null || names.trim() === "";
+    if (no === null && blank) continue; // blank line
     if (no === null) {
       skipped.push({ row: sheetRow, reason: "no integer NO." });
       continue;
     }
-    if (names === null || names === "") {
+    if (blank) {
       skipped.push({ row: sheetRow, reason: `NO. ${no} has no NAMES` });
       continue;
     }

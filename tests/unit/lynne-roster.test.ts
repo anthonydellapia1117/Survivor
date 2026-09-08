@@ -57,6 +57,12 @@ describe("parseRosterSheet", () => {
     expect(() => parseRosterSheet(sheet([["NO.", "NAMES"], [5, "a"], [5, "b"]]))).toThrow("NO. 5 appears on sheet rows 2 and 3");
   });
 
+  it("skips a NAMES cell that is only whitespace, while a real trailing space is kept verbatim", () => {
+    const p2 = parseRosterSheet(sheet([["NO.", "NAMES"], [8, "   "], [9, "Real "]]));
+    expect(p2.rows).toEqual([{ row: 3, no: 9, names: "Real ", cells: {} }]);
+    expect(p2.skipped).toEqual([{ row: 2, reason: "NO. 8 has no NAMES" }]);
+  });
+
   it("refuses a sheet with no usable row instead of handing the CLI an empty list", () => {
     expect(() => parseRosterSheet(sheet([["NO.", "NAMES"]]))).toThrow("No row with an integer NO. and a NAMES text");
     expect(() => parseRosterSheet(sheet([["NO.", "NAMES"], ["x", "not a row"], [7, null]]))).toThrow("2 rows read, 2 skipped");
