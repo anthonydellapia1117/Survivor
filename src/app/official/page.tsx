@@ -49,7 +49,9 @@ export default async function LynnePage() {
             <span className="font-medium">
               {latest.week ? `Week ${latest.week}` : "Latest import"}
             </span>
-            <span className="text-muted-foreground">{latest.filename}</span>
+            {/* The uploaded filename is admin-only: it is whatever the
+                master pool's runner named the file, so it never renders on a
+                public route. Week, time and counts identify the import. */}
             <span className="text-muted-foreground" suppressHydrationWarning>
               imported {formatEtDateTime(latest.importedAt)} ET
             </span>
@@ -166,7 +168,6 @@ export default async function LynnePage() {
                     <span className="font-medium">
                       {im.week ? `W${im.week}` : "-"}
                     </span>
-                    <span className="text-muted-foreground">{im.filename}</span>
                     <span
                       className="ml-auto text-xs text-muted-foreground"
                       suppressHydrationWarning
