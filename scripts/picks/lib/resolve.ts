@@ -335,3 +335,50 @@ export function pendingKind(
   if (senderAddress === null) return "identity";
   return scopeEntryCount > 0 ? "player_question" : "identity";
 }
+
+/**
+ * The week a message names ("Re: Week 1 picks - Kris - 2 entries",
+ * "WEEK 12", "week #3"), or null when it names none or names one outside
+ * 1 to 18. A reply says which week it answers; the command's week is only
+ * the fallback for a message that says nothing. Without this, a Week N
+ * reply read after Friday noon lands in Week N+1 as an on-time pick.
+ */
+export function weekNamedIn(text: string): number | null {
+  const m = /\bweek\s*#?\s*(\d{1,2})\b/i.exec(text);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n >= 1 && n <= 18 ? n : null;
+}
+
+/** The first few non-empty lines of a body, where a week is usually named. */
+export function leadingLines(text: string, count = 5): string {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, count)
+    .join("\n");
+}
+
+/**
+ * A known sender may pick only for the entries they own or play. An entry
+ * named in their message that resolves elsewhere on the roster is staged,
+ * never written: a buyer naming a giftee's entry, or anyone naming a
+ * stranger's, has no authority over that pick (CLAUDE.md, Gifted entries).
+ * With no sender scope (pasted text, no --from) the roster is Anthony's.
+ */
+export function scopeCheck(entryId: string, scopeIds: Set<string>): "ok" | "outside" {
+  if (scopeIds.size === 0) return "ok";
+  return scopeIds.has(entryId) ? "ok" : "outside";
+}
+
+/**
+ * When a pick counts as made: the moment the mail arrived when there is
+ * one, otherwise now. A reply that beat its deadline stays on time however
+ * long it waited to be read; the RPC is given the same instant.
+ */
+export function effectiveSubmitTime(receivedAt: string | null, now: Date): Date {
+  if (!receivedAt) return now;
+  const t = new Date(receivedAt);
+  return Number.isNaN(t.getTime()) ? now : t;
+}

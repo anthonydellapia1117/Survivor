@@ -13,6 +13,13 @@
 //
 // Anything else that wants to send has to come here and add itself to the
 // allowlist in a reviewed change. gmail.ts stays send-free.
+//
+// Two runs overlapping (a Routine firing while Anthony runs the command by
+// hand) could each read no prior send and both mail one recipient. The
+// snapshot is re-read immediately before each send, which closes the window
+// to the Gmail call itself; a database reservation would need a migration
+// and, per CLAUDE.md (Working rules), a concurrency case one admin does not
+// produce is documented, not built for. Do not run two autosends at once.
 
 import type { gmail_v1 } from "googleapis";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -112,6 +119,13 @@ export async function sendAllowlisted(
   const lockDay = lockDayKey(req.deadlineIso);
   const dup = alreadySent(prior, req.to, lockDay);
   if (dup) return { kind: "already_sent", prior: dup, lockDay };
+  // Re-read right before the send: the caller's snapshot may be minutes old.
+  const fresh = await priorSends(client);
+  const dupNow = alreadySent(fresh, req.to, lockDay);
+  if (dupNow) {
+    prior.push(dupNow);
+    return { kind: "already_sent", prior: dupNow, lockDay };
+  }
 
   const m: OutboundMessage = { to: [req.to], subject: req.subject, body: req.body };
   const res = await gmail.users.messages.send({ userId: "me", requestBody: { raw: encodeRaw(m) } });

@@ -11,6 +11,13 @@
 //   npm run picks -- --file picks.txt   read picks from a file (source text)
 //   options: --week N  --from <email or name>  --source text|email
 //            --dry-run  --keep-unread
+//
+// The week a message names in its subject or first lines is the week it is
+// recorded in; --week (then the open week) is only the fallback. A mail's
+// Gmail receipt time is the pick's time, for the LATE column and for the
+// RPC, so a reply that beat its deadline stays on time however long it
+// waited. A known sender may pick only for entries they own or play;
+// anything else they name is staged, never written.
 
 import fs from "node:fs";
 import {
@@ -30,12 +37,16 @@ import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm, readStdin } from "../lib/prompt";
 import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from "./lib/deadline";
 import {
+  effectiveSubmitTime,
+  leadingLines,
   parsePickLines,
-  resolveEntry,
-  stripQuotedReply,
-  type RosterEntry,
   pendingKind,
   pickSourceFor,
+  resolveEntry,
+  scopeCheck,
+  stripQuotedReply,
+  weekNamedIn,
+  type RosterEntry,
 } from "./lib/resolve";
 
 const DONE_LABEL = "Pool-Survivor-Done";
@@ -75,18 +86,31 @@ interface Item {
   source: "email" | "text";
   senderAddress: string | null;
   messageId: string | null;
+  /** The week the message names, else the command's week. */
+  week: number;
+  /** Gmail receipt time; null for pasted or filed text. */
+  receivedAt: string | null;
 }
 
 interface Proposal {
   entry: RosterEntry;
+  week: number;
   team: string;
   source: "email" | "text";
   deadline: string;
   late: boolean;
+  /** The instant the pick counts as made; passed to the RPC when known. */
+  submittedAt: string | null;
   existing: CurrentPickRow | null;
   how: string;
   messageId: string | null;
   itemLabel: string;
+}
+
+interface WeekContext {
+  bounds: WeekBounds;
+  games: GameLite[];
+  currentByEntry: Map<string, CurrentPickRow>;
 }
 
 interface Unresolved {
@@ -106,14 +130,30 @@ async function main(): Promise<void> {
   const { client, actor } = await adminClient();
   const [owners, entries, weeks] = await Promise.all([loadOwners(client), loadLiveEntries(client), loadWeeks(client)]);
   const now = new Date();
-  const week = args.week ?? currentWeek(weeks, now);
-  if (week === null) throw new Error("No open week; pass --week N.");
-  const bounds = weeks.find((w) => w.week === week);
-  if (!bounds) throw new Error(`Week ${week} not found.`);
-  const weekBounds: WeekBounds = { week, earlyDeadlineAt: bounds.early_deadline_at, lateDeadlineAt: bounds.late_deadline_at };
-  const [gameRows, current] = await Promise.all([loadGames(client, week), loadCurrentPicks(client, week)]);
-  const games: GameLite[] = gameRows.map((g) => ({ week: g.week, dayOfWeek: g.day_of_week, homeTeam: g.home_team, awayTeam: g.away_team }));
-  const currentByEntry = new Map(current.map((p) => [p.entry_id, p]));
+  // The week a message names wins; --week, then the open week, is only the
+  // fallback for a message that names none. A Week 1 reply read on Saturday
+  // is a late Week 1 pick, never a Week 2 one.
+  const fallbackWeek = args.week ?? currentWeek(weeks, now);
+  const weekFor = (named: number | null): number => {
+    if (named !== null) return named;
+    if (fallbackWeek === null) throw new Error("No open week and the message names none; pass --week N.");
+    return fallbackWeek;
+  };
+  const contexts = new Map<number, WeekContext>();
+  const contextFor = async (week: number): Promise<WeekContext> => {
+    const cached = contexts.get(week);
+    if (cached) return cached;
+    const bounds = weeks.find((w) => w.week === week);
+    if (!bounds) throw new Error(`Week ${week} not found.`);
+    const [gameRows, current] = await Promise.all([loadGames(client, week), loadCurrentPicks(client, week)]);
+    const ctx: WeekContext = {
+      bounds: { week, earlyDeadlineAt: bounds.early_deadline_at, lateDeadlineAt: bounds.late_deadline_at },
+      games: gameRows.map((g) => ({ week: g.week, dayOfWeek: g.day_of_week, homeTeam: g.home_team, awayTeam: g.away_team })),
+      currentByEntry: new Map(current.map((p) => [p.entry_id, p])),
+    };
+    contexts.set(week, ctx);
+    return ctx;
+  };
 
   const ownerById = new Map(owners.map((o) => [o.id, o]));
   const roster: RosterEntry[] = entries.map((e) => {
@@ -156,7 +196,15 @@ async function main(): Promise<void> {
         else throw new Error(`--from "${args.from}" matches ${hits.length} owners: ${hits.map((h) => `${h.first_name} ${h.last_name}`).join(", ") || "none"}`);
       }
     }
-    items.push({ label: args.file ?? "pasted text", text, source: pickSourceFor("paste", args.source), senderAddress: sender, messageId: null });
+    items.push({
+      label: args.file ?? "pasted text",
+      text,
+      source: pickSourceFor("paste", args.source),
+      senderAddress: sender,
+      messageId: null,
+      week: weekFor(args.week ?? weekNamedIn(leadingLines(text))),
+      receivedAt: null,
+    });
   } else {
     if (args.source !== null) {
       throw new Error("--source applies to --paste or --file only; mail read from Gmail is always recorded as email.");
@@ -174,6 +222,8 @@ async function main(): Promise<void> {
         source: pickSourceFor("gmail", args.source),
         senderAddress: m.fromAddress,
         messageId: m.id,
+        week: weekFor(weekNamedIn(m.subject) ?? weekNamedIn(leadingLines(stripQuotedReply(m.body)))),
+        receivedAt: m.receivedAt,
       });
     }
     if (!msgs.length) console.log("No unread mail from any known player address.");
@@ -183,6 +233,8 @@ async function main(): Promise<void> {
   const proposals: Proposal[] = [];
   const unresolved: Unresolved[] = [];
   for (const item of items) {
+    const ctx = await contextFor(item.week);
+    const madeAt = effectiveSubmitTime(item.receivedAt, now);
     const scopeEntries = item.senderAddress ? entriesFor(item.senderAddress) : [];
     const kind = pendingKind(item.senderAddress, scopeEntries.length);
     const preferredIds = new Set(scopeEntries.map((e) => e.id));
@@ -223,17 +275,24 @@ async function main(): Promise<void> {
           fail(`entry "${p.entryRaw}": ${r.reason.replace(/_/g, " ")}`, p.line, r.candidates);
           continue;
         }
+        // A known sender picks only for entries they own or play.
+        if (scopeCheck(r.entry.id, preferredIds) === "outside") {
+          fail(`entry "${p.entryRaw}" is ${r.entry.entryName}, not one of the sender's entries`, p.line, scopeEntries);
+          continue;
+        }
         targets = [{ entry: r.entry, how: r.how }];
       }
       for (const t of targets) {
-        const deadline = deadlineFor(p.team, weekBounds, games);
+        const deadline = deadlineFor(p.team, ctx.bounds, ctx.games);
         proposals.push({
           entry: t.entry,
+          week: item.week,
           team: p.team,
           source: item.source,
           deadline,
-          late: isLate(deadline, now),
-          existing: currentByEntry.get(t.entry.id) ?? null,
+          late: isLate(deadline, madeAt),
+          submittedAt: item.receivedAt,
+          existing: ctx.currentByEntry.get(t.entry.id) ?? null,
           how: t.how,
           messageId: item.messageId,
           itemLabel: item.label,
@@ -245,8 +304,9 @@ async function main(): Promise<void> {
   // ---- show
   const toWrite = proposals.filter((p) => !(p.existing && p.existing.team === p.team));
   const already = proposals.filter((p) => p.existing && p.existing.team === p.team);
-  console.log(`\nWeek ${week}. Proposed picks (${toWrite.length} to write, ${already.length} already recorded):\n`);
-  const header = `${pad("#", 3)} ${pad("entry", 26)} ${pad("owner", 22)} ${pad("team", 5)} ${pad("deadline", 24)} ${pad("timing", 8)} note`;
+  const weeksSeen = [...new Set(proposals.map((p) => p.week))].sort((a, b) => a - b);
+  console.log(`\nProposed picks (${toWrite.length} to write, ${already.length} already recorded)${weeksSeen.length ? `, week${weeksSeen.length > 1 ? "s" : ""} ${weeksSeen.join(", ")}` : ""}:\n`);
+  const header = `${pad("#", 3)} ${pad("wk", 3)} ${pad("entry", 26)} ${pad("owner", 22)} ${pad("team", 5)} ${pad("deadline", 24)} ${pad("timing", 8)} note`;
   console.log(header);
   console.log("-".repeat(header.length));
   let i = 0;
@@ -258,7 +318,7 @@ async function main(): Promise<void> {
         ? `OVERRIDE, was ${p.existing.team}`
         : `new (${p.how})`;
     console.log(
-      `${pad(String(++i), 3)} ${pad(p.entry.entryName, 26)} ${pad(p.entry.ownerName.trim(), 22)} ${pad(p.team, 5)} ${pad(formatEt(p.deadline), 24)} ${pad(p.late ? "LATE" : "on time", 8)} ${note}`,
+      `${pad(String(++i), 3)} ${pad(String(p.week), 3)} ${pad(p.entry.entryName, 26)} ${pad(p.entry.ownerName.trim(), 22)} ${pad(p.team, 5)} ${pad(formatEt(p.deadline), 24)} ${pad(p.late ? "LATE" : "on time", 8)} ${note}`,
     );
   }
   if (unresolved.length) {
@@ -284,15 +344,22 @@ async function main(): Promise<void> {
   // ---- write
   const touched = new Set<string>();
   for (const p of toWrite) {
-    const id = await submitPick(client, { entryId: p.entry.id, week, team: p.team, source: p.source, actor });
-    console.log(`wrote ${p.entry.entryName} -> ${p.team} (${p.source}${p.late ? ", late" : ""}) pick ${id}`);
+    const id = await submitPick(client, {
+      entryId: p.entry.id,
+      week: p.week,
+      team: p.team,
+      source: p.source,
+      actor,
+      submittedAt: p.submittedAt,
+    });
+    console.log(`wrote week ${p.week} ${p.entry.entryName} -> ${p.team} (${p.source}${p.late ? ", late" : ""}${p.submittedAt ? `, received ${formatEt(p.submittedAt)}` : ""}) pick ${id}`);
     if (p.messageId) touched.add(p.messageId);
   }
   for (const u of unresolved) {
     await stagePending(client, {
       kind: u.kind,
       payload: {
-        week,
+        week: u.item.week,
         from: u.item.senderAddress,
         subject: u.item.label,
         line: u.line,
@@ -316,7 +383,7 @@ async function main(): Promise<void> {
     console.log(`${touched.size} message(s) marked read and filed under ${DONE_LABEL}.`);
   }
   console.log(`\nDone. ${toWrite.length} written, ${unresolved.length} staged.`);
-  await notify(finishedLine("picks", `week ${week}: ${toWrite.length} written, ${unresolved.length} staged`));
+  await notify(finishedLine("picks", `week${weeksSeen.length > 1 ? "s" : ""} ${weeksSeen.join(", ") || String(fallbackWeek ?? "?")}: ${toWrite.length} written, ${unresolved.length} staged`));
 }
 
 main().catch((e: unknown) => {

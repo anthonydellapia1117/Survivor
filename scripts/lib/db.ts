@@ -313,7 +313,16 @@ export function currentWeek(weeks: WeekBoundsRow[], now: Date): number | null {
 
 export async function submitPick(
   client: SupabaseClient,
-  p: { entryId: string; week: number; team: string; source: "email" | "text"; actor: string },
+  p: {
+    entryId: string;
+    week: number;
+    team: string;
+    source: "email" | "text";
+    actor: string;
+    /** When the pick was made (the mail's receipt time); the RPC judges
+     *  lateness at this instant. Omitted, the RPC uses now(). */
+    submittedAt?: string | null;
+  },
 ): Promise<string> {
   const { data, error } = await client.rpc("admin_submit_pick", {
     p_entry_id: p.entryId,
@@ -321,6 +330,7 @@ export async function submitPick(
     p_team: p.team,
     p_source: p.source,
     p_actor: p.actor,
+    ...(p.submittedAt ? { p_submitted_at: p.submittedAt } : {}),
   });
   if (error) throw new Error(`admin_submit_pick: ${error.message}`);
   return String(data);

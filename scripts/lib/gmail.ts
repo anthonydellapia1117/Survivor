@@ -80,6 +80,8 @@ export interface InboundMessage {
   fromAddress: string;
   subject: string;
   date: string;
+  /** When Gmail received it, ISO, from internalDate; the pick's own time. */
+  receivedAt: string;
   body: string;
 }
 
@@ -144,17 +146,21 @@ export async function listUnreadFrom(gmail: gmail_v1.Gmail, addresses: string[])
     const res = await gmail.users.messages.get({ userId: "me", id, format: "full" });
     const headers = res.data.payload?.headers;
     const from = header(headers, "From");
+    const internal = Number(res.data.internalDate ?? 0);
+    const dateHeader = header(headers, "Date");
+    const receivedAt = internal > 0 ? new Date(internal).toISOString() : new Date(dateHeader).toISOString();
     out.push({
       id,
       threadId: res.data.threadId ?? "",
       from,
       fromAddress: addressOf(from),
       subject: header(headers, "Subject"),
-      date: header(headers, "Date"),
+      date: dateHeader,
+      receivedAt,
       body: bodyOf(res.data.payload),
     });
   }
-  out.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  out.sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime());
   return out;
 }
 
