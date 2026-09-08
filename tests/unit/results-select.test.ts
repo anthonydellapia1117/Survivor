@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MessageMeta } from "../../scripts/lib/gmail";
-import { footballAttachment, isFootballXlsx, selectFootballMessage } from "../../scripts/results/lib/select";
+import { footballAttachment, isFootballXlsx, refuseWeekMismatch, selectFootballMessage } from "../../scripts/results/lib/select";
 
 function msg(id: string, internalMs: number, files: string[]): MessageMeta {
   return {
@@ -99,5 +99,18 @@ describe("refuseDuplicateImport", () => {
     );
     expect(refuseDuplicateImport({ id: "imp-2", week: null, imported_at: "x" })).toContain("week unknown");
     expect(refuseDuplicateImport(null)).toBeNull();
+  });
+});
+
+describe("refuseWeekMismatch", () => {
+  it("accepts the sheet whose latest filled week is the week being imported, or one with no filled week", () => {
+    expect(refuseWeekMismatch(2, 2, "Football 2026-3.xlsx")).toBeNull();
+    expect(refuseWeekMismatch(null, 2, "Football 2026-3.xlsx")).toBeNull();
+  });
+  it("refuses an older sheet", () => {
+    expect(refuseWeekMismatch(1, 2, "Football 2026-2.xlsx")).toMatch(/latest filled week is 1, not 2: Football 2026-2.xlsx predates Week 2/);
+  });
+  it("refuses a newer sheet, which is the next week's file and must keep its sha256 for that import", () => {
+    expect(refuseWeekMismatch(3, 2, "Football 2026-4.xlsx")).toMatch(/latest filled week is 3, not 2: Football 2026-4.xlsx is a later sheet/);
   });
 });

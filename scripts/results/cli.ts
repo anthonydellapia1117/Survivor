@@ -34,7 +34,7 @@ import {
   varianceTable,
 } from "./lib/format";
 import { buildResultsPlan, sha256Of } from "./lib/plan";
-import { footballAttachment, selectFootballMessage, type FootballSelection, refuseDuplicateImport } from "./lib/select";
+import { footballAttachment, refuseDuplicateImport, refuseWeekMismatch, selectFootballMessage, type FootballSelection } from "./lib/select";
 
 interface Args {
   week: number;
@@ -118,10 +118,11 @@ async function main(): Promise<void> {
   // entry as missing on her sheet. The app's preview shows latestFilledWeek
   // and leaves the click to Anthony; a command that can run with --yes
   // refuses instead and names the file to use.
-  if (plan.format === "grid" && plan.latestFilledWeek !== null && plan.latestFilledWeek < week) {
-    throw new Error(
-      `Her sheet's latest filled week is ${plan.latestFilledWeek}, not ${week}: ${attachment.filename} predates Week ${week}. Pass --message-id for the message that carries her Week ${week} sheet.`,
-    );
+  // A newer sheet is refused too: it is Week N+1's file, and importing it as
+  // Week N would spend its sha256 on the wrong week.
+  if (plan.format === "grid") {
+    const mismatch = refuseWeekMismatch(plan.latestFilledWeek, week, attachment.filename);
+    if (mismatch !== null) throw new Error(mismatch);
   }
   console.log(`\nWeek ${week} import plan for ${attachment.filename}`);
   for (const line of planSummaryLines(plan)) console.log(line);

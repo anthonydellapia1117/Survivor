@@ -52,7 +52,7 @@ import {
   scopeCheck,
   scopeEntriesFor,
   senderUnplaced,
-  conflictingKeys,
+  conflictedKeys,
   repeatedWeek,
   stripQuotedReply,
   stripWeekHeading,
@@ -262,6 +262,9 @@ async function main(): Promise<void> {
   // ---- resolve
   const proposals: Proposal[] = [];
   const unresolved: Unresolved[] = [];
+  /** Repeated teams staged as eliminations, kept so the one-entry-one-team check still sees them. */
+  const stagedRepeats: { key: string; team: string; entryName: string; usedIn: number; item: Item }[] = [];
+  const keyFor = (label: string, week: number, entryId: string) => `${label}|${week}|${entryId}`;
   for (const item of items) {
     const ctx = await contextFor(item.week);
     const madeAt = effectiveSubmitTime(item.receivedAt, now);
@@ -333,6 +336,7 @@ async function main(): Promise<void> {
         // Anthony records it knowingly on /admin/queue or dismisses it.
         const usedIn = repeatedWeek(p.team, ctx.priorByEntry.get(t.entry.id));
         if (usedIn !== null) {
+          stagedRepeats.push({ key: keyFor(item.label, item.week, t.entry.id), team: p.team, entryName: t.entry.entryName, usedIn, item });
           unresolved.push({
             kind: "pick",
             reason: `${t.entry.entryName} -> ${p.team}: already used in week ${usedIn}; a repeated team is an ELIMINATION in her pool`,
@@ -360,22 +364,42 @@ async function main(): Promise<void> {
     }
   }
 
-  // ---- one entry, one team, per message: two teams for one entry are staged
-  const keyOf = (p: Proposal) => `${p.itemLabel}|${p.week}|${p.entry.id}`;
-  const conflicts = conflictingKeys(proposals.map((p) => ({ key: keyOf(p), team: p.team })));
+  // ---- one entry, one team, per message: two teams for one entry are staged,
+  // a repeated team staged as an elimination counting as one of them.
+  const keyOf = (p: Proposal) => keyFor(p.itemLabel, p.week, p.entry.id);
+  const conflicts = conflictedKeys(
+    proposals.map((p) => ({ key: keyOf(p), team: p.team })),
+    stagedRepeats.map((s) => ({ key: s.key, team: s.team })),
+  );
   if (conflicts.size) {
-    const byKey = new Map<string, Proposal[]>();
-    for (const p of proposals) if (conflicts.has(keyOf(p))) byKey.set(keyOf(p), [...(byKey.get(keyOf(p)) ?? []), p]);
-    for (const group of byKey.values()) {
-      const teams = [...new Set(group.map((p) => p.team))].join(" and ");
-      const first = group[0];
-      const item = items.find((i) => i.label === first.itemLabel)!;
+    const byKey = new Map<string, { entryName: string; teams: string[]; item: Item }>();
+    for (const p of proposals) {
+      if (!conflicts.has(keyOf(p))) continue;
+      const g = byKey.get(keyOf(p)) ?? { entryName: p.entry.entryName, teams: [], item: items.find((i) => i.label === p.itemLabel)! };
+      g.teams.push(p.team);
+      byKey.set(keyOf(p), g);
+    }
+    for (const s of stagedRepeats) {
+      if (!conflicts.has(s.key)) continue;
+      const g = byKey.get(s.key) ?? { entryName: s.entryName, teams: [], item: s.item };
+      g.teams.push(`${s.team} (already used in week ${s.usedIn})`);
+      byKey.set(s.key, g);
+    }
+    // A repeat staged on its own would ask "record this elimination anyway?";
+    // when the same message also names another team, the question is which
+    // team was meant, so the pick row is withdrawn and the conflict row asks.
+    const withdrawn = new Set(stagedRepeats.filter((s) => conflicts.has(s.key)).map((s) => s.key));
+    const kept = unresolved.filter((u) => !(u.pick && withdrawn.has(keyFor(u.item.label, u.pick.week, u.pick.entryId))));
+    unresolved.length = 0;
+    unresolved.push(...kept);
+    for (const g of byKey.values()) {
+      const teams = [...new Set(g.teams)];
       unresolved.push({
-        kind: pendingKind(item.senderAddress, 1),
-        reason: `${first.entry.entryName}: ${teams} in one message; one entry, one team`,
-        line: group.map((p) => p.team).join(" / "),
+        kind: pendingKind(g.item.senderAddress, 1),
+        reason: `${g.entryName}: ${teams.join(" and ")} in one message; one entry, one team`,
+        line: teams.join(" / "),
         candidates: [],
-        item,
+        item: g.item,
       });
     }
   }

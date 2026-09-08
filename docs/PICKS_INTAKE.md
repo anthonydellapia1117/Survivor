@@ -106,7 +106,9 @@ staged as a pending pick row that says which week the team was used in, and
 approving it on /admin/queue records it knowingly with its receipt time.
 One entry, one team: a message that gives the same entry two different
 teams is staged with both named rather than written in the order the lines
-happened to come. A week heading on the same line as a team ("Week 2:
+happened to come, and that holds when one of the two is a repeated team:
+the elimination question is withdrawn and the conflict row asks which team
+was meant. A week heading on the same line as a team ("Week 2:
 Chiefs") is a bare pick for that week, not an entry called "Week 2".
 Unresolved lines become pending_actions rows (kind identity when there is no
 sender or the sender matches nobody on the roster, player_question when a
@@ -207,7 +209,11 @@ variances and applies no result; scores come from /admin/scores. A legacy
 per-week file (entry, team, result columns) applies a result to each entry
 whose current pick agrees with hers. `--message-id <gmail id>` picks a
 specific message; `--dry-run` stops before the commit; `--yes` skips the
-prompt.
+prompt. The sheet's latest filled week must be the week being imported: an
+older sheet has an empty Week N column and would record every entry as
+missing, and a newer one is the next week's file and must keep its sha256
+for that import. Either is refused by name; `--message-id` picks the right
+message.
 
 ## 6. The week's picks, after the lock
 

@@ -198,7 +198,7 @@ describe("typo tolerance on the token stage", () => {
   });
 });
 
-import { conflictingKeys, repeatedWeek, scopeEntriesFor, senderUnplaced, stripWeekHeading, type RosterEntry } from "../../scripts/picks/lib/resolve";
+import { conflictedKeys, conflictingKeys, repeatedWeek, scopeEntriesFor, senderUnplaced, stripWeekHeading, type RosterEntry } from "../../scripts/picks/lib/resolve";
 import { resolveFromArg } from "../../scripts/picks/lib/from";
 
 describe("stripWeekHeading", () => {
@@ -219,6 +219,16 @@ describe("conflictingKeys", () => {
       { key: "m1|1|e2", team: "SEA" },
     ]);
     expect([...keys]).toEqual(["m1|1|e1"]);
+  });
+});
+
+describe("conflictedKeys", () => {
+  it("counts a repeated team staged as an elimination against a new team for the same entry in the same message", () => {
+    const keys = conflictedKeys([{ key: "m1|2|e1", team: "KC" }], [{ key: "m1|2|e1", team: "PHI" }]);
+    expect([...keys]).toEqual(["m1|2|e1"]);
+  });
+  it("is no conflict when the staged repeat is the only team the message gave the entry", () => {
+    expect(conflictedKeys([{ key: "m1|2|e2", team: "SEA" }], [{ key: "m1|2|e1", team: "PHI" }]).size).toBe(0);
   });
 });
 

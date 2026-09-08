@@ -508,3 +508,14 @@ export function scopeEntriesFor(
 export function senderUnplaced(item: { senderAddress: string | null; fromOwnerId: string | null }, scopeCount: number): boolean {
   return (item.senderAddress !== null || item.fromOwnerId !== null) && scopeCount === 0;
 }
+
+/**
+ * The one-entry-one-team check counts every team a message gave an entry,
+ * a repeated team staged as an elimination included: "Kris #1 - Eagles" and
+ * "Kris #1 - Chiefs" in one message is a conflict whether or not the Eagles
+ * were already used, and neither is written. Without the staged repeats the
+ * check would see only the new team and write it.
+ */
+export function conflictedKeys(proposals: { key: string; team: string }[], stagedRepeats: { key: string; team: string }[]): Set<string> {
+  return conflictingKeys([...proposals, ...stagedRepeats]);
+}

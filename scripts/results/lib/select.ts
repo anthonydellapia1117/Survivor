@@ -40,3 +40,18 @@ export function refuseDuplicateImport(
   if (!prior) return null;
   return `Already imported ${prior.imported_at} as import ${prior.id} (week ${prior.week ?? "unknown"}): refusing to run twice on the same file.`;
 }
+
+/**
+ * The refusal when her sheet's latest filled week is not the week being
+ * imported, null when it is (or when the file carries no filled week). An
+ * older sheet has an empty Week N column and would record every entry as
+ * missing; a NEWER sheet is Week N+1's file, and recording it as Week N
+ * would spend its sha256 on the wrong week and refuse the real Week N+1
+ * import later. Either way the fix is the message that carries the Week N
+ * sheet, named by --message-id.
+ */
+export function refuseWeekMismatch(latestFilledWeek: number | null, week: number, filename: string): string | null {
+  if (latestFilledWeek === null || latestFilledWeek === week) return null;
+  const which = latestFilledWeek < week ? `predates Week ${week}` : `is a later sheet than Week ${week}'s and would spend its sha256 on the wrong week`;
+  return `Her sheet's latest filled week is ${latestFilledWeek}, not ${week}: ${filename} ${which}. Pass --message-id for the message that carries her Week ${week} sheet.`;
+}
