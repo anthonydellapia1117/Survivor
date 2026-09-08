@@ -12,6 +12,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setPoolPotAction } from "@/app/admin/actions";
 import { formatCents } from "@/lib/pool";
+import { checkFigures, parseCount } from "@/lib/pool-figures";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,13 +21,6 @@ function parseDollars(s: string): number | null {
   const n = Number(s.replace(/[$,\s]/g, ""));
   if (!Number.isFinite(n) || n < 0) return null;
   return Math.round(n * 100);
-}
-
-function parseCount(s: string): number | null | false {
-  const t = s.replace(/[,\s]/g, "");
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isInteger(n) && n >= 0 ? n : false;
 }
 
 export function PoolPotForm({
@@ -53,10 +47,9 @@ export function PoolPotForm({
   const freeN = parseCount(free);
   const paidN = parseCount(paid);
   const potN = pot.trim() === "" ? null : parseDollars(pot);
-  const divisor = typeof paidN === "number" && paidN > 0 ? paidN : typeof countN === "number" && countN > 0 ? countN : null;
-  const perEntry = divisor !== null && potN !== null ? potN / divisor : null;
-  const addsUp =
-    typeof countN !== "number" || typeof freeN !== "number" || typeof paidN !== "number" || freeN + paidN === countN;
+  // One verdict for the helper text and the save path: an invalid count is
+  // invalid and nothing else is judged from it; three counts must agree.
+  const check = checkFigures(count, free, paid, potN);
 
   function touch<T>(set: (v: T) => void) {
     return (v: T) => {
@@ -69,7 +62,7 @@ export function PoolPotForm({
     setError(null);
     setSaved(false);
     if (!clear) {
-      if (countN === false || freeN === false || paidN === false) {
+      if (check.kind === "invalid") {
         setError("Counts must be whole numbers.");
         return;
       }
@@ -77,9 +70,9 @@ export function PoolPotForm({
         setError("Pot must be dollars, like 28620 or 28,620.00.");
         return;
       }
-      if (!addsUp) {
+      if (check.kind === "mismatch") {
         setError(
-          `Her figures do not add up: ${freeN} free + ${paidN} paid is not ${countN} in pool. Enter them as she published them and check the sheet.`,
+          `Her figures do not add up: ${check.free} free + ${check.paid} paid is not ${check.total} in pool. Enter them as she published them and check the sheet.`,
         );
         return;
       }
@@ -161,13 +154,15 @@ export function PoolPotForm({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {!addsUp ? (
+        {check.kind === "invalid" ? (
+          <span className="text-tie">Counts must be whole numbers.</span>
+        ) : check.kind === "mismatch" ? (
           <span className="text-tie">
-            These do not add up: {String(freeN)} free + {String(paidN)} paid is not {String(countN)} in pool.
+            These do not add up: {check.free} free + {check.paid} paid is not {check.total} in pool.
           </span>
-        ) : perEntry !== null ? (
+        ) : check.perEntryCents !== null ? (
           <>
-            Implied {formatCents(Math.round(perEntry))} per {typeof paidN === "number" && paidN > 0 ? "paying entry" : "entry"} - an admin-only
+            Implied {formatCents(Math.round(check.perEntryCents))} per {check.per} - an admin-only
             check on the numbers, printed nowhere public.
           </>
         ) : (
