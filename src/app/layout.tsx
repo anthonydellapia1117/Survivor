@@ -31,7 +31,7 @@ export const metadata: Metadata = {
         url: "/api/og",
         width: 1200,
         height: 630,
-        alt: "2026 NFL Survivor Pool — live standings",
+        alt: "2026 NFL Survivor Pool - live standings",
       },
     ],
   },

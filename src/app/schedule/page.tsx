@@ -32,8 +32,8 @@ export default async function SchedulePage(props: {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {season
-              ? "Every matchup, all 18 weeks — @ marks a road game, dark cells are byes."
-              : "Every game of the week — scores, who our entries picked, and what each result cost."}
+              ? "Every matchup, all 18 weeks - @ marks a road game, dark cells are byes."
+              : "Every game of the week - scores, who our entries picked, and what each result cost."}
           </p>
         </div>
         <div className="flex rounded-lg border border-border bg-surface p-0.5 text-sm">

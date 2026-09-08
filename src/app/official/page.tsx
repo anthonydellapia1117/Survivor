@@ -4,8 +4,9 @@ import { EmptyState } from "@/components/empty-state";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { MASTER_POOL } from "@/lib/site-copy";
 
-export const metadata: Metadata = { title: "Lynne's Board" };
+export const metadata: Metadata = { title: MASTER_POOL.title };
 export const dynamic = "force-dynamic";
 
 interface VarianceShape {
@@ -28,12 +29,12 @@ export default async function LynnePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl">Lynne&apos;s Board</h1>
+        <h1 className="text-2xl">{MASTER_POOL.title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          The master pool&apos;s data as received. Lynne&apos;s published
-          results are authoritative on wins, losses, and eliminations; this
-          app&apos;s record is authoritative on what was submitted and when.
-          Disagreements appear below — reported, never auto-resolved.
+          The master pool&apos;s published results are authoritative on wins,
+          losses, and eliminations. This app is authoritative on what was
+          submitted and when. Disagreements are listed below - reported, never
+          auto-resolved.
         </p>
       </div>
 
@@ -48,7 +49,9 @@ export default async function LynnePage() {
             <span className="font-medium">
               {latest.week ? `Week ${latest.week}` : "Latest import"}
             </span>
-            <span className="text-muted-foreground">{latest.filename}</span>
+            {/* The uploaded filename is admin-only: it is whatever the
+                master pool's runner named the file, so it never renders on a
+                public route. Week, time and counts identify the import. */}
             <span className="text-muted-foreground" suppressHydrationWarning>
               imported {formatEtDateTime(latest.importedAt)} ET
             </span>
@@ -65,7 +68,7 @@ export default async function LynnePage() {
             <Card className="border-tie/40 bg-surface">
               <CardHeader>
                 <CardTitle className="text-base text-tie">
-                  Variance panel — Lynne vs. local record
+                  Variance panel - official vs. this app
                 </CardTitle>
               </CardHeader>
               <CardContent className="overflow-x-auto">
@@ -74,7 +77,7 @@ export default async function LynnePage() {
                     <tr className="text-left text-xs text-muted-foreground">
                       <th className="py-1.5 pr-3">Entry</th>
                       <th className="py-1.5 pr-3">Type</th>
-                      <th className="py-1.5 pr-3">Lynne&apos;s file</th>
+                      <th className="py-1.5 pr-3">Official</th>
                       <th className="py-1.5">Local record</th>
                     </tr>
                   </thead>
@@ -88,7 +91,7 @@ export default async function LynnePage() {
                           {(v.type ?? "").replaceAll("_", " ")}
                         </td>
                         <td className="py-1.5 pr-3">
-                          {v.lynne?.team ?? "—"}
+                          {v.lynne?.team ?? "-"}
                           {v.lynne?.result ? ` · ${v.lynne.result}` : ""}
                         </td>
                         <td className="py-1.5">
@@ -103,7 +106,8 @@ export default async function LynnePage() {
             </Card>
           ) : (
             <p className="text-sm text-win">
-              No open variances — her latest file agrees with the local record.
+              No open variances - {MASTER_POOL.possessive} latest file agrees with
+              this app&apos;s record.
             </p>
           )}
 
@@ -130,7 +134,7 @@ export default async function LynnePage() {
           <Card className="bg-surface">
             <CardHeader>
               <CardTitle className="text-base">
-                Her table, as received
+                Official table, as received
               </CardTitle>
             </CardHeader>
             <CardContent className="overflow-x-auto">
@@ -146,8 +150,8 @@ export default async function LynnePage() {
                   {((latest.rows ?? []) as RowShape[]).map((r, i) => (
                     <tr key={i} className="border-t border-border/60">
                       <td className="py-1.5 pr-3">{r.entry}</td>
-                      <td className="py-1.5 pr-3">{r.team ?? "—"}</td>
-                      <td className="py-1.5">{r.result ?? "—"}</td>
+                      <td className="py-1.5 pr-3">{r.team ?? "-"}</td>
+                      <td className="py-1.5">{r.result ?? "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -162,9 +166,8 @@ export default async function LynnePage() {
                 {imports.slice(1).map((im) => (
                   <li key={im.id} className="flex items-center gap-3 py-2">
                     <span className="font-medium">
-                      {im.week ? `W${im.week}` : "—"}
+                      {im.week ? `W${im.week}` : "-"}
                     </span>
-                    <span className="text-muted-foreground">{im.filename}</span>
                     <span
                       className="ml-auto text-xs text-muted-foreground"
                       suppressHydrationWarning

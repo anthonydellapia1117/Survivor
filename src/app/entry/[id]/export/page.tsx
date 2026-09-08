@@ -18,7 +18,7 @@ export async function generateMetadata(props: {
 }): Promise<Metadata> {
   const { id } = await props.params;
   const detail = await getData().getEntry(id);
-  return { title: detail ? `${detail.entry.entryName} — card` : "Entry card" };
+  return { title: detail ? `${detail.entry.entryName} - card` : "Entry card" };
 }
 
 const RESULT_TEXT: Record<string, string> = {
@@ -45,7 +45,7 @@ export default async function EntryExportPage(props: {
     <div className="mx-auto max-w-sm space-y-4 print:max-w-full">
       <div className="no-print flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          One-page card — print or save as PDF to share.
+          One-page card - print or save as PDF to share.
         </p>
         <PrintButton />
       </div>
@@ -67,7 +67,7 @@ export default async function EntryExportPage(props: {
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
           <div className="rounded-md bg-surface-2 py-2">
             <div className="text-lg tabular-nums">
-              {entry.wins}–{entry.losses}
+              {entry.wins}-{entry.losses}
             </div>
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
               Record

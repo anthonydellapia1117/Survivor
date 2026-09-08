@@ -105,6 +105,8 @@ export interface AdminBackend {
   auditTail(limit: number): Promise<AuditRow[]>;
   /** Open queue rows, oldest first. */
   listPendingActions(): Promise<PendingAction[]>;
+  /** Number of open queue rows, for the nav badge; no rows are fetched. */
+  countPendingActions(): Promise<number>;
   stagePending(args: {
     kind: string;
     payload: Record<string, unknown>;
