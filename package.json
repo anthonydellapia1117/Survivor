@@ -11,6 +11,7 @@
     "test:db": "scripts/db/test-db.sh tests/sql/*.sql",
     "picks": "tsx scripts/picks/cli.ts",
     "lynne": "tsx scripts/lynne/cli.ts",
+    "lynne:roster": "tsx scripts/lynne/roster.ts",
     "gmail:auth": "tsx scripts/picks/gmail-auth.ts",
     "chase": "tsx scripts/chase/cli.ts",
     "results": "tsx scripts/results/cli.ts",
