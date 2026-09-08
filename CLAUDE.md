@@ -480,7 +480,14 @@ names and `name_is_default` did not move. The mapping is
 `docs/2026-09-08_survivor_lynne_numbers.csv` (972-1087 from `Football
 2026-2.xlsx`) is superseded by it. Her whole sheet, 1319 rows, is in
 `lynne_roster` under that sha256, duplicate names (Ian Lubin 1 and 2 at
-674-675 and again at 1319-1320) kept as separate rows. Money: $2,840 due,
+674-675 and again at 1319-1320) kept as separate rows; her sheet's row for
+NO. 1311 reads `1311 Andrew Yukanis` in the NO. cell and `Amy  3` in NAMES,
+so the loader skipped it (no integer NO.) and nothing was invented - hers
+to fix. **The Master List is live** at `/master-list` (migration
+`20260908224500`, 67 migrations) and her four figures are set as she
+published them on 2026-09-08 (audit 628): Total in Pool 1,318, Free 46,
+Total 1,272, Total Pay Out $28,620; 1,318 is her 1,320 NO.s less the two
+duplicate Ian Lubin rows. Money: $2,840 due,
 $1,830 collected, $1,010 outstanding, **$2,750 owed to Lynne** (110 x $25).
 Her buckets are clear (+0 / 0 / -0): the 2026-09-04 batch below went to her
 at 15:44 UTC that day, she replied "Got it.", and the marks were backdated
@@ -661,9 +668,10 @@ Two standing facts that are NOT snapshots and must survive:
   unapplied and had sorted below the applied `20260908171220`
   (`pick_source_text_email`, the file `20260908000063`). Supabase records a
   migration under the timestamp it was applied at, not the file name.
-  `20260908214000_lynne_roster.sql` is the one exception so far: applied
-  attended on 2026-09-08 with the smoke check at a savepoint, ahead of the
-  merge of the PR that carries it, on Anthony's instruction for that run.
+  `20260908214000_lynne_roster.sql` and `20260908224500_master_list.sql`
+  are the two exceptions so far: each applied attended on 2026-09-08 with
+  the smoke check at a savepoint, ahead of the merge of the PR that carries
+  it (#25, #28), on Anthony's instruction for that run.
 
 ## Gmail
 
