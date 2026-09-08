@@ -189,6 +189,13 @@ export const supabaseBackend: DataBackend = {
         .select("*")
         .order("row_no")
         .range(from, from + page - 1);
+      // Code can deploy ahead of its migration (a preview build, or a merge
+      // before the attended apply): a view that is not there yet reads as
+      // no sheet loaded, so every page falls back to our group instead of
+      // failing. Any other error is still an error.
+      if (error && (error.code === "42P01" || error.code === "PGRST205")) {
+        return { loadedAt: null, rows: [] };
+      }
       if (error) throw error;
       for (const r of data ?? []) {
         rows.push({
