@@ -15,7 +15,11 @@ section 3.
 | `migrate.yml` | `migrate` | On a push to main touching `supabase/migrations`, applies every unapplied file to production as one transaction for the whole batch, with the smoke check after each file; a failure anywhere rolls the whole batch back and opens an issue. Needs `SUPABASE_DB_URL`. |
 
 Codex posts no check of its own, only a summary comment it edits as it
-works; `codex-gate` turns that into a check the ruleset can require.
+works; `codex-gate` turns that into a check the ruleset can require. The
+workflow's job is named `gate`, not `codex-gate`: the job's own check run and
+the check the script writes come from the same app, and if both carried the
+name the job's success, completed a second later, would be the one the
+ruleset read.
 
 ## 2. The migration job
 

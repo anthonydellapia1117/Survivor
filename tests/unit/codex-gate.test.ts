@@ -82,6 +82,16 @@ async function runGate(comments: Comment[], pages: boolean[][]): Promise<CheckCr
 }
 
 describe("codex-gate", () => {
+  it("names only the check it writes codex-gate, never its own job", () => {
+    const path = fileURLToPath(new URL("../../.github/workflows/codex-gate.yml", import.meta.url));
+    const yml = readFileSync(path, "utf8");
+    const jobs = yml.slice(yml.indexOf("\njobs:"));
+    // The job's check run and the written check come from the same app; if
+    // both were "codex-gate", the job's success (completed last) would be
+    // the one a ruleset requiring that name reads.
+    expect(jobs).not.toMatch(/^\s+name: codex-gate\s*$/m);
+    expect(jobs).toMatch(/name: "codex-gate"/);
+  });
   it("passes only when the Codex bot concluded on the head and every thread is resolved", async () => {
     const c = await runGate([summaryComment(completedRow(SHORT))], [[true, true]]);
     expect(c.conclusion).toBe("success");

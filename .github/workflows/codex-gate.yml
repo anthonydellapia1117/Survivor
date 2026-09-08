@@ -34,7 +34,12 @@ permissions:
 
 jobs:
   gate:
-    name: codex-gate
+    # The job's own check run must NOT carry the name of the check the script
+    # writes: both would be "codex-gate" from the same app, the job's green
+    # (it ran to completion) would land a second later than the check the
+    # script wrote, and a ruleset requiring "codex-gate" would read the newer
+    # one. So the job is "gate" and only the written check is "codex-gate".
+    name: gate
     if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-24.04
     timeout-minutes: 5
