@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { MASTER_POOL } from "@/lib/site-copy";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -11,7 +12,7 @@ const links = [
   { href: "/schedule", label: "Schedule" },
   { href: "/teams", label: "Teams" },
   { href: "/entries", label: "Entries" },
-  { href: "/lynne", label: "Lynne" },
+  { href: "/official", label: MASTER_POOL.tab },
   { href: "/2025", label: "2025" },
 ];
 

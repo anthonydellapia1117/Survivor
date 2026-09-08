@@ -1,6 +1,6 @@
 "use client";
 
-// D1-D4: the week-by-week game board. Every game as a card — winners and
+// D1-D4: the week-by-week game board. Every game as a card - winners and
 // losers visually distinct, pick counts revealed once that game KICKS OFF
 // (per-game visibility, override-aware), and elimination impact per final
 // game.
@@ -96,7 +96,7 @@ export function GameBoard({
   }, [cells, entries, week]);
 
   // Picks for a game are public once it kicks off (or the admin's manual
-  // reveal override says so) — never at the pick deadline, which can be
+  // reveal override says so) - never at the pick deadline, which can be
   // hours before kickoff.
   function picksRevealed(g: GameRow): boolean {
     return gameIsRevealed(g, new Date(now));
@@ -202,7 +202,7 @@ export function GameBoard({
                 <span>{kickoffLabel(g.kickoffAt)} ET</span>
                 {tie ? (
                   <span className="font-bold text-tie">
-                    TIE — a loss in this pool
+                    TIE - a loss in this pool
                   </span>
                 ) : g.status === "in_progress" ? (
                   <span className="font-semibold text-primary">LIVE</span>

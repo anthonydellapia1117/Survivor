@@ -74,7 +74,7 @@ export function GridView({ entries, weeks, cells }: Props) {
     return m;
   }, [cells]);
 
-  // The week each eliminated entry died — marks the killing pick.
+  // The week each eliminated entry died - marks the killing pick.
   const elimWeekById = useMemo(() => {
     const byEntry = new Map<string, GridCell[]>();
     for (const c of cells) {
@@ -315,7 +315,7 @@ export function GridView({ entries, weeks, cells }: Props) {
                       >
                         <span
                           className="flex h-full min-h-10 w-full flex-col items-center justify-center rounded-sm border border-border/60 bg-surface-2/60 text-[10px] font-semibold tracking-wide text-muted-foreground"
-                          title="Pick locked — visible when this game kicks off"
+                          title="Pick locked - visible when this game kicks off"
                         >
                           <span aria-hidden>🔒</span>
                           LOCKED
@@ -343,7 +343,7 @@ export function GridView({ entries, weeks, cells }: Props) {
                           RESULT_CELL[isBye ? "bye" : resultKey],
                           killing && "bg-loss/40 text-white ring-1 ring-loss",
                         )}
-                        title={killing ? "The killing pick — this loss ended the entry" : undefined}
+                        title={killing ? "The killing pick - this loss ended the entry" : undefined}
                       >
                         {isBye ? "BYE" : killing ? `✕ ${cell.team}` : cell.team}
                         {comfortable && !isBye ? (

@@ -118,7 +118,7 @@ export function ScheduleGrid({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All entries — teams-used heat</SelectItem>
+            <SelectItem value="all">All entries - teams-used heat</SelectItem>
             {sorted.map((e) => (
               <SelectItem key={e.id} value={e.id}>
                 {e.entryName}
@@ -133,7 +133,7 @@ export function ScheduleGrid({
               <span className="font-medium text-foreground">
                 {32 - used.size}
               </span>{" "}
-              teams left for {selected.entryName} — struck rows are burned.
+              teams left for {selected.entryName} - struck rows are burned.
             </>
           ) : (
             "The count beside each team is how many entries have used it."
@@ -223,7 +223,7 @@ export function ScheduleGrid({
                           w === currentWeek && "bg-primary/[0.07]",
                           burned && "line-through",
                         )}
-                        title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} — ${kickoffLabel(g.kickoffAt)} ET · picks close ${TIER_LABEL[tier]} noon ET`}
+                        title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} - ${kickoffLabel(g.kickoffAt)} ET · picks close ${TIER_LABEL[tier]} noon ET`}
                       >
                         <span className={cn(!g.home && "text-muted-foreground")}>
                           {g.home ? "" : "@"}
@@ -253,10 +253,10 @@ export function ScheduleGrid({
 
       <p className="text-xs text-muted-foreground">
         Every game carries its day (We/Th/Fr/Sa/Su/Mo), and the deadline
-        follows the day the team plays — in every week, Week 1 included.{" "}
+        follows the day the team plays - in every week, Week 1 included.{" "}
         <span className="font-semibold text-tie">Amber</span> days close a day
         apart: We by Tuesday noon ET, Th by Wednesday, Fr by Thursday. Grey
-        days — Sa/Su/Mo — share one cutoff, Friday noon ET. Hover a cell for
+        days - Sa/Su/Mo - share one cutoff, Friday noon ET. Hover a cell for
         kickoff time and which deadline applies.
       </p>
     </div>
