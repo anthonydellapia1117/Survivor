@@ -30,7 +30,7 @@ import {
 import { createDraft, gmailClient, profileAddress } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
-import { earliestOpenDeadline, splitRecipients, unpickedEntries, type OpenDeadline } from "../lib/roster";
+import { earliestOpenDeadline, splitRecipients, unpickedEntries, type OpenDeadline, entriesOfConfirmedOwners } from "../lib/roster";
 import { autosendEnabled, priorSends, sendAllowlisted } from "../lib/send";
 import { formatEt, type GameLite, type WeekBounds } from "../picks/lib/deadline";
 import {
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   const games: GameLite[] = gameRows.map((g) => ({ week: g.week, dayOfWeek: g.day_of_week, homeTeam: g.home_team, awayTeam: g.away_team }));
 
   // ---- who has no pick: the live roster, never Gmail
-  const unpicked = unpickedEntries(entries, current.map((p) => p.entry_id), standings);
+  const unpicked = unpickedEntries(entriesOfConfirmedOwners(owners, entries), current.map((p) => p.entry_id), standings);
   const unpickedIds = new Set(unpicked.map((e) => e.id));
   console.log(`Week ${week}: ${unpicked.length} live entr${unpicked.length === 1 ? "y" : "ies"} with no pick.`);
 

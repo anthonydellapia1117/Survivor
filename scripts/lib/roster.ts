@@ -12,6 +12,17 @@ export function confirmedOwners(owners: OwnerRow[]): OwnerRow[] {
   return owners.filter((o) => o.participation_status === "confirmed");
 }
 
+/**
+ * Live entries of confirmed owners: the set every command acts on. Changing
+ * an owner's participation_status does not void their entries, so a
+ * declined owner's rows are still on the table and must be left off here,
+ * the same line the app's views draw.
+ */
+export function entriesOfConfirmedOwners(owners: OwnerRow[], entries: EntryRow[]): EntryRow[] {
+  const confirmed = new Set(confirmedOwners(owners).map((o) => o.id));
+  return entries.filter((e) => e.voided_at === null && confirmed.has(e.owner_id));
+}
+
 export function ownerFullName(o: OwnerRow): string {
   return `${o.first_name} ${o.last_name}`.trim();
 }

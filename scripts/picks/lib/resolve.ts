@@ -330,16 +330,18 @@ export function pickSourceFor(
 }
 
 /**
- * Which queue row an unresolved line becomes. "identity" when nobody known
- * is behind the line: no sender at all (pasted text with no --from) or a
- * sender address that matches no owner or player. "player_question" only
- * when the sender is a known person and the line itself is the problem.
+ * Which queue row an unresolved line becomes. "player_question" when a known
+ * person is behind the line, which means the line resolved to a scope of
+ * entries they own or play (a Gmail address on the roster, or a --from that
+ * matched one owner, with or without an address on file). "identity" when
+ * nobody known is: pasted text with no --from, or an address that matches
+ * no owner or player.
  */
 export function pendingKind(
   senderAddress: string | null,
   scopeEntryCount: number,
 ): "identity" | "player_question" {
-  if (senderAddress === null) return "identity";
+  void senderAddress;
   return scopeEntryCount > 0 ? "player_question" : "identity";
 }
 

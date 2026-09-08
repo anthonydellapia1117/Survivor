@@ -16,9 +16,12 @@ describe("pickSourceFor", () => {
 });
 
 describe("pendingKind", () => {
-  it("is identity when there is no sender at all", () => {
+  it("is identity when there is no sender and no scope (pasted text, no --from)", () => {
     expect(pendingKind(null, 0)).toBe("identity");
-    expect(pendingKind(null, 3)).toBe("identity");
+  });
+
+  it("is player_question for a --from owner matched by name with no address on file", () => {
+    expect(pendingKind(null, 3)).toBe("player_question");
   });
 
   it("is identity when the sender matches nobody on the roster", () => {
@@ -163,5 +166,21 @@ describe("args", () => {
     expect(weekArg("1")).toBe(1);
     expect(weekArg("18")).toBe(18);
     for (const bad of ["0", "19", "x", "1.5", ""]) expect(() => weekArg(bad)).toThrow();
+  });
+});
+
+import { entriesOfConfirmedOwners } from "../../scripts/lib/roster";
+
+describe("entriesOfConfirmedOwners", () => {
+  it("drops a declined owner's live entries and every voided entry", () => {
+    const owners: OR[] = [
+      { id: "o1", first_name: "Kris", last_name: "Tomasco", email: "kris@x.com", participation_status: "confirmed" },
+      { id: "o2", first_name: "John", last_name: "Vassallo", email: "john@x.com", participation_status: "declined" },
+    ];
+    const e = (id: string, owner: string, voided: string | null = null): ER => ({
+      id, owner_id: owner, entry_name: id, player_email: null, is_gifted: false, is_free_entry: false, lynne_number: null, lynne_label: null, voided_at: voided,
+    });
+    const out = entriesOfConfirmedOwners(owners, [e("a", "o1"), e("b", "o2"), e("c", "o1", "2026-09-04T00:00:00Z")]);
+    expect(out.map((x) => x.id)).toEqual(["a"]);
   });
 });

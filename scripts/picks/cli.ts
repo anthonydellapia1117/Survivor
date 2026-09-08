@@ -90,6 +90,8 @@ interface Item {
   text: string;
   source: "email" | "text";
   senderAddress: string | null;
+  /** --from matched one owner by name; their entries are the scope even with no address on file. */
+  fromOwnerId: string | null;
   messageId: string | null;
   /** The week the message names, else the command's week. */
   week: number;
@@ -197,6 +199,7 @@ async function main(): Promise<void> {
   if (args.paste || args.file) {
     const text = args.file ? fs.readFileSync(args.file, "utf8") : await readStdin();
     let sender: string | null = null;
+    let fromOwnerId: string | null = null;
     if (args.from) {
       const needle = args.from.toLowerCase();
       const byEmail = owners.filter((o) => (o.email ?? "").toLowerCase() === needle);
@@ -209,8 +212,13 @@ async function main(): Promise<void> {
             (o.email ?? "").toLowerCase().includes(needle) ||
             entries.some((e) => e.owner_id === o.id && e.entry_name.toLowerCase().includes(needle)),
         );
-        if (hits.length === 1) sender = hits[0].email?.toLowerCase() ?? null;
-        else throw new Error(`--from "${args.from}" matches ${hits.length} owners: ${hits.map((h) => `${h.first_name} ${h.last_name}`).join(", ") || "none"}`);
+        if (hits.length !== 1) {
+          throw new Error(`--from "${args.from}" matches ${hits.length} owners: ${hits.map((h) => `${h.first_name} ${h.last_name}`).join(", ") || "none"}`);
+        }
+        // The owner is known whether or not an address is on file: the scope
+        // is their entries, and a missing email does not unknow them.
+        sender = hits[0].email?.toLowerCase() ?? null;
+        fromOwnerId = hits[0].id;
       }
     }
     items.push({
@@ -218,6 +226,7 @@ async function main(): Promise<void> {
       text,
       source: pickSourceFor("paste", args.source),
       senderAddress: sender,
+      fromOwnerId,
       messageId: null,
       // The pasted block's own week wins; --week is the fallback.
       week: weekFor(weekNamedIn(leadingLines(text))),
@@ -236,6 +245,7 @@ async function main(): Promise<void> {
         text: m.body,
         source: pickSourceFor("gmail", args.source),
         senderAddress: m.fromAddress,
+        fromOwnerId: null,
         messageId: m.id,
         week: weekFor(weekOfMessage(m.subject, m.body)),
         receivedAt: m.receivedAt,
@@ -250,7 +260,11 @@ async function main(): Promise<void> {
   for (const item of items) {
     const ctx = await contextFor(item.week);
     const madeAt = effectiveSubmitTime(item.receivedAt, now);
-    const scopeEntries = item.senderAddress ? entriesFor(item.senderAddress) : [];
+    const scopeEntries = item.senderAddress
+      ? entriesFor(item.senderAddress)
+      : item.fromOwnerId
+        ? roster.filter((e) => e.ownerId === item.fromOwnerId && !(e.isGifted && e.playerEmail))
+        : [];
     const kind = pendingKind(item.senderAddress, scopeEntries.length);
     const preferredIds = new Set(scopeEntries.map((e) => e.id));
     const body = stripQuotedReply(item.text);
