@@ -432,6 +432,16 @@ export const adminSupabaseBackend: AdminBackend = {
     }));
   },
 
+  async countPendingActions() {
+    const c = await createSupabaseServerClient();
+    const { count, error } = await c
+      .from("pending_actions")
+      .select("id", { count: "exact", head: true })
+      .is("resolved_at", null);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
   async stagePending(a) {
     const { data, error } = await (
       await createSupabaseServerClient()

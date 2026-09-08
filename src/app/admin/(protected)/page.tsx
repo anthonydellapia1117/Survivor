@@ -44,9 +44,9 @@ export default async function AdminOverviewPage() {
     data.getConfig(),
     pub.getPot(),
     pub.getSchedule(),
-    // The queue table is small; null means the read failed and the strip
+    // A count, no rows fetched; null means the read failed and the strip
     // says so instead of showing a zero.
-    data.listPendingActions().catch(() => null),
+    data.countPendingActions().catch(() => null),
   ]);
   const lastExport =
     audit.find((a) => a.action === "sheets_export")?.at ?? null;
@@ -204,7 +204,7 @@ export default async function AdminOverviewPage() {
             Open queue rows
           </div>
           <div className="mt-1 text-2xl tabular-nums">
-            {pending === null ? "n/a" : pending.length}
+            {pending === null ? "n/a" : pending}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {pending === null

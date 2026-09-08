@@ -10,11 +10,12 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   await requireAdmin();
-  // The open queue count rides on the Now tab from every admin page. One
-  // small read; if the queue table is unavailable the badge simply stays off.
+  // The open queue count rides on the Now tab from every admin page. A count
+  // query, no rows fetched; if the queue table is unavailable the badge
+  // simply stays off.
   let queueCount = 0;
   try {
-    queueCount = (await getAdminData().listPendingActions()).length;
+    queueCount = await getAdminData().countPendingActions();
   } catch {
     queueCount = 0;
   }
