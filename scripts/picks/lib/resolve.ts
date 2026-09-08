@@ -1,9 +1,11 @@
-// Loose resolution of what a player wrote to what the roster holds.
+// Resolution of what a player wrote to what the roster holds.
 //
-// The loosening is on the comparison only: no stored name is ever changed
-// here, and every match is shown to Anthony before a row is written. Anything
-// that does not resolve to exactly one entry, or exactly one team, is an error
-// to report and never a guess.
+// Entry names are matched exactly, then with case, "#", spacing and
+// punctuation set aside, then through the alias table and the owner's own
+// name; never fuzzily (CLAUDE.md, Matching). A typo in a name is staged with
+// its candidates, not guessed. Only team words carry a one-letter allowance,
+// against a closed vocabulary of 32 names. No stored name is ever changed
+// here, and every match is shown to Anthony before a row is written.
 
 import { NFL_TEAMS, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
 import { ENTRY_ALIASES } from "../aliases";
@@ -211,10 +213,13 @@ export function resolveEntry(raw: string, roster: RosterEntry[], scope: EntrySco
     const candidates = roster.filter((e) => {
       const en = splitNumber(e.entryName);
       if (n !== null && en.n !== n) return false;
+      // Exact on the words, never fuzzy (CLAUDE.md, Matching): case, "#",
+      // spacing and punctuation are already loosened by tokens(); a typo'd
+      // name matches nothing here and is staged with its candidates. Team
+      // words keep their one-letter allowance in strictTeam, a closed
+      // vocabulary of 32 names whose abbreviation is shown before any write.
       const et = tokens(en.base);
-      return rawTokens.every((rt) =>
-        et.some((t) => t === rt || (rt.length >= 4 && t.length >= 4 && levenshtein(rt, t) <= 1)),
-      );
+      return rawTokens.every((rt) => et.includes(rt));
     });
     const preferred = scope.preferredIds ? candidates.filter((e) => scope.preferredIds!.has(e.id)) : [];
     if (preferred.length === 1) return { ok: true, entry: preferred[0], how: "tokens" };

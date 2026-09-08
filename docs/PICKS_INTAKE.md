@@ -241,7 +241,10 @@ they stage a NEEDS ANTHONY row and when a run finishes.
 
 ## 8. Rules these commands keep
 
-- Names are compared loosely and stored verbatim; nothing normalises a name.
+- Names are matched exactly on their words (case, `#`, spacing and
+  punctuation aside), through the alias table and the owner's own name, never
+  fuzzily: a typo'd name is staged with its candidates. Team words alone
+  forgive one letter. Names are stored verbatim; nothing normalises one.
 - One entry, one team, or it is reported. No guess is ever written.
 - Every write is an audited RPC as the admin. No service-role key exists.
 - Drafts only. The one send path is `scripts/lib/send.ts`, allowlisted to

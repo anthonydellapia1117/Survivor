@@ -76,7 +76,7 @@ describe("resolveEntry", () => {
     expect(resolveEntry("Tommybrads 1", roster)).toMatchObject({ ok: true, entry: { entryName: "Tommybrads #1" } });
     expect(resolveEntry("tommybrads 2", roster)).toMatchObject({ ok: true, entry: { entryName: "tommybrads #2" } });
   });
-  it("reads player shorthand and a one-letter typo", () => {
+  it("reads player shorthand, the alias table included", () => {
     expect(resolveEntry("Mary/Maria 3", roster)).toMatchObject({ ok: true, entry: { entryName: "Maria & Mary #3" } });
     expect(resolveEntry("Mary/Matia 3", roster)).toMatchObject({ ok: true, entry: { entryName: "Maria & Mary #3" } });
     expect(resolveEntry("maria and mary #1", roster)).toMatchObject({ ok: true, entry: { entryName: "Maria & Mary #1" } });

@@ -187,14 +187,23 @@ describe("entriesOfConfirmedOwners", () => {
 
 import { resolveEntry } from "../../scripts/picks/lib/resolve";
 
-describe("typo tolerance on the token stage", () => {
+describe("the token stage is exact on words, never fuzzy (CLAUDE.md, Matching)", () => {
   const roster = [
     { id: "n1", entryName: "Nicky DiVirgilio #1", ownerId: "o", ownerName: "Nick DiVirgilio", ownerEmail: "n@x.com", playerEmail: null },
     { id: "n2", entryName: "Nicky DiVirgilio #2", ownerId: "o", ownerName: "Nick DiVirgilio", ownerEmail: "n@x.com", playerEmail: null },
+    { id: "e1", entryName: "Nicco E", ownerId: "p", ownerName: "Nicco Esposito", ownerEmail: "e@x.com", playerEmail: null },
+    { id: "m3", entryName: "Mario 3rd #3", ownerId: "q", ownerName: "Mario Tropea III", ownerEmail: "m@x.com", playerEmail: null },
+    { id: "y3", entryName: "Maria & Mary #3", ownerId: "r", ownerName: "Maria Rossi", ownerEmail: "r@x.com", playerEmail: null },
   ];
-  it("forgives one letter in a word of four or more, on the comparison only", () => {
-    expect(resolveEntry("Nicky DiVirgilo 2", roster)).toMatchObject({ ok: true, how: "tokens", entry: { entryName: "Nicky DiVirgilio #2" } });
-    expect(resolveEntry("Nicky DiVirgilo", roster)).toMatchObject({ ok: false, reason: "ambiguous" });
+  it("matches the words exactly, case and punctuation aside", () => {
+    expect(resolveEntry("divirgilio nicky 2", roster)).toMatchObject({ ok: true, how: "tokens", entry: { entryName: "Nicky DiVirgilio #2" } });
+  });
+  it("stages a one-letter typo instead of guessing the entry", () => {
+    expect(resolveEntry("Nicky DiVirgilo 2", roster)).toMatchObject({ ok: false, reason: "unmatched" });
+    expect(resolveEntry("Nico E", roster)).toMatchObject({ ok: false, reason: "unmatched" });
+  });
+  it("does not let a near miss on another entry turn an exact shorthand into an ambiguity", () => {
+    expect(resolveEntry("Mario 3", roster)).toMatchObject({ ok: true, how: "tokens", entry: { entryName: "Mario 3rd #3" } });
   });
 });
 
