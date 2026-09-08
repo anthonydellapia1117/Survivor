@@ -34,7 +34,7 @@ import {
   varianceTable,
 } from "./lib/format";
 import { buildResultsPlan, sha256Of } from "./lib/plan";
-import { footballAttachment, selectFootballMessage, type FootballSelection } from "./lib/select";
+import { footballAttachment, selectFootballMessage, type FootballSelection, refuseDuplicateImport } from "./lib/select";
 
 interface Args {
   week: number;
@@ -101,12 +101,8 @@ async function main(): Promise<void> {
   const buf = await getAttachment(gmail, message.id, attachment.attachmentId);
   const sha256 = sha256Of(buf);
   console.log(`  sha256:     ${sha256}`);
-  const prior = await importExists(client, sha256);
-  if (prior) {
-    throw new Error(
-      `Already imported ${prior.imported_at} as import ${prior.id} (week ${prior.week ?? "unknown"}): refusing to run twice on the same file.`,
-    );
-  }
+  const duplicate = refuseDuplicateImport(await importExists(client, sha256));
+  if (duplicate !== null) throw new Error(duplicate);
 
   // ---- parse and plan, the way /admin/import does
   const [entries, standings, localPicks] = await Promise.all([

@@ -264,3 +264,23 @@ export function dedupeAddresses(addresses: string[]): string[] {
   }
   return out;
 }
+
+/**
+ * The per-entry notes for a recipient's message: on a mixed message (some
+ * entries the person owns, some bought for them) each gifted entry names its
+ * buyer, so one message says plainly which is which. Owner-only and
+ * player-only messages carry no note; nothing there is ambiguous.
+ */
+export function entryNotesFor(
+  recipient: { kind: "owner" | "player" | "mixed"; entries: { id: string; entryName: string; isGifted: boolean }[] },
+  buyerByEntryId: Map<string, string>,
+): Record<string, string> | undefined {
+  if (recipient.kind !== "mixed") return undefined;
+  const notes: Record<string, string> = {};
+  for (const e of recipient.entries) {
+    if (!e.isGifted) continue;
+    const buyer = buyerByEntryId.get(e.id);
+    if (buyer) notes[e.entryName] = `bought by ${buyer}`;
+  }
+  return notes;
+}

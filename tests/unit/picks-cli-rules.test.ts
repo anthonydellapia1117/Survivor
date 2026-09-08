@@ -184,3 +184,16 @@ describe("entriesOfConfirmedOwners", () => {
     expect(out.map((x) => x.id)).toEqual(["a"]);
   });
 });
+
+import { resolveEntry } from "../../scripts/picks/lib/resolve";
+
+describe("typo tolerance on the token stage", () => {
+  const roster = [
+    { id: "n1", entryName: "Nicky DiVirgilio #1", ownerId: "o", ownerName: "Nick DiVirgilio", ownerEmail: "n@x.com", playerEmail: null },
+    { id: "n2", entryName: "Nicky DiVirgilio #2", ownerId: "o", ownerName: "Nick DiVirgilio", ownerEmail: "n@x.com", playerEmail: null },
+  ];
+  it("forgives one letter in a word of four or more, on the comparison only", () => {
+    expect(resolveEntry("Nicky DiVirgilo 2", roster)).toMatchObject({ ok: true, how: "tokens", entry: { entryName: "Nicky DiVirgilio #2" } });
+    expect(resolveEntry("Nicky DiVirgilo", roster)).toMatchObject({ ok: false, reason: "ambiguous" });
+  });
+});

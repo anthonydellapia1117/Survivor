@@ -35,8 +35,8 @@ describe("chase wiring", () => {
     expect(gmail).toBeGreaterThan(gate);
   });
 
-  it("refuses --send together with --bcc", () => {
-    expect(code(CLI)).toMatch(/args\.send\s*&&\s*args\.bcc/);
+  it("refuses --send together with --bcc by throwing, not by logging", () => {
+    expect(code(CLI)).toMatch(/args\.send\s*&&\s*args\.bcc[\s\S]{0,120}throw new Error\(/);
   });
 
   it("decides who is unpicked from the roster, not from Gmail", () => {

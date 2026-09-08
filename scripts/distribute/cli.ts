@@ -19,7 +19,7 @@ import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
 import { confirmedOwners } from "../lib/roster";
 import { formatEt, type WeekBounds } from "../picks/lib/deadline";
-import { lockPassed } from "./lib/lock";
+import { refusalBeforeLock } from "./lib/lock";
 import { distributeMessage } from "./lib/message";
 import { buildGroupSendOwners } from "./lib/recipients";
 import { countStandings, type StandingInput } from "./lib/standings";
@@ -60,8 +60,9 @@ async function main(): Promise<void> {
     earlyDeadlineAt: row.early_deadline_at,
     lateDeadlineAt: row.late_deadline_at,
   };
-  if (!lockPassed(bounds, new Date())) {
-    console.log(`Week ${week} locks at ${formatEt(bounds.lateDeadlineAt)}; distribute runs after the lock.`);
+  const refusal = refusalBeforeLock(bounds, new Date());
+  if (refusal !== null) {
+    console.log(refusal);
     process.exitCode = 1;
     return;
   }

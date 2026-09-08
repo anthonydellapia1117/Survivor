@@ -43,8 +43,7 @@ import {
   recipientBody,
   reconcile,
   weekLine,
-  type Tier,
-} from "./lib/message";
+  type Tier, entryNotesFor } from "./lib/message";
 
 interface Args {
   week: number | null;
@@ -184,16 +183,7 @@ async function main(): Promise<void> {
   // player-only messages carry no note: nothing there is ambiguous.
   const ownerNameById = new Map(owners.map((o) => [o.id, `${o.first_name} ${o.last_name}`.trim()]));
   const buyerByEntryId = new Map(entries.map((e) => [e.id, ownerNameById.get(e.owner_id) ?? ""]));
-  const giftedNotes = (r: Recipient): Record<string, string> | undefined => {
-    if (r.kind !== "mixed") return undefined;
-    const notes: Record<string, string> = {};
-    for (const e of r.entries) {
-      if (!e.isGifted) continue;
-      const buyer = buyerByEntryId.get(e.id);
-      if (buyer) notes[e.entryName] = `bought by ${buyer}`;
-    }
-    return notes;
-  };
+  const giftedNotes = (r: Recipient): Record<string, string> | undefined => entryNotesFor(r, buyerByEntryId);
 
   // ---- deadlines per recipient
   const chases: Chase[] = [];

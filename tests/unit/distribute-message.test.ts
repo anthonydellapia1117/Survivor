@@ -154,8 +154,20 @@ describe("hyphens only", () => {
     // If the wording moved out of cli.ts, the source scan above would be
     // scanning the wrong file and pass by vacuum.
     const cli = read("scripts/distribute/cli.ts");
-    expect(cli).toContain("distribute runs after the lock.");
+    expect(cli).toContain("refusalBeforeLock(");
+    const lock = readFileSync(join(__dirname, "../../scripts/distribute/lib/lock.ts"), "utf8");
+    expect(lock).toContain("distribute runs after the lock.");
     expect(cli).toContain("Not sent: open Gmail, check it, send it yourself.");
     expect(cli).toContain("includeGiftedPlayers: true");
+  });
+});
+
+import { refusalBeforeLock } from "../../scripts/distribute/lib/lock";
+
+describe("refusalBeforeLock", () => {
+  it("refuses one second before the lock with the time, and is null at and after it", () => {
+    expect(refusalBeforeLock(WEEK1, new Date("2026-09-11T15:59:59Z"))).toBe("Week 1 locks at Fri Sep 11 12:00 PM ET; distribute runs after the lock.");
+    expect(refusalBeforeLock(WEEK1, new Date("2026-09-11T16:00:00Z"))).toBeNull();
+    expect(refusalBeforeLock(WEEK1, new Date("2026-09-12T16:00:00Z"))).toBeNull();
   });
 });

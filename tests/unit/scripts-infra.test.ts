@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { notify } from "../../scripts/lib/notify";
 import { alreadySent, isSendable, lockDayKey, priorSendFrom, type PriorSend } from "../../scripts/lib/send";
@@ -76,7 +76,7 @@ describe("send gate", () => {
       target_id: "chas.flaster@gmail.com:2026-09-11",
       after: { recipient: "chas.flaster@gmail.com", lock_day: "2026-09-11" },
     });
-    expect(claim).toEqual({ recipient: "chas.flaster@gmail.com", lockDay: "2026-09-11", messageId: "chas.flaster@gmail.com:2026-09-11", at: "2026-09-11T14:00:00Z" });
+    expect(claim).toEqual({ recipient: "chas.flaster@gmail.com", lockDay: "2026-09-11", messageId: "", at: "2026-09-11T14:00:00Z" });
     expect(alreadySent([claim!], "chas.flaster@gmail.com", "2026-09-11")).not.toBeNull();
     expect(priorSendFrom({ at: "", target_id: null, after: { recipient: "x@y.com" } })).toBeNull();
   });
@@ -180,5 +180,24 @@ describe("standings source", () => {
     expect(body).toContain('.from("v_entry_public")');
     expect(body).not.toContain('.from("v_entry_standing")');
     expect(body).not.toContain('.from("v_entry_admin")');
+  });
+});
+
+describe("the one send path", () => {
+  it("is scripts/lib/send.ts: no other file under scripts/ calls Gmail's send", () => {
+    const root = path.resolve(__dirname, "../../scripts");
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const full = path.join(dir, name);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (full.endsWith(".ts")) files.push(full);
+      }
+    };
+    walk(root);
+    expect(files.length).toBeGreaterThan(10);
+    const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const senders = files.filter((f) => /messages\.send\s*\(/.test(strip(readFileSync(f, "utf8"))));
+    expect(senders.map((f) => path.relative(root, f))).toEqual(["lib/send.ts"]);
   });
 });

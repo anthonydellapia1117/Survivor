@@ -73,7 +73,10 @@ export function priorSendFrom(r: { at: string; target_id: string | null; after: 
   const recipient = String(a.recipient ?? "").toLowerCase();
   const lockDay = String(a.lock_day ?? "");
   if (!recipient || !lockDay) return null;
-  return { recipient, lockDay, messageId: String(a.message_id ?? r.target_id ?? ""), at: r.at };
+  // A claim row has no message id (the send had not happened yet); only a
+  // sent row carries one, which is how the CLI tells "already sent" from
+  // "already claimed".
+  return { recipient, lockDay, messageId: String(a.message_id ?? ""), at: r.at };
 }
 
 /**
@@ -86,8 +89,10 @@ export async function priorSends(client: SupabaseClient): Promise<PriorSend[]> {
     loadAuditByAction(client, SEND_CLAIM_ACTION),
     loadAuditByAction(client, SEND_AUDIT_ACTION),
   ]);
+  // Sends first, so a completed send is found before the claim that
+  // preceded it; a claim with no sent row still counts on its own.
   const out: PriorSend[] = [];
-  for (const r of [...claims, ...sends]) {
+  for (const r of [...sends, ...claims]) {
     const p = priorSendFrom(r);
     if (p) out.push(p);
   }

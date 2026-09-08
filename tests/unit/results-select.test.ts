@@ -89,3 +89,15 @@ describe("selectFootballMessage", () => {
     expect(selectFootballMessage([b, a])?.message.id).toBe("a");
   });
 });
+
+import { refuseDuplicateImport } from "../../scripts/results/lib/select";
+
+describe("refuseDuplicateImport", () => {
+  it("refuses a sha256 seen before, naming the import, and lets a new file through", () => {
+    expect(refuseDuplicateImport({ id: "imp-1", week: 1, imported_at: "2026-09-16T14:00:00Z" })).toBe(
+      "Already imported 2026-09-16T14:00:00Z as import imp-1 (week 1): refusing to run twice on the same file.",
+    );
+    expect(refuseDuplicateImport({ id: "imp-2", week: null, imported_at: "x" })).toContain("week unknown");
+    expect(refuseDuplicateImport(null)).toBeNull();
+  });
+});

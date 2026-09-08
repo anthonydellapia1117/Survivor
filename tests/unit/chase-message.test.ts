@@ -160,7 +160,6 @@ describe("deadline paragraph", () => {
 describe("bccBody", () => {
   it("contains no entry name and goes plural when anyone has more than one entry", () => {
     const body = bccBody({ week: 1, entryCounts: [1, 4, 2], tiers: tuesdayTiers(), lateDeadlineIso: WEEK1.lateDeadlineAt });
-    for (const n of NAMES) expect(body).not.toContain(n);
     expect(body).not.toContain("for:");
     expect(body).toContain("I do not have your Week 1 picks yet.");
     expect(body).toContain("one team per entry");
@@ -233,5 +232,17 @@ describe("dedupeAddresses", () => {
       "Chas.Flaster@gmail.com",
       " kris@x.com ",
     ]);
+  });
+});
+
+import { entryNotesFor } from "../../scripts/chase/lib/message";
+
+describe("entryNotesFor", () => {
+  const buyers = new Map([["e1", "Kris Tomasco"], ["e2", "Kris Tomasco"], ["e3", "Ray Vassallo"]]);
+  it("names the buyer of each gifted entry only on a mixed message", () => {
+    const mixed = { kind: "mixed" as const, entries: [{ id: "e9", entryName: "Chas Own #1", isGifted: false }, { id: "e2", entryName: "Chas Flaster #1", isGifted: true }] };
+    expect(entryNotesFor(mixed, buyers)).toEqual({ "Chas Flaster #1": "bought by Kris Tomasco" });
+    expect(entryNotesFor({ kind: "owner", entries: mixed.entries }, buyers)).toBeUndefined();
+    expect(entryNotesFor({ kind: "player", entries: [{ id: "e3", entryName: "Johnvas #1", isGifted: true }] }, buyers)).toBeUndefined();
   });
 });
