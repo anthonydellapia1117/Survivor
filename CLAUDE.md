@@ -175,6 +175,9 @@ those rows — via /admin/audit — before re-raising anything.**
 - They are **Anthony's only**, under the participant row for
   `anthonydellapia@gmail.com` (distinct from the admin login).
 - Count is **FLOOR(recruited / 10)**.
+- **Final at 11 for 2026.** The pool closed 2026-09-08 at 110 recruited, so
+  the entitlement cannot move again this season. `AAA #11` was minted
+  2026-09-07 and carries Lynne number 1317, set 2026-09-08 on her word.
 - Named **"AAA #1"** through **"AAA #n"** — the same separator as every
   other multi-entry owner, per [the numbering convention](#the-numbering-convention).
   `FREE_ENTRY_NAME_PREFIX` in `src/lib/free-entries.ts` is `"AAA #"`, and the
@@ -411,12 +414,32 @@ pick request.
 These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
 
-**As of 2026-09-04:** 101 recruited + 10 free = **111 entries**, 35 owner rows
+**As of 2026-09-08 (Tuesday of Week 1):** 110 recruited + 11 free =
+**121 entries**, and **the pool is closed** - the season opens Wednesday
+2026-09-09 and no entry is added after this. **Free entries are final at 11**
+(FLOOR(110 / 10)); `AAA #11` was minted 2026-09-07 when the roster crossed
+110. **All 121 entries carry a Lynne number**: 972-1087 (116 entries, from
+her `Football 2026-2.xlsx` of 2026-09-06, loaded 2026-09-08 by
+`admin_update_entry`, 99 exact and 17 cosmetic name matches, 0 unmatched),
+1313-1316 (`Andrew DiCicco #1`-`#4`, from her message of 2026-09-07) and
+1317 (`AAA #11`, from her message of 2026-09-07, applied 2026-09-08). The
+load is `docs/2026-09-08_survivor_lynne_numbers.csv`. Money: $2,840 due,
+$1,830 collected, $1,010 outstanding, **$2,750 owed to Lynne** (110 x $25).
+Her buckets are clear (+0 / 0 / -0): the 2026-09-04 batch below went to her
+at 15:44 UTC that day, she replied "Got it.", and the marks were backdated
+to that timestamp on 2026-09-05. Pot in her pool: $28,485, acknowledged.
+Week 1 picks at 1:53 PM ET: 29 in, 92 outstanding, 1 late (`E.A.T.` on SEA
+under grace). Queue: one open row, Marc Massimino asking how to pick; the
+reply is a draft in his thread. The 2026-09-04 block below is kept for the
+history it carries and is superseded by this one.
+
+**As of 2026-09-04 (superseded):** 101 recruited + 10 free = **111 entries**, 35 owner rows
 (32 of them carrying recruited entries). $2,610 due, $1,500 collected, $1,110
 outstanding, **$2,525 owed to Lynne** (101 × $25). 19 owners settled, 13 still
 owing.
 
-**Lynne is owed twelve additions and four removals — +12 ✎0 −4.** Four owners
+**Lynne was owed twelve additions and four removals - +12 ✎0 −4 - until the
+2026-09-04 send, marked 2026-09-05; every bucket is clear now.** Four owners
 joined after the 2026-09-03 send: Mario Tropea III (`Mario 3rd #1`–`#4`),
 Michael Ciarrocchi (`Mike Cia`), TJ Auletto (`TJA #1`–`#4`) and Linda DellaPia
 (`Linda DellaPia #1`–`#2`) — eleven recruited entries, plus `AAA #10`, which
@@ -565,12 +588,69 @@ Two standing facts that are NOT snapshots and must survive:
   state, so a clean review is a reason to merge promptly, not to keep
   iterating.
 
+- **`admin_apply_lynne_import` is results-only.** It is the weekly result
+  importer behind `/admin/import` and `npm run results`: it records her file
+  (deduplicated on sha256), stores our rows and the variances, and applies
+  a result only to an entry that already has a current pick. It never sets a
+  Lynne number or label - those go through `admin_update_entry`, as the
+  2026-09-08 load did - and it never touches money. Set 2026-09-08.
+
+- **Migrations go in attended, with the code, on merge day.** Migrations
+  60-62 applied ahead of their code on 2026-09-04 broke entry saves for
+  hours. A migration file in a PR is not applied until that PR merges, and
+  it is applied by hand in the same sitting as the deploy. That is why
+  `20260905000064_queue_stale_pick_guard.sql` was renumbered to
+  `20260908180000_queue_stale_pick_guard.sql` on 2026-09-08: it was still
+  unapplied and had sorted below the applied `20260908171220`
+  (`pick_source_text_email`, the file `20260908000063`). Supabase records a
+  migration under the timestamp it was applied at, not the file name.
+
 ## Gmail
 
 **Fetch threads in full (`get_thread`), never rely on search previews.**
 Search returns only the ~5 oldest messages per thread with no truncation
 marker, which silently hides recent replies. Full fetches are what caught
 payments the previews missed.
+
+## Local commands (set 2026-09-08)
+
+Picks stopped being hand-entered on 2026-09-08. The commands live under
+`scripts/`, run as the admin through the same audited RPCs the screens use,
+and are documented in `docs/PICKS_INTAKE.md`. **There is no service-role key
+in any of them.**
+
+| Command                                  | What it does                                                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run picks`                          | Unread mail from any roster address, or pasted text, into a proposed table; writes through `admin_submit_pick` after `y`       |
+| `npm run lynne -- --week N --deadline d` | The entries that locked at that noon in her numbering, printed and left as a draft in the Entry List thread                     |
+| `npm run chase -- --week N [--bcc]`      | One draft per recipient with no pick (or one BCC draft) naming their entries and the earliest deadline still open               |
+| `npm run results -- --week N`            | Her newest Football xlsx from Gmail through `admin_apply_lynne_import`; refuses a sha256 seen before; prints the variance table |
+| `npm run distribute -- --week N`         | After the Friday lock, one BCC draft to every owner and player address with the /grid link and the standings sentence           |
+| `npm run notify -- "line"`               | One line to ntfy.sh/`NTFY_TOPIC`, printed when the topic is unset                                                               |
+| `npm run gmail:auth`                     | One-time OAuth consent for the Gmail token                                                                                     |
+
+- **`picks.source` takes `text` and `email`** (migration `20260908000063`,
+  applied 2026-09-08 as `20260908171220`). A pick from a text or a phone
+  call is `text`; a pick from a player's mail is `email`. `admin` remains
+  the hand-keyed value and `lynne_import` the importer's.
+- **The self-email UPDATE path is retired for picks.** Anthony no longer
+  mails himself a DECISION line per pick for the hourly sweep to apply;
+  `npm run picks` is the intake. **It stays for money and identity** - a
+  payment match or a who-is-this decision is still a DECISION self-email
+  the sweep reads and stages, because those are Anthony's calls and the
+  commands never resolve identity or mark Paid.
+- **Drafts only, with one gate.** Nothing under `scripts/` sends except
+  `scripts/lib/send.ts`, which sends exactly one template, `pick_reminder`,
+  only when the environment has `REMINDER_AUTOSEND=true`, only to a
+  recipient with no current pick, at most once per recipient per ET lock
+  day (judged from `audit_log` rows with actions `pick_reminder_claim` and
+  `pick_reminder_sent`), and every send writes a claim row before the Gmail
+  call and a sent row with the Gmail message id after it. Unset is the
+  default and means drafts only. Adding a second template is a reviewed
+  change to the allowlist, never a flag.
+- **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
+  each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
+  Anthony's to choose and is never invented.
 
 ## Separate systems
 
@@ -599,6 +679,7 @@ amount-first sweep rule exists.
 npm run dev | npm run build | npm run lint
 npx vitest run                          # unit tests
 bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
+npm run picks | npm run lynne | npm run chase | npm run results | npm run distribute
 ```
 
 ## Conventions
@@ -655,3 +736,6 @@ bash scripts/db/test-db.sh tests/sql/*.sql   # SQL suites
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
+| Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |
+| The one send path and its gate      | `scripts/lib/send.ts`                        |
+| Scheduled reporters                 | `docs/ROUTINES.md`                           |

@@ -1,0 +1,101 @@
+# One check, "codex-gate", on the pull request's head commit that passes only
+# when the Codex review has concluded on that exact commit and every review
+# thread is resolved. Codex itself posts no check, only a summary comment it
+# edits as it works, so this job reads that comment and the review threads
+# and writes the check the main ruleset requires (docs/MERGE_AUTOMATION.md).
+#
+# It re-runs on the events that can change the answer: a push to the PR,
+# Codex editing its summary, a review. GitHub offers no workflow event for a
+# review thread being resolved (pull_request_review_thread is refused as a
+# trigger), so after resolving threads the gate is re-run by hand with the
+# PR number: Actions > codex-gate > Run workflow, or the API's
+# workflow_dispatch. Comment and review events run the file on the default
+# branch, so they reach a PR only once this workflow is on main.
+name: codex-gate
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, dismissed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to gate
+        required: true
+        type: string
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  gate:
+    # The job's own check run must NOT carry the name of the check the script
+    # writes: both would be "codex-gate" from the same app, the job's green
+    # (it ran to completion) would land a second later than the check the
+    # script wrote, and a ruleset requiring "codex-gate" would read the newer
+    # one. So the job is "gate" and only the written check is "codex-gate".
+    name: gate
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const number = context.payload.pull_request?.number ?? context.payload.issue?.number ?? Number(context.payload.inputs?.pr);
+            if (!number) { core.info("Not a pull request event; nothing to gate."); return; }
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            if (pr.state !== "open") { core.info(`PR #${number} is ${pr.state}; nothing to gate.`); return; }
+            const head = pr.head.sha;
+            const short = head.slice(0, 7);
+
+            // 1. Codex's own summary comment names the commit it reviewed and its
+            // status. Only the Codex app's bot identity is trusted: anyone who can
+            // comment could paste the marker and a "Completed" row, so a lookalike
+            // from any other author is ignored.
+            const CODEX_LOGIN = "chatgpt-codex-connector[bot]";
+            const MARKER = "<!-- codex-pull-request-review-summary -->";
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 });
+            const summary = comments.find(
+              (c) => c.user?.login === CODEX_LOGIN && c.user?.type === "Bot" && (c.body || "").includes(MARKER),
+            );
+            let codex = "no Codex summary comment yet";
+            let concluded = false;
+            if (summary) {
+              const row = summary.body.split("\n").find((l) => l.startsWith("|") && l.includes("`" + short + "`"));
+              if (!row) codex = `Codex has not reviewed ${short} yet`;
+              else if (/Completed/.test(row)) { codex = `Codex completed on ${short}`; concluded = true; }
+              else codex = `Codex is still running on ${short}`;
+            }
+
+            // 2. Every review thread resolved (Codex and Copilot findings included),
+            // read page by page so a thread past the first hundred still counts.
+            const q = `query($owner: String!, $repo: String!, $n: Int!, $after: String) {
+              repository(owner: $owner, name: $repo) { pullRequest(number: $n) {
+                reviewThreads(first: 100, after: $after) {
+                  nodes { isResolved }
+                  pageInfo { hasNextPage endCursor } } } } }`;
+            let unresolved = 0;
+            let after = null;
+            for (;;) {
+              const r = await github.graphql(q, { owner, repo, n: number, after });
+              const threads = r.repository.pullRequest.reviewThreads;
+              unresolved += threads.nodes.filter((t) => !t.isResolved).length;
+              if (!threads.pageInfo.hasNextPage) break;
+              after = threads.pageInfo.endCursor;
+            }
+
+            const ok = concluded && unresolved === 0;
+            const summaryText = `${codex}. Unresolved review threads: ${unresolved}.`;
+            await github.rest.checks.create({
+              owner, repo, name: "codex-gate", head_sha: head, status: "completed",
+              conclusion: ok ? "success" : "failure",
+              output: { title: ok ? "Codex concluded, every thread resolved" : "Not ready to merge", summary: summaryText },
+            });
+            core.info(`codex-gate on ${short}: ${ok ? "success" : "failure"} (${summaryText})`);

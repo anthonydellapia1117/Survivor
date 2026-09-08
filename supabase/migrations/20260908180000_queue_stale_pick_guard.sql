@@ -1,3 +1,4 @@
+-- Renumbered from 20260905000064 on 2026-09-08: it was unapplied and sorted below the applied 20260908171220 (pick_source_text_email); it is applied attended, on merge day, together with the code.
 -- Queue: a stale queued pick cannot roll back a newer one (follow-up to 63).
 --
 -- 20260905000063 was applied to production on 2026-09-05 before review found

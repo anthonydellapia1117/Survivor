@@ -1,0 +1,39 @@
+# The checks every pull request has to pass before it can merge: lint,
+# typecheck, unit tests, the production build, and the SQL suites against a
+# fresh database built from supabase/migrations. The job is named "ci" so the
+# main ruleset can require it by that name (docs/MERGE_AUTOMATION.md).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npx eslint .
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npx vitest run
+      - name: Build
+        run: npm run build
+      - name: SQL suites
+        run: |
+          export PATH="/usr/lib/postgresql/16/bin:$PATH"
+          bash scripts/db/test-db.sh tests/sql/*.sql
