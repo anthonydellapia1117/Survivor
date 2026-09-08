@@ -98,6 +98,11 @@ export function parseRosterSheet(buf: Buffer | Uint8Array): ParsedRosterSheet {
     }
     rows.push({ row: sheetRow, no, names, cells });
   }
+  if (rows.length === 0) {
+    throw new Error(
+      `No row with an integer NO. and a NAMES text below the header (${range.e.r} rows read, ${skipped.length} skipped). Nothing to load.`,
+    );
+  }
   return {
     sha256,
     sheetName,

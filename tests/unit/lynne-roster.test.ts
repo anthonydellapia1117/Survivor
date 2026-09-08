@@ -57,6 +57,11 @@ describe("parseRosterSheet", () => {
     expect(() => parseRosterSheet(sheet([["NO.", "NAMES"], [5, "a"], [5, "b"]]))).toThrow("NO. 5 appears on sheet rows 2 and 3");
   });
 
+  it("refuses a sheet with no usable row instead of handing the CLI an empty list", () => {
+    expect(() => parseRosterSheet(sheet([["NO.", "NAMES"]]))).toThrow("No row with an integer NO. and a NAMES text");
+    expect(() => parseRosterSheet(sheet([["NO.", "NAMES"], ["x", "not a row"], [7, null]]))).toThrow("2 rows read, 2 skipped");
+  });
+
   it("refuses a workbook that is not her NO./NAMES layout", () => {
     expect(() => parseRosterSheet(sheet([["entry", "team"], ["x", "PHI"]]))).toThrow("Not her NO./NAMES layout");
   });

@@ -39,6 +39,13 @@ describe("lynne:roster wiring", () => {
     expect(new Set(tables)).toEqual(new Set(["lynne_roster"]));
   });
 
+  it("reads the prior sheet a page at a time, never in one capped range", () => {
+    const c = code(CLI);
+    expect(c).not.toMatch(/\.range\(\s*\d+\s*,\s*\d+\s*\)/);
+    expect(c).toMatch(/fetchAllPages<[^>]*>\(async \(from, to\)/);
+    expect(c).toMatch(/\.range\(from, to\)/);
+  });
+
   it("the table has no write policy and the RPC is the only write path", () => {
     const m = MIGRATION.toLowerCase();
     expect(m).toContain("enable row level security");

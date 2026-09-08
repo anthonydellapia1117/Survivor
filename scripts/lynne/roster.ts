@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { adminClient } from "../lib/db";
 import { finishedLine, notify } from "../lib/notify";
+import { fetchAllPages } from "../lib/paged";
 import { confirm } from "../lib/prompt";
 import { diffRoster, duplicateNames, parseRosterSheet, rowsPayload } from "./lib/roster-sheet";
 
@@ -70,35 +71,56 @@ async function main(): Promise<void> {
 
   const { client, actor } = await adminClient();
 
-  // ---- what is loaded already
-  const { data: loadedRows, error: loadedErr } = await client
+  // ---- already loaded? One targeted row: the sha256 is the identity.
+  const { data: alreadyRows, error: alreadyErr } = await client
     .from("lynne_roster")
     .select("sheet_sha256, source_file, loaded_at")
-    .order("loaded_at", { ascending: false })
-    .range(0, 9999)
+    .eq("sheet_sha256", sheet.sha256)
+    .limit(1)
     .returns<LoadedSheet[]>();
-  if (loadedErr) throw new Error(`lynne_roster: ${loadedErr.message}`);
-  const sheets = new Map<string, LoadedSheet>();
-  for (const r of loadedRows ?? []) if (!sheets.has(r.sheet_sha256)) sheets.set(r.sheet_sha256, r);
-  const already = sheets.get(sheet.sha256);
+  if (alreadyErr) throw new Error(`lynne_roster: ${alreadyErr.message}`);
+  const already = alreadyRows?.[0] ?? null;
   if (already) {
     console.log(`\nAlready loaded ${already.loaded_at} as ${already.source_file}; a sheet is loaded once. Nothing written.`);
     await notify(finishedLine("lynne:roster", `${filename} already loaded, nothing written`));
     return;
   }
 
-  // ---- the diff against the prior sheet, before anything is written
-  const prior = [...sheets.values()].sort((a, b) => (a.loaded_at < b.loaded_at ? 1 : -1))[0] ?? null;
+  // ---- the diff against the prior sheet, before anything is written. The
+  // newest row belongs to the newest sheet, so one row names it. Its rows are
+  // then read a page at a time: PostgREST caps a response at 1,000 rows and
+  // her sheet is longer than that, so a single capped read would print the
+  // tail as "added". The count check refuses a diff built from a short read.
+  const { data: newestRows, error: newestErr } = await client
+    .from("lynne_roster")
+    .select("sheet_sha256, source_file, loaded_at")
+    .order("loaded_at", { ascending: false })
+    .limit(1)
+    .returns<LoadedSheet[]>();
+  if (newestErr) throw new Error(`lynne_roster (prior): ${newestErr.message}`);
+  const prior = newestRows?.[0] ?? null;
   if (prior) {
-    const { data: priorRows, error: priorErr } = await client
+    const priorRows = await fetchAllPages<{ row_no: number; names: string }>(async (from, to) => {
+      const { data, error } = await client
+        .from("lynne_roster")
+        .select("row_no, names")
+        .eq("sheet_sha256", prior.sheet_sha256)
+        .order("row_no", { ascending: true })
+        .range(from, to)
+        .returns<{ row_no: number; names: string }[]>();
+      if (error) throw new Error(`lynne_roster (prior rows): ${error.message}`);
+      return data ?? [];
+    });
+    const { count, error: countErr } = await client
       .from("lynne_roster")
-      .select("row_no, names")
-      .eq("sheet_sha256", prior.sheet_sha256)
-      .range(0, 9999)
-      .returns<{ row_no: number; names: string }[]>();
-    if (priorErr) throw new Error(`lynne_roster (prior): ${priorErr.message}`);
+      .select("row_no", { count: "exact", head: true })
+      .eq("sheet_sha256", prior.sheet_sha256);
+    if (countErr) throw new Error(`lynne_roster (prior count): ${countErr.message}`);
+    if (count !== null && count !== priorRows.length) {
+      throw new Error(`lynne_roster (prior): read ${priorRows.length} of ${count} rows of ${prior.source_file}; the diff would be wrong. Nothing written.`);
+    }
     const d = diffRoster(
-      (priorRows ?? []).map((r) => ({ no: r.row_no, names: r.names })),
+      priorRows.map((r) => ({ no: r.row_no, names: r.names })),
       sheet.rows.map((r) => ({ no: r.no, names: r.names })),
     );
     console.log(`\nAgainst the prior sheet ${prior.source_file} (${prior.sheet_sha256.slice(0, 12)}, loaded ${prior.loaded_at}):`);
