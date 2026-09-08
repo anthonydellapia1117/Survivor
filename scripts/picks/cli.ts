@@ -39,6 +39,7 @@ import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from ".
 import {
   effectiveSubmitTime,
   leadingLines,
+  overrideDecision,
   parsePickLines,
   pendingKind,
   pickSourceFor,
@@ -165,14 +166,23 @@ async function main(): Promise<void> {
       ownerName: o ? `${o.first_name} ${o.last_name}` : "",
       ownerEmail: o?.email ?? null,
       playerEmail: e.player_email,
+      isGifted: e.is_gifted,
     };
   });
 
+  // A gifted entry with no address is on nobody's scope: its pick belongs
+  // to a person the roster cannot reach yet, so the buyer's "for all" must
+  // not write it (CLAUDE.md, Gifted entries).
+  const addressless = roster.filter((e) => e.isGifted && !e.playerEmail);
+  if (addressless.length) {
+    console.log(`Gifted with no address, picked by nobody here: ${addressless.map((e) => e.entryName).join(", ")}`);
+  }
   const entriesFor = (address: string): RosterEntry[] => {
     const a = address.toLowerCase();
-    return roster.filter(
-      (e) => (e.playerEmail ? e.playerEmail.toLowerCase() === a : (e.ownerEmail ?? "").toLowerCase() === a),
-    );
+    return roster.filter((e) => {
+      if (e.isGifted && !e.playerEmail) return false;
+      return e.playerEmail ? e.playerEmail.toLowerCase() === a : (e.ownerEmail ?? "").toLowerCase() === a;
+    });
   };
 
   // ---- gather
@@ -251,7 +261,14 @@ async function main(): Promise<void> {
     for (const u of unparsed) {
       if (/[A-Za-z]{3,}/.test(u) && !/^(hi|hey|hello|thanks|thank you|thx)\b/i.test(u)) fail("no team recognised on this line", u);
     }
+    // A known address with no live entry behind it (a declined owner, a
+    // voided roster) may name anything; nothing it names is written.
+    const senderUnplaced = item.senderAddress !== null && scopeEntries.length === 0;
     for (const p of picks) {
+      if (senderUnplaced) {
+        fail("sender matches no live entry on the roster", p.line);
+        continue;
+      }
       let targets: { entry: RosterEntry; how: string }[] = [];
       if (p.all) {
         if (!scopeEntries.length) {
@@ -284,6 +301,12 @@ async function main(): Promise<void> {
       }
       for (const t of targets) {
         const deadline = deadlineFor(p.team, ctx.bounds, ctx.games);
+        const existing = ctx.currentByEntry.get(t.entry.id) ?? null;
+        const decision = overrideDecision(existing, madeAt, ctx.bounds.lateDeadlineAt, now);
+        if (!decision.ok && existing && existing.team !== p.team) {
+          fail(`${t.entry.entryName} -> ${p.team}: ${decision.reason}`, p.line);
+          continue;
+        }
         proposals.push({
           entry: t.entry,
           week: item.week,
@@ -292,7 +315,7 @@ async function main(): Promise<void> {
           deadline,
           late: isLate(deadline, madeAt),
           submittedAt: item.receivedAt,
-          existing: ctx.currentByEntry.get(t.entry.id) ?? null,
+          existing,
           how: t.how,
           messageId: item.messageId,
           itemLabel: item.label,

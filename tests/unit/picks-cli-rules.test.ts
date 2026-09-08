@@ -75,3 +75,44 @@ describe("effectiveSubmitTime", () => {
     expect(effectiveSubmitTime("not a date", now)).toBe(now);
   });
 });
+
+import { overrideDecision, stripQuotedReply } from "../../scripts/picks/lib/resolve";
+
+describe("overrideDecision", () => {
+  const late = "2026-09-11T16:00:00Z";
+  const before = new Date("2026-09-10T12:00:00Z");
+  const after = new Date("2026-09-12T12:00:00Z");
+  it("lets a first pick through, late or not", () => {
+    expect(overrideDecision(null, before, late, before)).toEqual({ ok: true });
+    expect(overrideDecision(null, after, late, after)).toEqual({ ok: true });
+  });
+  it("stages a change to a pick that is already scored", () => {
+    const d = overrideDecision({ team: "SEA", submitted_at: "2026-09-08T12:00:00Z", result: "loss" }, after, late, after);
+    expect(d.ok).toBe(false);
+    if (!d.ok) expect(d.reason).toContain("already scored");
+  });
+  it("stages an older mail that would override a newer pick", () => {
+    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-10T15:00:00Z", result: null }, before, late, before);
+    expect(d.ok).toBe(false);
+    if (!d.ok) expect(d.reason).toContain("older than the current pick");
+  });
+  it("stages a change after the lock when a pick is already on file", () => {
+    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-10T15:00:00Z", result: null }, after, late, after);
+    expect(d.ok).toBe(false);
+    if (!d.ok) expect(d.reason).toContain("after the lock");
+  });
+  it("allows a newer mail to change an unscored pick before the lock", () => {
+    const d = overrideDecision({ team: "PHI", submitted_at: "2026-09-09T15:00:00Z", result: null }, before, late, before);
+    expect(d).toEqual({ ok: true });
+  });
+});
+
+describe("stripQuotedReply", () => {
+  it("cuts a wrapped Gmail attribution before its quoted text", () => {
+    const body = "Eagles for both\n\nOn Mon, Sep 7, 2026 at 8:16 AM Anthony DellaPia <\nanthonydellapia@gmail.com> wrote:\n> Week 1 picks are due";
+    expect(stripQuotedReply(body)).toBe("Eagles for both");
+  });
+  it("keeps a line that merely starts with On", () => {
+    expect(stripQuotedReply("On second thought, Ravens\nthanks")).toBe("On second thought, Ravens\nthanks");
+  });
+});

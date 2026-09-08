@@ -10,37 +10,51 @@
 //                                wed = Thursday games, thu = Friday games,
 //                                fri = Saturday, Sunday and Monday games)
 //   --no-draft                   print only
+//   --before-lock                allow a run before the tier has closed (the
+//                                list can still change until then)
 
-import { adminClient, loadCurrentPicks, loadGames, loadLiveEntries } from "../lib/db";
+import { adminClient, loadCurrentPicks, loadGames, loadLiveEntries, loadWeeks } from "../lib/db";
 import { createDraftReply, findThreadBySubject, gmailClient } from "../lib/gmail";
 import { gameDayFor, type GameLite } from "../picks/lib/deadline";
-import { draftBody, isLockDay, LOCK_LABEL, selectForLock, type OutboundPick } from "./lib/outbound";
+import { draftBody, isLockDay, LOCK_LABEL, lockDeadlineIso, selectForLock, type OutboundPick } from "./lib/outbound";
+import { formatEt } from "../picks/lib/deadline";
 import { ENTRY_LIST_SUBJECT as THREAD_SUBJECT, LYNNE_EMAIL as LYNNE } from "../lib/constants";
 
-function parseArgs(argv: string[]): { week: number; lock: "tue" | "wed" | "thu" | "fri"; draft: boolean } {
+function parseArgs(argv: string[]): { week: number; lock: "tue" | "wed" | "thu" | "fri"; draft: boolean; beforeLock: boolean } {
   let week: number | null = null;
   let lock: string | null = null;
   let draft = true;
+  let beforeLock = false;
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--week") week = Number(argv[++i]);
     else if (x === "--deadline") lock = argv[++i];
     else if (x === "--no-draft") draft = false;
+    else if (x === "--before-lock") beforeLock = true;
     else throw new Error(`Unknown argument ${x}`);
   }
   if (week === null || !Number.isInteger(week)) throw new Error("--week N is required");
   if (!lock || !isLockDay(lock)) throw new Error("--deadline must be tue, wed, thu or fri");
-  return { week, lock, draft };
+  return { week, lock, draft, beforeLock };
 }
 
 async function main(): Promise<void> {
-  const { week, lock, draft } = parseArgs(process.argv.slice(2));
+  const { week, lock, draft, beforeLock } = parseArgs(process.argv.slice(2));
   const { client } = await adminClient();
-  const [entries, gameRows, current] = await Promise.all([
+  const [entries, gameRows, current, weeks] = await Promise.all([
     loadLiveEntries(client),
     loadGames(client, week),
     loadCurrentPicks(client, week),
+    loadWeeks(client),
   ]);
+  // The list is only final once the tier has closed; before that a player
+  // can still change a pick and the draft would be stale the moment it is sent.
+  const bounds = weeks.find((w) => w.week === week);
+  if (!bounds) throw new Error(`Week ${week} not found.`);
+  const locksAt = lockDeadlineIso(lock, bounds.early_deadline_at, bounds.late_deadline_at);
+  if (new Date().getTime() < new Date(locksAt).getTime() && !beforeLock) {
+    throw new Error(`The ${LOCK_LABEL[lock]} closes at ${formatEt(locksAt)}; the list is not final until then. Pass --before-lock to draft it anyway.`);
+  }
   const games: GameLite[] = gameRows.map((g) => ({ week: g.week, dayOfWeek: g.day_of_week, homeTeam: g.home_team, awayTeam: g.away_team }));
   const byId = new Map(entries.map((e) => [e.id, e]));
   const picks: OutboundPick[] = [];

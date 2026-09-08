@@ -85,8 +85,12 @@ it, every line it could not resolve, with the candidates it saw. Then:
 Write 4 pick(s) and stage 1 pending row(s)? (y/N)
 ```
 
-Only y or yes writes. Picks go through admin_submit_pick with source email or
-text; a late one is stored with late = true, never refused and never hidden.
+Only y or yes writes; after a paste the y is read from the terminal, so
+`--paste` needs one (a pipe with no terminal is refused, never answered for
+you). Picks go through admin_submit_pick with source email or text; a late
+one is stored with late = true, never refused and never hidden. A change to
+a pick that is already scored, an older mail arriving after a newer pick, or
+a change after the lock is staged for you rather than written.
 Unresolved lines become pending_actions rows (kind identity when there is no
 sender or the sender matches nobody on the roster, player_question when a
 known person sent it and the line itself is the problem) carrying the Gmail
@@ -107,11 +111,13 @@ npm run lynne -- --week 1 --deadline fri
 
 `--deadline` is the noon ET lock day: tue closes the Wednesday game, wed the
 Thursday games, thu the Friday games, fri Saturday, Sunday and Monday. It
-prints `<number>  <label>  -  <full team name>` sorted by her number, names
-any entry it refused (no Lynne number or label on file), and creates the
-same text as a draft in the "Survivor - DellaPia | 2026 Entry List" thread.
-You should see `Draft <id> created ... Not sent`. Open Gmail, check it, send.
-`--no-draft` prints only.
+refuses to run before that tier has closed (the list is not final until
+then; `--before-lock` overrides), prints `<number>  <label>  -  <team>` in
+her own team vocabulary (Seattle, Green Bay, BYE) sorted by her number,
+names any entry it refused (no Lynne number or label on file), and creates
+the same text as a draft in the "Survivor - DellaPia | 2026 Entry List"
+thread. You should see `Draft <id> created ... Not sent`. Open Gmail, check
+it, send. `--no-draft` prints only.
 
 ## 4. Chasing entries with no pick
 
@@ -189,8 +195,10 @@ npm run distribute -- --week 1
 
 Refuses before the week's Friday noon lock. After it, one draft, To
 yourself, BCC every owner address and every player address on a live entry
-(the same list as the All filter on /admin/emails), with the /grid link and
-the one-sentence standings line the dashboard shows. Nothing about money.
+(the same list as the All filter on /admin/emails), saying the picks are
+locked and post on the grid as each game kicks off, with the /grid link and
+the one-sentence standings line the dashboard shows, read from the same
+view the dashboard reads. Nothing about money.
 You should see `draft <id> created, BCC <k> addresses. Not sent`.
 
 ## 7. Notifications

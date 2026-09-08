@@ -173,11 +173,12 @@ describe("buildRecipientOwners", () => {
 });
 
 describe("standings source", () => {
-  it("reads v_entry_admin, never v_entry_standing, which the admin session cannot select", () => {
+  it("reads v_entry_public, the dashboard's view, never v_entry_standing, which the admin session cannot select", () => {
     const src = readFileSync(path.resolve(__dirname, "../../scripts/lib/db.ts"), "utf8");
     const fn = src.slice(src.indexOf("export async function loadStandings"));
     const body = fn.slice(0, fn.indexOf("\n}\n") + 3);
-    expect(body).toContain('.from("v_entry_admin")');
+    expect(body).toContain('.from("v_entry_public")');
     expect(body).not.toContain('.from("v_entry_standing")');
+    expect(body).not.toContain('.from("v_entry_admin")');
   });
 });

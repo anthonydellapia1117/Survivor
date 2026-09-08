@@ -168,20 +168,24 @@ export async function loadCurrentPicks(client: SupabaseClient, week: number): Pr
 }
 
 /**
- * Standings come from v_entry_admin, not v_entry_standing: the admin session
- * signs in as the authenticated role, and v_entry_standing is revoked from
- * that role (verified against production 2026-09-08), so a read of it dies
- * before any command gets to plan. v_entry_admin carries the same status,
- * losses and bye_used, gated by is_admin() inside the view, for the live
- * entries of confirmed owners, which is exactly the set the commands act on.
+ * Standings come from v_entry_public, the view the dashboard reads, so the
+ * standings sentence a command writes is the one the site shows: status and
+ * losses are the app's local calculation, and bye_used counts a bye only
+ * once its game has kicked off, exactly as the public grid does.
+ *
+ * Not v_entry_standing: the admin session signs in as the authenticated
+ * role, and that view is revoked from it (verified against production
+ * 2026-09-08), so a read of it dies before any command gets to plan.
+ * v_entry_public is granted, and already restricted to the live entries of
+ * confirmed owners, which is the set the commands act on.
  */
 export async function loadStandings(client: SupabaseClient): Promise<StandingRow[]> {
   const rows = unwrap(
     await client
-      .from("v_entry_admin")
+      .from("v_entry_public")
       .select("id, status, losses, bye_used")
       .returns<{ id: string; status: string; losses: number; bye_used: boolean }[]>(),
-    "v_entry_admin",
+    "v_entry_public",
   );
   return rows.map((r) => ({ entry_id: r.id, status: r.status, losses: r.losses, bye_used: r.bye_used }));
 }

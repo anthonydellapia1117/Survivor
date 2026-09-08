@@ -3,26 +3,62 @@
 // answered is an error, never a silent exit: a Routine or a piped run that
 // forgot --yes or the password variable finds out on the first line.
 
+import fs from "node:fs";
 import readline from "node:readline";
 import { Writable } from "node:stream";
 
 const NO_ANSWER =
   "No answer: stdin closed before the prompt was answered. For a non-interactive run pass --yes and set the password in the environment.";
+const NO_TERMINAL =
+  "stdin was already read (pasted picks) and no terminal is available for the y/N prompt: run from a terminal, or use --file with the picks and answer on the keyboard.";
+
+/** Set once readStdin() has drained stdin; a later prompt must read the terminal. */
+let stdinConsumed = false;
+
+/** The terminal device. SURVIVOR_TTY_PATH exists so a test can point at a path that cannot open. */
+const TTY_PATH = process.env.SURVIVOR_TTY_PATH ?? "/dev/tty";
+
+/**
+ * Where a prompt reads from. Normally stdin; once readStdin() has drained
+ * it (--paste), the terminal itself, so "y" can still be typed after the
+ * pasted block. With no terminal (a container) the prompt is refused.
+ */
+function promptInput(): NodeJS.ReadableStream {
+  if (!stdinConsumed) return process.stdin;
+  return fs.createReadStream(TTY_PATH);
+}
 
 export function ask(question: string): Promise<string> {
+  const input = promptInput();
   const rl = readline.createInterface({
-    input: process.stdin,
+    input,
     output: process.stdout,
   });
   return new Promise((resolve, reject) => {
     let answered = false;
+    let failed = false;
+    if (input !== process.stdin) {
+      // readline re-emits the stream's error on itself; both need a handler
+      // or an unopenable terminal is an uncaught exception, not a refusal.
+      const onError = (e: Error) => {
+        failed = true;
+        rl.close();
+        reject(new Error(`${NO_TERMINAL} (${e.message})`));
+      };
+      input.on("error", onError);
+      rl.on("error", onError);
+    }
     rl.question(question, (answer) => {
       answered = true;
       rl.close();
       resolve(answer.trim());
     });
     rl.on("close", () => {
-      if (!answered) reject(new Error(NO_ANSWER));
+      // The close that follows a stream error can land before the error
+      // itself; give the error its turn so the message names the terminal.
+      setImmediate(() => {
+        if (!answered && !failed) reject(new Error(NO_ANSWER));
+      });
     });
   });
 }
@@ -70,6 +106,7 @@ export function promptHidden(question: string): Promise<string> {
 }
 
 export function readStdin(): Promise<string> {
+  stdinConsumed = true;
   return new Promise((resolve, reject) => {
     let data = "";
     process.stdin.setEncoding("utf8");

@@ -16,6 +16,15 @@ export const GRID_URL = `${SITE_URL}/grid`;
 export function distributeMessage(week: number, counts: StandingsCounts): DistributeMessage {
   return {
     subject: `Survivor - Week ${week} picks posted`,
-    body: [`Week ${week} picks are posted: ${GRID_URL}`, "", standingsSentence(counts), "", "AD", ""].join("\n"),
+    // The grid reveals each pick at its game's kickoff, not at the lock, so
+    // the line promises what the link shows: locked now, posted per game.
+    body: [
+      `Week ${week} picks are locked. Each one posts on the grid as its game kicks off: ${GRID_URL}`,
+      "",
+      standingsSentence(counts),
+      "",
+      "AD",
+      "",
+    ].join("\n"),
   };
 }

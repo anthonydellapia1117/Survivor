@@ -19,23 +19,41 @@ describe("selectForLock", () => {
   });
   it("gives only the tier's entries, in her numbering, with the full team name", () => {
     const r = selectForLock(picks, "tue");
-    expect(r.lines).toEqual(["1004  E.A.T.  -  Seattle Seahawks"]);
+    expect(r.lines).toEqual(["1004  E.A.T.  -  Seattle"]);
     expect(r.excluded).toEqual([]);
   });
   it("sorts by number, keeps her label byte-exact, and refuses an unnumbered entry by name", () => {
     const r = selectForLock(picks, "fri");
     expect(r.lines).toEqual([
-      "980  AAA #9  -  Detroit Lions",
+      "980  AAA #9  -  Detroit",
       "1013  Jim Teti  #2  -  BYE",
-      "1045  Maria & Mary #2  -  Kansas City Chiefs",
-      "1087  thedrick's picks  -  Detroit Lions",
+      "1045  Maria & Mary #2  -  Kansas City",
+      "1087  thedrick's picks  -  Detroit",
     ]);
     expect(r.excluded).toEqual([{ pick: picks[1], why: "no Lynne number on file" }]);
   });
   it("draft body is hyphens only and ends with his sign-off", () => {
-    const body = draftBody(1, "tue", ["1004  E.A.T.  -  Seattle Seahawks"]);
+    const body = draftBody(1, "tue", ["1004  E.A.T.  -  Seattle"]);
     expect(body).toContain("Week 1 picks - Tuesday noon lock (Wednesday game):");
     expect(body).not.toMatch(/[–—]/);
     expect(body.trimEnd().endsWith("Anthony")).toBe(true);
+  });
+});
+
+import { lockDeadlineIso, fullTeamName } from "../../scripts/lynne/lib/outbound";
+
+describe("lock deadline and her vocabulary", () => {
+  const early = "2026-09-09T16:00:00.000Z";
+  const late = "2026-09-11T16:00:00.000Z";
+  it("closes each lock day at the tier CLAUDE.md gives it", () => {
+    expect(lockDeadlineIso("tue", early, late)).toBe("2026-09-08T16:00:00.000Z");
+    expect(lockDeadlineIso("wed", early, late)).toBe(early);
+    expect(lockDeadlineIso("thu", early, late)).toBe("2026-09-10T16:00:00.000Z");
+    expect(lockDeadlineIso("fri", early, late)).toBe(late);
+  });
+  it("writes teams the way her sheet does", () => {
+    expect(fullTeamName("SEA")).toBe("Seattle");
+    expect(fullTeamName("LAR")).not.toBe("LAR");
+    expect(fullTeamName("SKIP_WEEK")).toBe("BYE");
   });
 });

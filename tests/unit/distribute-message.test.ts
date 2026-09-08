@@ -104,7 +104,7 @@ describe("distributeMessage", () => {
   });
 
   it("is the link, the standings sentence and the sign-off, nothing else", () => {
-    expect(msg.body).toBe(`Week 3 picks are posted: ${GRID_URL}\n\n${EXPECTED}\n\nAD\n`);
+    expect(msg.body).toBe(`Week 3 picks are locked. Each one posts on the grid as its game kicks off: ${GRID_URL}\n\n${EXPECTED}\n\nAD\n`);
     expect(msg.body.trimEnd().endsWith("\nAD")).toBe(true);
   });
 

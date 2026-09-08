@@ -3,6 +3,8 @@
 // Lynne number cannot go on it and is refused by name, never padded.
 
 import { SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
+import { LYNNE_TEAM_NAME } from "@/lib/lynne/names";
+import { pickDeadlineIso } from "@/lib/deadlines";
 import type { GameDay } from "@/lib/data/types";
 
 /** The lock day, noon ET, and the game days it closes. */
@@ -41,9 +43,15 @@ export interface OutboundResult {
   excluded: { pick: OutboundPick; why: string }[];
 }
 
+/** Her vocabulary first (the city names her sheet uses), the app's full name as the fallback. */
 export function fullTeamName(team: string): string {
   if (team === SKIP_WEEK) return "BYE";
-  return TEAM_NAME[team] ?? team;
+  return LYNNE_TEAM_NAME[team] ?? TEAM_NAME[team] ?? team;
+}
+
+/** When the lock day's tier closes: noon ET the day before its game day. */
+export function lockDeadlineIso(lock: LockDay, earlyDeadlineAt: string, lateDeadlineAt: string): string {
+  return pickDeadlineIso(LOCK_GAME_DAYS[lock][0], earlyDeadlineAt, lateDeadlineAt);
 }
 
 export function formatLine(p: OutboundPick): string {

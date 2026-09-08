@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   }
   if (missing.length) {
     throw new Error(
-      `${missing.length} live entries have no standings row in v_entry_admin (${missing.join(", ")}); the standings line cannot be built.`,
+      `${missing.length} live entries have no standings row in v_entry_public (${missing.join(", ")}); the standings line cannot be built.`,
     );
   }
 

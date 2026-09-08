@@ -16,6 +16,8 @@ export interface RosterEntry {
   ownerName: string;
   ownerEmail: string | null;
   playerEmail: string | null;
+  /** Somebody else plays this entry (entries.is_gifted). */
+  isGifted?: boolean;
 }
 
 /** Case, "#" and whitespace do not count. Nothing else is loosened. */
@@ -295,8 +297,13 @@ export function parsePickLines(text: string): { picks: RawPick[]; unparsed: stri
 /** The player's own words: quoted history and signatures removed. */
 export function stripQuotedReply(body: string): string {
   const out: string[] = [];
-  for (const line of body.split(/\r?\n/)) {
+  const lines = body.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (/^On .+wrote:\s*$/i.test(line)) break;
+    // Gmail wraps a long attribution: "On Mon, Sep 7, 2026 at 8:16 AM Name <"
+    // then "address> wrote:" on the next line or two.
+    if (/^On .+/.test(line) && lines.slice(i + 1, i + 3).some((l) => /wrote:\s*$/i.test(l))) break;
     if (/^-{2,}\s*Original Message\s*-{2,}/i.test(line)) break;
     if (/^From:\s.+/i.test(line) && out.length > 0) break;
     if (/^--\s*$/.test(line)) break;
@@ -381,4 +388,43 @@ export function effectiveSubmitTime(receivedAt: string | null, now: Date): Date 
   if (!receivedAt) return now;
   const t = new Date(receivedAt);
   return Number.isNaN(t.getTime()) ? now : t;
+}
+
+export interface ExistingPick {
+  team: string;
+  submitted_at: string;
+  result: string | null;
+}
+
+const FINAL_RESULTS = new Set(["win", "loss", "tie_loss", "missed"]);
+
+/**
+ * Whether a proposed pick may replace the current one without Anthony
+ * deciding first. Three cases are staged, never written:
+ *   - the current pick is already scored: a reply on an old thread must not
+ *     roll a result back
+ *   - the current pick is newer than this message: an older unread mail
+ *     never overrides a later choice
+ *   - the week is locked and a pick is already on file: a change after the
+ *     lock is Anthony's call
+ * A first pick after the lock is not blocked here; it is written with its
+ * late flag, which is what the flag is for.
+ */
+export function overrideDecision(
+  existing: ExistingPick | null,
+  madeAt: Date,
+  lateDeadlineIso: string,
+  now: Date,
+): { ok: true } | { ok: false; reason: string } {
+  if (!existing) return { ok: true };
+  if (existing.result && FINAL_RESULTS.has(existing.result)) {
+    return { ok: false, reason: `already scored (${existing.team} ${existing.result}); a change needs Anthony` };
+  }
+  if (new Date(existing.submitted_at).getTime() > madeAt.getTime()) {
+    return { ok: false, reason: `older than the current pick (${existing.team}, made later); Anthony decides` };
+  }
+  if (now.getTime() > new Date(lateDeadlineIso).getTime()) {
+    return { ok: false, reason: `after the lock with ${existing.team} already on file; a change needs Anthony` };
+  }
+  return { ok: true };
 }
