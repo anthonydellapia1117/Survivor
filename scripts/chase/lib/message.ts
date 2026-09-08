@@ -7,7 +7,7 @@ import type { GameDay } from "@/lib/data/types";
 import { teamDeadlines } from "@/lib/deadlines";
 import { CONTACT_PHONE } from "@/lib/emails/pick-request";
 import { TEAM_NAME } from "@/lib/standing";
-import type { OpenDeadline } from "../../lib/roster";
+import { earliestOpenDeadline, type OpenDeadline } from "../../lib/roster";
 import { formatEt, gameDayFor, type GameLite, type WeekBounds } from "../../picks/lib/deadline";
 
 export const SIGNOFF = "AD";
@@ -283,4 +283,53 @@ export function entryNotesFor(
     if (buyer) notes[e.entryName] = `bought by ${buyer}`;
   }
   return notes;
+}
+
+export interface ChaseInputs {
+  week: number;
+  games: GameLite[];
+  bounds: WeekBounds;
+  /** The moment the message is built: at the snapshot for the table, and again immediately before each send. */
+  now: Date;
+  usedByEntry: ReadonlyMap<string, Iterable<string>>;
+  notes?: Record<string, string>;
+}
+
+export interface BuiltChase {
+  deadline: OpenDeadline;
+  tiers: Tier[];
+  subject: string;
+  body: string;
+}
+
+/**
+ * One recipient's reminder as of `now`: the earliest deadline still open for
+ * any of their entries, the tiers still open, and the body that names them.
+ * Null when every deadline has passed, in which case nothing is sent and
+ * nothing is claimed. The send loop calls this again with a fresh clock
+ * right before each send, so a run that started before a lock and was
+ * carried past it by the prompt or by earlier recipients cannot send a
+ * reminder for choices that have closed.
+ */
+export function buildChase(
+  r: { greetingName: string; entries: { id: string; entryName: string }[] },
+  i: ChaseInputs,
+): BuiltChase | null {
+  const perEntry = r.entries.map((e) => earliestOpenDeadline(i.games, i.bounds, i.now, i.usedByEntry.get(e.id) ?? []));
+  const deadline = earliestOf(perEntry);
+  if (!deadline) return null;
+  const tiers = mergeTiers(r.entries.map((e) => openTiers(i.games, i.bounds, i.now, [...(i.usedByEntry.get(e.id) ?? [])])));
+  return {
+    deadline,
+    tiers,
+    subject: chaseSubject(i.week),
+    body: recipientBody({
+      week: i.week,
+      greetingName: r.greetingName,
+      entryNames: r.entries.map((e) => e.entryName),
+      entryNotes: i.notes,
+      tiers,
+      lateDeadlineIso: i.bounds.lateDeadlineAt,
+    }),
+  };
 }

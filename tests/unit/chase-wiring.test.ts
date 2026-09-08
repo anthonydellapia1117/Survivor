@@ -45,6 +45,23 @@ describe("chase wiring", () => {
     expect(c).not.toMatch(/listUnreadFrom|searchMessages|findThreadBySubject/);
   });
 
+  it("pushes no address and no error text when a send fails", () => {
+    const c = code(CLI);
+    const m = c.match(/needsAnthonyLine\(\s*"chase",\s*"send failed",([^;]*)\)/);
+    expect(m).not.toBeNull();
+    expect(m![1]).not.toMatch(/\.email|\bwhy\b|\.message|String\(e\)/);
+  });
+
+  it("rebuilds every chase on a fresh clock immediately before each send", () => {
+    const c = code(CLI);
+    const loop = c.indexOf("for (const c of chases)");
+    const send = c.indexOf("sendAllowlisted(", loop);
+    expect(loop).toBeGreaterThan(-1);
+    const between = c.slice(loop, send);
+    expect(between).toMatch(/buildChase\([^;]*now:\s*new Date\(\)/);
+    expect(c.slice(loop, c.indexOf("console.log(`\\nDone.", loop))).toMatch(/subject:\s*fresh\.subject/);
+  });
+
   it("carries no em dash, en dash or emoji anywhere a human might read, comments included", () => {
     for (const src of [CLI, MESSAGE]) {
       expect(src).not.toMatch(/[–—]/);

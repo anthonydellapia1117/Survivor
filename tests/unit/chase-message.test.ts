@@ -4,6 +4,7 @@ import { earliestOpenDeadline, type OpenDeadline } from "../../scripts/lib/roste
 import type { GameLite, WeekBounds } from "../../scripts/picks/lib/deadline";
 import {
   bccBody,
+  buildChase,
   chaseSubject,
   deadlineParagraph,
   dedupeAddresses,
@@ -244,5 +245,19 @@ describe("entryNotesFor", () => {
     expect(entryNotesFor(mixed, buyers)).toEqual({ "Chas Flaster #1": "bought by Kris Tomasco" });
     expect(entryNotesFor({ kind: "owner", entries: mixed.entries }, buyers)).toBeUndefined();
     expect(entryNotesFor({ kind: "player", entries: [{ id: "e3", entryName: "Johnvas #1", isGifted: true }] }, buyers)).toBeUndefined();
+  });
+});
+
+describe("buildChase", () => {
+  const r = { greetingName: "Tim", entries: [{ id: "p1", entryName: "Pumpy321" }] };
+  const inputs = { week: 1, games: GAMES, bounds: WEEK1, usedByEntry: new Map<string, string[]>() };
+  it("builds the reminder from the deadlines still open at the moment it is built", () => {
+    const c = buildChase(r, { ...inputs, now: WED_AFTERNOON });
+    expect(c).not.toBeNull();
+    expect(c!.deadline.deadlineIso).toBe(WEEK1.lateDeadlineAt);
+    expect(c!.body).toContain("Pumpy321");
+  });
+  it("is null once every deadline has passed, so nothing is sent and nothing is claimed", () => {
+    expect(buildChase(r, { ...inputs, now: new Date("2026-09-11T16:00:01Z") })).toBeNull();
   });
 });

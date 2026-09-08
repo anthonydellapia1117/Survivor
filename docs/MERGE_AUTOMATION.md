@@ -33,7 +33,10 @@ scratch owner and entry), rollback to the savepoint so the scratch data
 never persists, the tracking row. One commit at the end. A raise anywhere,
 in the third file as much as the first, leaves the transaction open when
 psql stops, so nothing in the batch is applied and production is exactly as
-it was. The job then opens an issue with the log tail.
+it was. The job then opens an issue with the log tail. The issue is public,
+so the smoke check prints no money total (it reads and compares them, and
+raises only whether they changed), and the job withholds any log line that
+carries a money figure before posting.
 
 The check runs as the admin through the JWT claims for that transaction
 only. Nothing it writes survives: the entry save and the scratch pick are

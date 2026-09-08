@@ -30,11 +30,12 @@ import {
 import { createDraft, gmailClient, profileAddress } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
-import { earliestOpenDeadline, splitRecipients, unpickedEntries, type OpenDeadline, entriesOfConfirmedOwners } from "../lib/roster";
+import { splitRecipients, unpickedEntries, type OpenDeadline, entriesOfConfirmedOwners } from "../lib/roster";
 import { autosendEnabled, priorSends, sendAllowlisted } from "../lib/send";
 import { formatEt, type GameLite, type WeekBounds } from "../picks/lib/deadline";
 import {
   bccBody,
+  buildChase,
   chaseSubject,
   dedupeAddresses,
   earliestOf,
@@ -189,27 +190,12 @@ async function main(): Promise<void> {
   const chases: Chase[] = [];
   const closed: Recipient[] = [];
   for (const r of split.recipients) {
-    const perEntry = r.entries.map((e) => earliestOpenDeadline(games, bounds, now, used.get(e.id) ?? []));
-    const deadline = earliestOf(perEntry);
-    if (!deadline) {
+    const built = buildChase(r, { week, games, bounds, now, usedByEntry: used, notes: giftedNotes(r) });
+    if (!built) {
       closed.push(r);
       continue;
     }
-    const tiers = mergeTiers(r.entries.map((e) => openTiers(games, bounds, now, used.get(e.id) ?? [])));
-    chases.push({
-      recipient: r,
-      deadline,
-      tiers,
-      subject: chaseSubject(week),
-      body: recipientBody({
-        week,
-        greetingName: r.greetingName,
-        entryNames: r.entries.map((e) => e.entryName),
-        entryNotes: giftedNotes(r),
-        tiers,
-        lateDeadlineIso: bounds.lateDeadlineAt,
-      }),
-    });
+    chases.push({ recipient: r, ...built });
   }
   if (chases.length === 0) {
     console.log(`Week ${week} is locked; nothing to chase`);
@@ -257,25 +243,37 @@ async function main(): Promise<void> {
         console.log(`pick arrived since the snapshot for ${arrived.join(", ")} -> ${c.recipient.email}, skipped; re-run to chase the rest`);
         continue;
       }
+      // The deadlines are judged again on a fresh clock right before the
+      // send: a run that started before a lock and was carried past it by
+      // the prompt or by earlier recipients must not mail a reminder for
+      // choices that have closed, and must not claim the lock day for it.
+      const fresh = buildChase(c.recipient, { week, games, bounds, now: new Date(), usedByEntry: used, notes: giftedNotes(c.recipient) });
+      if (!fresh) {
+        skipped++;
+        console.log(`every deadline has passed since the snapshot -> ${c.recipient.email}, skipped, nothing claimed`);
+        continue;
+      }
       let out;
       try {
         out = await sendAllowlisted(gmail, client, prior, {
           template: "pick_reminder",
           to: c.recipient.email,
-          subject: c.subject,
-          body: c.body,
+          subject: fresh.subject,
+          body: fresh.body,
           week,
-          deadlineIso: c.deadline.deadlineIso,
+          deadlineIso: fresh.deadline.deadlineIso,
           entryNames: c.recipient.entries.map((e) => e.entryName),
           actor,
         });
       } catch (e: unknown) {
         // A send whose sent row failed, or a Gmail refusal after the claim,
-        // is surfaced before the run stops: the push names the recipient and
-        // the state, so it is not found only by reading the terminal.
+        // is surfaced before the run stops. The push carries no address and
+        // no error text (an address is roster data and stays off the push
+        // service); the recipient and the error are on the terminal and the
+        // claim row is on /admin/audit.
         const why = e instanceof Error ? e.message : String(e);
         console.log(`FAILED -> ${c.recipient.email}: ${why}`);
-        await notify(needsAnthonyLine("chase", "send failed", `${c.recipient.email} - ${why} - ${sent} sent before this, run stopped`), { tags: "warning" });
+        await notify(needsAnthonyLine("chase", "send failed", `${sent} sent before it - run stopped - the recipient and the error are on the terminal and /admin/audit`), { tags: "warning" });
         throw e;
       }
       if (out.kind === "sent") {

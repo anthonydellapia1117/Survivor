@@ -47,7 +47,13 @@ jobs:
             const fs = require("fs");
             let log = "";
             try { log = fs.readFileSync("migrate.log", "utf8"); } catch {}
-            const tail = log.split("\n").slice(-80).join("\n");
+            // The issue is public. A line that carries a money figure (the smoke
+            // check prints none, but a migration or Postgres itself might) is
+            // withheld rather than published.
+            const redact = (l) => (/\b(due|paid|collected|outstanding|cents|amount)\b/i.test(l) && /\d/.test(l))
+              ? "[line withheld: it carried a money figure]"
+              : l;
+            const tail = log.split("\n").slice(-80).map(redact).join("\n");
             const sha = context.sha.slice(0, 7);
             const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.issues.create({

@@ -24,6 +24,8 @@ declare
   v_entries_after int;
   v_due_after bigint;
   v_paid_after bigint;
+  v_due_moved boolean;
+  v_paid_moved boolean;
 begin
   -- 1. Entry count and money totals still read.
   select count(*), count(*) filter (where not is_free_entry)
@@ -35,8 +37,10 @@ begin
   if v_entries < 1 then
     raise exception 'smoke: no live entries read back';
   end if;
-  raise notice 'smoke: % live entries (% recruited), due % cents, paid % cents',
-    v_entries, v_recruited, v_due, v_paid;
+  -- The totals are read and compared, never printed: this log reaches a
+  -- GitHub issue on failure, and the money is admin-only (CLAUDE.md).
+  raise notice 'smoke: % live entries (% recruited); money totals read',
+    v_entries, v_recruited;
 
   -- 2. One entry save: an existing entry re-submitted with its own values.
   select * into v_entry from entries where voided_at is null order by created_at limit 1;
@@ -70,9 +74,11 @@ begin
     raise exception 'smoke: entry count % after the scratch entry, expected at least %',
       v_entries_after, v_entries + 1;
   end if;
-  if v_due_after <> v_due or v_paid_after <> v_paid then
-    raise exception 'smoke: money moved for existing owners (due % -> %, paid % -> %)',
-      v_due, v_due_after, v_paid, v_paid_after;
+  v_due_moved := v_due_after <> v_due;
+  v_paid_moved := v_paid_after <> v_paid;
+  if v_due_moved or v_paid_moved then
+    raise exception 'smoke: money moved for existing owners (due changed: %, paid changed: %)',
+      v_due_moved, v_paid_moved;
   end if;
   raise notice 'smoke: ok';
 end
