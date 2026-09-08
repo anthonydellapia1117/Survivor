@@ -27,7 +27,7 @@ export function useShowMode(): [ShowMode, (m: ShowMode) => void] {
       try {
         localStorage.setItem(SHOW_STORAGE_KEY, m);
       } catch {
-        /* storage unavailable — URL still carries the choice */
+        /* storage unavailable - URL still carries the choice */
       }
       const next = new URLSearchParams(params.toString());
       if (m === "alive") next.delete("show");

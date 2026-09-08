@@ -14,7 +14,7 @@ export default function ErrorBoundary({
       <div>
         <h1 className="text-xl">Something broke</h1>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          The page hit an error while loading. The data is safe — this is a
+          The page hit an error while loading. The data is safe - this is a
           display problem, not a scoring one.
         </p>
         {error.digest ? (

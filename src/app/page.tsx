@@ -77,7 +77,7 @@ export default async function DashboardPage() {
   ].filter((s) => s.n > 0);
   const lynneSentence = `No Losses=${buckets["No Losses"]}, 1 Loss/Bye used=${buckets["Loss/Bye"]} and Out=${buckets.Out}. We are down to ${alive} left in the pool.`;
 
-  // F1 — carnage report: which teams have eliminated the most entries.
+  // F1 - carnage report: which teams have eliminated the most entries.
   const cellsByEntry = new Map<string, typeof cells>();
   for (const c of cells) {
     if (!cellsByEntry.has(c.entryId)) cellsByEntry.set(c.entryId, []);
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8);
 
-  // F1 — chalk vs contrarian: did the most-picked team win each week?
+  // F1 - chalk vs contrarian: did the most-picked team win each week?
   const chalk: { week: number; team: string; count: number; result: string }[] =
     [];
   for (const w of weeks) {
@@ -127,7 +127,7 @@ export default async function DashboardPage() {
       });
   }
 
-  // F1 — teams running out: how many ALIVE entries still hold each team.
+  // F1 - teams running out: how many ALIVE entries still hold each team.
   const aliveEntries = entries.filter((e) => e.status !== "eliminated");
   const scarcity = NFL_TEAMS.map((t) => ({
     team: t.abbr,
@@ -147,7 +147,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {/* The POOL-WIDE prize pot from Lynne's full pool — the number a
+        {/* The POOL-WIDE prize pot from Lynne's full pool - the number a
             player actually cares about. Stays honestly empty until she
             confirms the 2026 pool size. This group's collected/due figures
             are not public and are not computed here. */}
@@ -173,7 +173,7 @@ export default async function DashboardPage() {
               <>
                 <div className="text-2xl text-muted-foreground">Pending</div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  Set once Lynne confirms the 2026 pool size
+                  Set once the official pool size is confirmed
                 </p>
               </>
             )}
@@ -222,7 +222,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl tabular-nums">
-              {playWeek ? playWeek.week : "—"}
+              {playWeek ? playWeek.week : "-"}
             </div>
             {deadline ? (
               <p className="mt-1.5 text-xs text-muted-foreground">
@@ -274,7 +274,7 @@ export default async function DashboardPage() {
         <Card className="bg-surface">
           <CardHeader>
             <CardTitle className="text-base">
-              Week {dist?.week ?? "—"} pick distribution
+              Week {dist?.week ?? "-"} pick distribution
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -307,7 +307,7 @@ export default async function DashboardPage() {
       <Card className="bg-surface">
         <CardHeader>
           <CardTitle className="text-base">
-            Standings — in Lynne&apos;s words
+            Standings - official count
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -344,7 +344,7 @@ export default async function DashboardPage() {
           <CardContent>
             {carnageTop.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                No eliminations yet — this fills in as teams start killing
+                No eliminations yet - this fills in as teams start killing
                 entries.
               </p>
             ) : (

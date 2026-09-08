@@ -356,6 +356,12 @@ export const adminLocalPgBackend: AdminBackend = {
       resolvedBy: r.resolved_by,
     }));
   },
+  async countPendingActions() {
+    const { rows } = await db().query(
+      "select count(*)::int as n from pending_actions where resolved_at is null",
+    );
+    return Number(rows[0]?.n ?? 0);
+  },
   async stagePending(a) {
     const { rows } = await asAdmin((query) =>
       query("select admin_stage_pending($1,$2,$3,$4) as id", [

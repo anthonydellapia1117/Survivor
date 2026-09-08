@@ -89,7 +89,7 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
       }),
       col.accessor("currentPick", {
         header: "Current pick",
-        cell: (info) => info.getValue() ?? "—",
+        cell: (info) => info.getValue() ?? "-",
       }),
       col.accessor((r) => r.teamsUsed.length, {
         id: "teamsUsed",

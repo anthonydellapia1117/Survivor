@@ -1,4 +1,4 @@
-// Dynamic share card: live pool state, no money on it ever — the pot and
+// Dynamic share card: live pool state, no money on it ever - the pot and
 // every dollar figure are admin-only and must never reach a public
 // surface, and this image is fetched by link scrapers with no auth.
 

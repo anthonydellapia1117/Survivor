@@ -121,7 +121,7 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
               <button
                 key={t.abbr}
                 type="button"
-                title={isUsed ? `${t.name} — used week ${usedWeek}` : `${t.name} — upcoming matchups`}
+                title={isUsed ? `${t.name} - used week ${usedWeek}` : `${t.name} - upcoming matchups`}
                 onClick={() =>
                   isUsed ? undefined : setOpenTeam((v) => (v === t.abbr ? null : t.abbr))
                 }
@@ -143,7 +143,7 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
         </div>
         {selectedOut ? (
           <p className="text-xs text-loss">
-            This entry is out — its remaining teams no longer matter and render struck.
+            This entry is out - its remaining teams no longer matter and render struck.
           </p>
         ) : null}
         {openTeam && !used.has(openTeam) ? (
@@ -202,7 +202,7 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
                               }
                             : undefined
                         }
-                        title={`${t.name} — week ${w}: ${n}`}
+                        title={`${t.name} - week ${w}: ${n}`}
                       >
                         {n > 0 ? n : ""}
                       </td>

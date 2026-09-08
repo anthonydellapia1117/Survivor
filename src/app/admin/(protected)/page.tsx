@@ -9,7 +9,7 @@ import {
   FREE_ENTRY_OWNER_EMAIL,
 } from "@/lib/free-entries";
 import { duplicateTeamRisks } from "@/lib/alive";
-import { nextLockBoundary } from "@/lib/dashboard";
+import { LOCK_KIND_LABEL, nextLockBoundary } from "@/lib/dashboard";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ export default async function AdminOverviewPage() {
     config,
     pot,
     games,
+    pending,
   ] = await Promise.all([
     data.listOwners(),
     data.listEntries(),
@@ -43,6 +44,9 @@ export default async function AdminOverviewPage() {
     data.getConfig(),
     pub.getPot(),
     pub.getSchedule(),
+    // A count, no rows fetched; null means the read failed and the strip
+    // says so instead of showing a zero.
+    data.countPendingActions().catch(() => null),
   ]);
   const lastExport =
     audit.find((a) => a.action === "sheets_export")?.at ?? null;
@@ -150,6 +154,20 @@ export default async function AdminOverviewPage() {
   const unmatched = payments.filter((p) => !p.ownerId);
   const outstanding = confirmed.filter((o) => o.paidCents < o.dueCents);
 
+  // Right now: the three numbers that decide what Anthony does next, each
+  // linking to the tab that resolves it. Countdown is rendered server-side
+  // on a force-dynamic page, so it is right at load and not ticking.
+  const countdown = (() => {
+    if (!nextLock) return "none ahead";
+    const ms = new Date(nextLock.deadlineAt).getTime() - now;
+    if (ms <= 0) return "passed";
+    const mins = Math.floor(ms / 60000);
+    const d = Math.floor(mins / 1440);
+    const h = Math.floor((mins % 1440) / 60);
+    const m = mins % 60;
+    return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+  })();
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -175,6 +193,51 @@ export default async function AdminOverviewPage() {
             <Link href="/admin/import">Import Lynne file</Link>
           </Button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Link
+          href="/admin/queue"
+          className="rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:bg-surface-2"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Open queue rows
+          </div>
+          <div className="mt-1 text-2xl tabular-nums">
+            {pending === null ? "n/a" : pending}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {pending === null
+              ? "queue table unavailable"
+              : "approve or dismiss on the Queue tab"}
+          </div>
+        </Link>
+        <Link
+          href="/admin/picks"
+          className="rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:bg-surface-2"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {nextLock ? `No pick for week ${nextLock.week}` : "No pick"}
+          </div>
+          <div className="mt-1 text-2xl tabular-nums">{nextLockMissing.length}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            alive entries, enter on the Picks tab
+          </div>
+        </Link>
+        <Link
+          href="/admin/deadline"
+          className="rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:bg-surface-2"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Next lock
+          </div>
+          <div className="mt-1 text-2xl tabular-nums">{countdown}</div>
+          <div className="mt-1 text-xs text-muted-foreground" suppressHydrationWarning>
+            {nextLock
+              ? `${LOCK_KIND_LABEL[nextLock.kind]} · ${formatEtDateTime(nextLock.deadlineAt)} ET`
+              : "season complete"}
+          </div>
+        </Link>
       </div>
 
       {sweepPending.length > 0 ? (

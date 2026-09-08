@@ -51,12 +51,12 @@ export default async function Archive2025Page() {
       <div>
         <h1 className="text-2xl">2025 season archive</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          Lynne&apos;s final sheet, imported read-only.{" "}
+          Final 2025 sheet, imported read-only.{" "}
           <span className="font-medium text-foreground">
             This is a partial final sheet, not a full season history:
           </span>{" "}
           she removes eliminated entries as the season goes, so only the last
-          56 of roughly 1,245 entries remain — and only 3 of my 66 entries
+          56 of roughly 1,245 entries remain - and only 3 of my 66 entries
           survived long enough to still be listed. Her weekly bucket counts
           below are the complete attrition record she kept herself.
         </p>
@@ -86,7 +86,7 @@ export default async function Archive2025Page() {
       <Card className="bg-surface">
         <CardHeader>
           <CardTitle className="text-base">
-            The season, week by week — her own running counts
+            The season, week by week - her own running counts
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -118,11 +118,11 @@ export default async function Archive2025Page() {
                         className="px-1 py-1 text-center tabular-nums"
                         title={
                           get(w) === null
-                            ? "Blank in her sheet — week 18's survivors are the 27 winners in Loss/Bye"
+                            ? "Blank in her sheet - week 18's survivors are the 27 winners in Loss/Bye"
                             : undefined
                         }
                       >
-                        {get(w) ?? "—"}
+                        {get(w) ?? "-"}
                       </td>
                     ))}
                   </tr>
@@ -148,7 +148,7 @@ export default async function Archive2025Page() {
           <p className="mt-2 text-xs text-muted-foreground">
             1,206 clean after week 1 → 27 winners after week 18. The week-8
             single-elimination switch (726 out) was the season&apos;s cliff.
-            The week-18 Out cell is blank in her sheet (shown as —): the 27
+            The week-18 Out cell is blank in her sheet (shown as -): the 27
             still standing in Loss/Bye are the winners.
           </p>
         </CardContent>
@@ -166,20 +166,20 @@ export default async function Archive2025Page() {
               <p key={e.lynneNumber}>
                 <span className="font-medium">#{e.lynneNumber} {e.entryName}</span>{" "}
                 <span className="text-loss">OUT</span>
-                <span className="text-muted-foreground"> — survived {lastWeek} weeks</span>
+                <span className="text-muted-foreground"> - survived {lastWeek} weeks</span>
               </p>
             );
           })}
           <p className="text-xs text-muted-foreground">
             My other 63 entries were eliminated earlier and had already been
-            removed from her sheet — that is how she works it, not missing
+            removed from her sheet - that is how she works it, not missing
             data.
           </p>
         </CardContent>
       </Card>
 
       <section className="space-y-2">
-        <h2 className="text-lg">The final sheet — all {entries.length} remaining entries</h2>
+        <h2 className="text-lg">The final sheet - all {entries.length} remaining entries</h2>
         <div className="max-h-[70dvh] overflow-auto rounded-lg border border-border">
           <table className="w-full border-separate border-spacing-0 text-xs">
             <thead>
@@ -218,7 +218,7 @@ export default async function Archive2025Page() {
           </table>
         </div>
         <p className="text-xs text-muted-foreground">
-          Values exactly as she typed them — statuses read from her cell
+          Values exactly as she typed them - statuses read from her cell
           colors (yellow = winner, red = out). Read-only; nothing here can
           touch 2026 data.
         </p>

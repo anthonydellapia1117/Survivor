@@ -127,11 +127,11 @@ export default async function EntryPage(props: {
 
       {dupRisks.length > 0 ? (
         <div className="rounded-md border border-loss bg-loss/15 px-3 py-2.5 text-sm font-semibold text-loss">
-          ⚠ DUPLICATE TEAM RISK —{" "}
+          ⚠ DUPLICATE TEAM RISK -{" "}
           {dupRisks
             .map((d) => `${d.team} picked in weeks ${d.weeks.join(" and ")}`)
             .join("; ")}
-          . In Lynne&apos;s pool a repeated team is an elimination.
+          . A repeated team is an elimination.
         </div>
       ) : null}
 
@@ -143,7 +143,7 @@ export default async function EntryPage(props: {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xl tabular-nums">
-            {entry.wins}–{entry.losses}
+            {entry.wins}-{entry.losses}
           </CardContent>
         </Card>
         <Card className="bg-surface">
@@ -167,7 +167,7 @@ export default async function EntryPage(props: {
               ? "Used"
               : entry.status === "bye_eligible"
                 ? "Earned"
-                : "—"}
+                : "-"}
           </CardContent>
         </Card>
       </div>
@@ -194,7 +194,7 @@ export default async function EntryPage(props: {
                       <span aria-hidden className="mr-1.5">
                         🔒
                       </span>
-                      Locked — visible when this game kicks off
+                      Locked - visible when this game kicks off
                     </span>
                   </li>
                 );
@@ -258,7 +258,7 @@ export default async function EntryPage(props: {
         <h2 className="text-lg">Teams remaining</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {NFL_TEAMS.length - usedSet.size} of {NFL_TEAMS.length} left, with
-          each team&apos;s next three matchups — plan ahead on the{" "}
+          each team&apos;s next three matchups - plan ahead on the{" "}
           <Link
             href="/schedule"
             className="text-primary underline-offset-2 hover:underline"
@@ -303,7 +303,7 @@ export default async function EntryPage(props: {
       </section>
 
       <p className="text-xs text-muted-foreground">
-        Shareable link — bookmark this page to follow{" "}
+        Shareable link - bookmark this page to follow{" "}
         <span className="font-medium">{entry.entryName}</span>.{" "}
         <Link
           href={`/entry/${entry.id}/export`}
