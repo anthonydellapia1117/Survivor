@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { notify } from "../../scripts/lib/notify";
 import { alreadySent, isSendable, lockDayKey, type PriorSend } from "../../scripts/lib/send";
 import { encodeRaw } from "../../scripts/lib/gmail";
@@ -156,5 +158,15 @@ describe("buildRecipientOwners", () => {
     expect(out[0].entries.map((e) => e.entryName)).toEqual(["Kris Tomasco #1", "Chas Flaster #1"]);
     expect(out[0].entries[1]).toMatchObject({ isGifted: true, playerEmail: "chas@x.com" });
     expect(out[1].greetingName).toBe("Pumpy321");
+  });
+});
+
+describe("standings source", () => {
+  it("reads v_entry_admin, never v_entry_standing, which the admin session cannot select", () => {
+    const src = readFileSync(path.resolve(__dirname, "../../scripts/lib/db.ts"), "utf8");
+    const fn = src.slice(src.indexOf("export async function loadStandings"));
+    const body = fn.slice(0, fn.indexOf("\n}\n") + 3);
+    expect(body).toContain('.from("v_entry_admin")');
+    expect(body).not.toContain('.from("v_entry_standing")');
   });
 });

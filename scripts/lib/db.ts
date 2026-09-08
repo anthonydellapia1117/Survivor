@@ -164,14 +164,23 @@ export async function loadCurrentPicks(client: SupabaseClient, week: number): Pr
   );
 }
 
+/**
+ * Standings come from v_entry_admin, not v_entry_standing: the admin session
+ * signs in as the authenticated role, and v_entry_standing is revoked from
+ * that role (verified against production 2026-09-08), so a read of it dies
+ * before any command gets to plan. v_entry_admin carries the same status,
+ * losses and bye_used, gated by is_admin() inside the view, for the live
+ * entries of confirmed owners, which is exactly the set the commands act on.
+ */
 export async function loadStandings(client: SupabaseClient): Promise<StandingRow[]> {
-  return unwrap(
+  const rows = unwrap(
     await client
-      .from("v_entry_standing")
-      .select("entry_id, status, losses, bye_used")
-      .returns<StandingRow[]>(),
-    "v_entry_standing",
+      .from("v_entry_admin")
+      .select("id, status, losses, bye_used")
+      .returns<{ id: string; status: string; losses: number; bye_used: boolean }[]>(),
+    "v_entry_admin",
   );
+  return rows.map((r) => ({ entry_id: r.id, status: r.status, losses: r.losses, bye_used: r.bye_used }));
 }
 
 /** Teams each entry has already used in weeks before `week` (current picks only). */
