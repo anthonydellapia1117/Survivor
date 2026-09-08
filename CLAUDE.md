@@ -265,6 +265,37 @@ the public views, not merely hidden in the UI).
 The **pool-wide prize pot** from Lynne's whole pool is the one dollar figure
 that is public by design.
 
+### The Master List is the public default
+
+Set by Anthony on 2026-09-08. **His group is interested in every entry in
+her pool, not in his 121.** The 121 are what he manages: picked, complete,
+sent to her, updated. What the group wants when he sends the link is the
+whole pool, so the public site defaults to it.
+
+- **`/master-list`** (the tab reads "Master List") shows her newest sheet
+  from `lynne_roster` through the public view `v_master_list`: every NO.
+  and NAMES verbatim, her week cells as she publishes them, our rows
+  marked, and where we hold a revealed pick for one of ours it sits beside
+  her cell - a pick she has not published reads "ours XXX", a pick that
+  differs from hers is highlighted and reported, never changed. The weekly
+  result files (`lynne_imports`) sit below it. `/official` and `/lynne`
+  redirect there.
+- **Public stats default to the whole pool.** The dashboard's pick
+  distribution and Team Availability read her sheet's week cells for every
+  entry when she has published them, with "Our group" as the other setting;
+  until she publishes a week, our group stands in and says so.
+- **Her four figures are public as she publishes them:** Total in Pool,
+  Free, Total (paying) and Total Pay Out, entered on `/admin` and stored as
+  given (`config.pool_entry_count`, `pool_free_count`, `pool_paid_count`,
+  `pool_pot_cents`). `admin_set_pool_pot` refuses a triple that does not
+  add up rather than deriving one. **The per-entry rate behind her pot is
+  never printed on a public route** - the admin form's implied-rate line is
+  the only place it appears. Her pool-wide Free line is her figure, not this
+  group's recruited-vs-free split, which stays admin-only as above.
+- `v_master_list` exposes exactly five columns: `row_no`, `names`, `cells`,
+  `sheet_loaded_at`, `entry_id`. No file name, Gmail id or loader reaches
+  the public. The table itself stays admin-only under RLS.
+
 ## Names
 
 Entry names are stored **verbatim** — never normalized, cased, or trimmed by
@@ -751,5 +782,6 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |
 | Her master sheet, read-only         | `lynne_roster` table, `scripts/lynne/roster.ts` |
+| The Master List, public             | `src/app/master-list/`, `src/lib/master-list.ts`, `v_master_list` |
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |

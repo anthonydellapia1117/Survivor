@@ -33,7 +33,10 @@ begin
   from information_schema.columns
   where table_schema = 'public'
     and table_name in ('v_entry_public','v_grid_cells','v_pot','v_public_owners')
-    and column_name ~ 'free|recruit';
+    and column_name ~ 'free|recruit'
+    -- pool_free_count is the master pool's own published "Free" line, not
+    -- this group's split (20260908224500); it is public by Anthony's call.
+    and column_name not like 'pool\_%';
   if n <> 0 then
     raise exception 'a public view exposes the recruited/free split';
   end if;
@@ -61,7 +64,10 @@ begin
   from information_schema.columns
   where table_schema = 'public'
     and table_name in ('v_entry_public','v_grid_cells','v_pot','v_public_owners')
-    and column_name ~ 'due|paid|collected|amount|owed|remit|margin';
+    and column_name ~ 'due|paid|collected|amount|owed|remit|margin'
+    -- pool_paid_count is the master pool's own published "Total" (paying
+    -- entries) line, a count and not this group's money (20260908224500).
+    and column_name not like 'pool\_%';
   if n <> 0 then
     raise exception 'a public view carries a money column';
   end if;
@@ -74,7 +80,7 @@ declare
   r record;
   n int;
 begin
-  perform admin_set_pool_pot(1250, 3125000, 'test');
+  perform admin_set_pool_pot(1250, null, null, 3125000, 'test');
   select * into r from v_pot;
   if r.pool_entry_count <> 1250 or r.pool_pot_cents <> 3125000 then
     raise exception 'pool numbers did not save: % / %', r.pool_entry_count, r.pool_pot_cents;
@@ -83,14 +89,14 @@ begin
   if n <> 1 then raise exception 'set_pool_pot not audited'; end if;
 
   -- Clearing both puts the card back to pending.
-  perform admin_set_pool_pot(null, null, 'test');
+  perform admin_set_pool_pot(null, null, null, null, 'test');
   select * into r from v_pot;
   if r.pool_entry_count is not null or r.pool_pot_cents is not null then
     raise exception 'pool numbers did not clear';
   end if;
 
   begin
-    perform admin_set_pool_pot(-1, null, 'test');
+    perform admin_set_pool_pot(-1, null, null, null, 'test');
     raise exception 'negative pool entry count accepted';
   exception when others then
     if sqlerrm not like '%negative%' then raise; end if;

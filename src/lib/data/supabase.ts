@@ -8,6 +8,8 @@ import type {
   EntryDetail,
   EntrySummary,
   GridCell,
+  MasterListData,
+  MasterListRow,
   PotSummary,
   WeekRow,
 } from "./types";
@@ -161,9 +163,45 @@ export const supabaseBackend: DataBackend = {
       entryCount: Number(data.entry_count),
       poolEntryCount:
         data.pool_entry_count === null ? null : Number(data.pool_entry_count),
+      poolFreeCount:
+        data.pool_free_count === null || data.pool_free_count === undefined
+          ? null
+          : Number(data.pool_free_count),
+      poolPaidCount:
+        data.pool_paid_count === null || data.pool_paid_count === undefined
+          ? null
+          : Number(data.pool_paid_count),
       poolPotCents:
         data.pool_pot_cents === null ? null : Number(data.pool_pot_cents),
     };
+  },
+
+  async getMasterList(): Promise<MasterListData> {
+    // PostgREST returns at most 1,000 rows per response and her sheet is
+    // longer than that, so the view is read a page at a time in NO. order.
+    const c = client();
+    const rows: MasterListRow[] = [];
+    let loadedAt: string | null = null;
+    const page = 1000;
+    for (let from = 0; ; from += page) {
+      const { data, error } = await c
+        .from("v_master_list")
+        .select("*")
+        .order("row_no")
+        .range(from, from + page - 1);
+      if (error) throw error;
+      for (const r of data ?? []) {
+        rows.push({
+          no: Number(r.row_no),
+          names: r.names,
+          cells: (r.cells ?? {}) as Record<string, string>,
+          entryId: r.entry_id ?? null,
+        });
+        loadedAt = loadedAt ?? r.sheet_loaded_at ?? null;
+      }
+      if (!data || data.length < page) break;
+    }
+    return { loadedAt, rows };
   },
 
   async getLynneImports() {

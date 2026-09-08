@@ -102,7 +102,29 @@ export interface PotSummary {
    *  the pool pot is pool information and is public by design. THIS group's
    *  collected/due figures are deliberately absent from the public payload. */
   poolEntryCount: number | null;
+  /** Her "Free" and "Total" lines, as published. Pool-wide figures, not
+   *  this group's split; public by design (Anthony, 2026-09-08). */
+  poolFreeCount: number | null;
+  poolPaidCount: number | null;
   poolPotCents: number | null;
+}
+
+/** One row of the master pool's newest sheet (v_master_list). */
+export interface MasterListRow {
+  /** Her NO. */
+  no: number;
+  /** Her NAMES cell verbatim. */
+  names: string;
+  /** Her filled week cells, header text to cell text. */
+  cells: Record<string, string>;
+  /** This group's entry id when the NO. is one of ours, else null. */
+  entryId: string | null;
+}
+
+export interface MasterListData {
+  /** When the newest sheet was loaded; null when none is loaded. */
+  loadedAt: string | null;
+  rows: MasterListRow[];
 }
 
 export interface EntryDetail {
@@ -136,6 +158,8 @@ export interface DataBackend {
   getEntry(id: string): Promise<EntryDetail | null>;
   getGridCells(): Promise<GridCell[]>;
   getPot(): Promise<PotSummary>;
+  /** The master pool's newest sheet, every row, in NO. order. */
+  getMasterList(): Promise<MasterListData>;
   getLynneImports(): Promise<LynneImportRow[]>;
 }
 

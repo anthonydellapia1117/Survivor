@@ -12,7 +12,7 @@ const links = [
   { href: "/schedule", label: "Schedule" },
   { href: "/teams", label: "Teams" },
   { href: "/entries", label: "Entries" },
-  { href: "/official", label: MASTER_POOL.tab },
+  { href: "/master-list", label: MASTER_POOL.tab },
   { href: "/2025", label: "2025" },
 ];
 

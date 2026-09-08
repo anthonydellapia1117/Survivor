@@ -295,6 +295,8 @@ export const adminSupabaseBackend: AdminBackend = {
     const c = await createSupabaseServerClient();
     const { error } = await c.rpc("admin_set_pool_pot", {
       p_entry_count: a.entryCount,
+      p_free_count: a.freeCount,
+      p_paid_count: a.paidCount,
       p_pot_cents: a.potCents,
       p_actor: a.actor,
     });

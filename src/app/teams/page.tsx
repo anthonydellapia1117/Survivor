@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getData } from "@/lib/data";
-import { TeamsClient } from "@/components/teams/teams-client";
+import { poolAsEntries } from "@/lib/master-list";
+import { TeamsSource } from "@/components/teams/teams-source";
 import { EmptyState } from "@/components/empty-state";
 
 export const metadata: Metadata = { title: "Teams" };
@@ -9,35 +10,41 @@ export const dynamic = "force-dynamic";
 
 export default async function TeamsPage() {
   const data = getData();
-  const [entries, cells, weeks, games] = await Promise.all([
+  const [entries, cells, weeks, games, master] = await Promise.all([
     data.getEntries(),
     data.getGridCells(),
     data.getWeeks(),
     data.getSchedule(),
+    data.getMasterList(),
   ]);
+  // The whole pool from the published sheet is the default view; our group
+  // is the other setting.
+  const pool = poolAsEntries(master);
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl">Team Availability</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Which teams each entry still has in hand. Plan against future
-          matchups on the{" "}
+          Which teams each entry still has in hand, across the whole master
+          pool or just our group. Plan against future matchups on the{" "}
           <Link href="/schedule" className="text-primary underline-offset-2 hover:underline">
             full 2026 schedule
           </Link>
           .
         </p>
       </div>
-      {entries.length === 0 ? (
+      {entries.length === 0 && pool.entries.length === 0 ? (
         <EmptyState
           title="No entries yet"
           detail="Per-entry team availability appears here once the roster is seeded."
         />
       ) : (
-        <TeamsClient
-          entries={entries}
-          cells={cells}
+        <TeamsSource
+          ours={{ entries, cells }}
+          pool={pool}
+          poolLoaded={pool.entries.length > 0}
+          poolHasPicks={pool.cells.length > 0}
           weekCount={weeks.length}
           games={games}
         />

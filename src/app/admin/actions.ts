@@ -339,13 +339,16 @@ export async function markRemovalsCommunicatedAction(): Promise<
 }
 
 /**
- * The pool-wide numbers behind the public "Pool pot" card. Both are entered
- * by hand from what Lynne sends — the pot is stored as given, never computed
- * from a per-entry rate the pool has not confirmed. Passing nulls puts the
- * card back to "pending".
+ * The pool-wide figures behind the public pot card and the Master List
+ * strip: her Total in Pool, Free, Total and pot, each entered by hand from
+ * what Lynne sends and stored as given. Nothing is computed from a per-entry
+ * rate; the RPC refuses a triple that does not add up. Passing nulls puts
+ * the card back to "pending".
  */
 export async function setPoolPotAction(input: {
   entryCount: number | null;
+  freeCount: number | null;
+  paidCount: number | null;
   potCents: number | null;
 }): Promise<ActionResult> {
   return guarded(async (actor) => {

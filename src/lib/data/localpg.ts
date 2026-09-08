@@ -150,7 +150,24 @@ export const localPgBackend: DataBackend = {
       entryCount: Number(r.entry_count),
       poolEntryCount:
         r.pool_entry_count === null ? null : Number(r.pool_entry_count),
+      poolFreeCount: r.pool_free_count === null || r.pool_free_count === undefined ? null : Number(r.pool_free_count),
+      poolPaidCount: r.pool_paid_count === null || r.pool_paid_count === undefined ? null : Number(r.pool_paid_count),
       poolPotCents: r.pool_pot_cents === null ? null : Number(r.pool_pot_cents),
+    };
+  },
+
+  async getMasterList() {
+    const { rows } = await db().query(
+      "select row_no, names, cells, sheet_loaded_at, entry_id from v_master_list order by row_no",
+    );
+    return {
+      loadedAt: rows[0]?.sheet_loaded_at ?? null,
+      rows: rows.map((r) => ({
+        no: Number(r.row_no),
+        names: r.names as string,
+        cells: (r.cells ?? {}) as Record<string, string>,
+        entryId: (r.entry_id as string | null) ?? null,
+      })),
     };
   },
 

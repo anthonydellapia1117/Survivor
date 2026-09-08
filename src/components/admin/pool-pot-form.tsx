@@ -1,12 +1,12 @@
 "use client";
 
-// The pool-wide numbers behind the public "Pool pot" card — Lynne's whole
-// pool, not this group. Both values are typed in from what she sends: the
-// POT IS ENTERED DIRECTLY rather than derived, because the per-entry figure
-// behind it has never been confirmed. (2025 finished near 1,245 entries and
-// ~$27,200, but that ratio is history, not a rule.) When both are filled the
-// implied per-entry figure is shown as a sanity check on the two numbers —
-// it is division, not an assumed formula.
+// The pool-wide figures behind the public pot card and the Master List
+// strip: Lynne's whole pool, not this group. All four are typed in from
+// what she sends and stored exactly as entered: Total in Pool, Free, Total
+// (paying) and the pot. Nothing is derived. The three counts have to agree
+// with each other; when they do not, the RPC refuses and the sheet is what
+// needs a look. The implied per-entry figure below is an admin-only sanity
+// check on the numbers, division shown once here and printed nowhere public.
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -22,52 +22,86 @@ function parseDollars(s: string): number | null {
   return Math.round(n * 100);
 }
 
+function parseCount(s: string): number | null | false {
+  const t = s.replace(/[,\s]/g, "");
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isInteger(n) && n >= 0 ? n : false;
+}
+
 export function PoolPotForm({
   entryCount,
+  freeCount,
+  paidCount,
   potCents,
 }: {
   entryCount: number | null;
+  freeCount: number | null;
+  paidCount: number | null;
   potCents: number | null;
 }) {
   const router = useRouter();
-  const [count, setCount] = useState(
-    entryCount === null ? "" : String(entryCount),
-  );
-  const [pot, setPot] = useState(
-    potCents === null ? "" : String(potCents / 100),
-  );
+  const [count, setCount] = useState(entryCount === null ? "" : String(entryCount));
+  const [free, setFree] = useState(freeCount === null ? "" : String(freeCount));
+  const [paid, setPaid] = useState(paidCount === null ? "" : String(paidCount));
+  const [pot, setPot] = useState(potCents === null ? "" : String(potCents / 100));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const countN = count.trim() === "" ? null : Number(count.trim());
+  const countN = parseCount(count);
+  const freeN = parseCount(free);
+  const paidN = parseCount(paid);
   const potN = pot.trim() === "" ? null : parseDollars(pot);
-  const perEntry =
-    countN !== null && countN > 0 && potN !== null ? potN / countN : null;
+  const divisor = typeof paidN === "number" && paidN > 0 ? paidN : typeof countN === "number" && countN > 0 ? countN : null;
+  const perEntry = divisor !== null && potN !== null ? potN / divisor : null;
+  const addsUp =
+    typeof countN !== "number" || typeof freeN !== "number" || typeof paidN !== "number" || freeN + paidN === countN;
+
+  function touch<T>(set: (v: T) => void) {
+    return (v: T) => {
+      set(v);
+      setSaved(false);
+    };
+  }
 
   function save(clear = false) {
     setError(null);
     setSaved(false);
-    const c = clear ? null : countN;
-    const p = clear ? null : potN;
     if (!clear) {
-      if (count.trim() !== "" && (!Number.isInteger(c) || (c ?? 0) < 0)) {
-        setError("Pool entries must be a whole number.");
+      if (countN === false || freeN === false || paidN === false) {
+        setError("Counts must be whole numbers.");
         return;
       }
-      if (pot.trim() !== "" && p === null) {
-        setError("Pot must be dollars, like 27200 or 27,200.00.");
+      if (pot.trim() !== "" && potN === null) {
+        setError("Pot must be dollars, like 28620 or 28,620.00.");
+        return;
+      }
+      if (!addsUp) {
+        setError(
+          `Her figures do not add up: ${freeN} free + ${paidN} paid is not ${countN} in pool. Enter them as she published them and check the sheet.`,
+        );
         return;
       }
     }
+    const args = clear
+      ? { entryCount: null, freeCount: null, paidCount: null, potCents: null }
+      : {
+          entryCount: countN as number | null,
+          freeCount: freeN as number | null,
+          paidCount: paidN as number | null,
+          potCents: potN,
+        };
     startTransition(async () => {
-      const res = await setPoolPotAction({ entryCount: c, potCents: p });
+      const res = await setPoolPotAction(args);
       if (!res.ok) {
         setError(res.error ?? "Not saved.");
         return;
       }
       if (clear) {
         setCount("");
+        setFree("");
+        setPaid("");
         setPot("");
       }
       setSaved(true);
@@ -75,71 +109,84 @@ export function PoolPotForm({
     });
   }
 
+  const anySet = entryCount !== null || freeCount !== null || paidCount !== null || potCents !== null;
+
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1.5">
-          <Label htmlFor="pool-count">
-            Pool entries (Lynne&apos;s whole pool)
-          </Label>
+          <Label htmlFor="pool-count">Total in Pool</Label>
           <Input
             id="pool-count"
             inputMode="numeric"
-            placeholder="e.g. 1250"
+            placeholder="e.g. 1318"
             value={count}
-            onChange={(e) => {
-              setCount(e.target.value);
-              setSaved(false);
-            }}
+            onChange={(e) => touch(setCount)(e.target.value)}
             className="tabular-nums"
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="pool-pot">Prize pot ($)</Label>
+          <Label htmlFor="pool-free">Free (her line)</Label>
+          <Input
+            id="pool-free"
+            inputMode="numeric"
+            placeholder="e.g. 46"
+            value={free}
+            onChange={(e) => touch(setFree)(e.target.value)}
+            className="tabular-nums"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="pool-paid">Total, paying (her line)</Label>
+          <Input
+            id="pool-paid"
+            inputMode="numeric"
+            placeholder="e.g. 1272"
+            value={paid}
+            onChange={(e) => touch(setPaid)(e.target.value)}
+            className="tabular-nums"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="pool-pot">Total Pay Out ($)</Label>
           <Input
             id="pool-pot"
             inputMode="decimal"
-            placeholder="e.g. 27200"
+            placeholder="e.g. 28620"
             value={pot}
-            onChange={(e) => {
-              setPot(e.target.value);
-              setSaved(false);
-            }}
+            onChange={(e) => touch(setPot)(e.target.value)}
             className="tabular-nums"
           />
         </div>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {perEntry !== null ? (
+        {!addsUp ? (
+          <span className="text-tie">
+            These do not add up: {String(freeN)} free + {String(paidN)} paid is not {String(countN)} in pool.
+          </span>
+        ) : perEntry !== null ? (
           <>
-            Implied {formatCents(Math.round(perEntry))} per entry — a check on
-            the two numbers, not a formula the app applies.
+            Implied {formatCents(Math.round(perEntry))} per {typeof paidN === "number" && paidN > 0 ? "paying entry" : "entry"} - an admin-only
+            check on the numbers, printed nowhere public.
           </>
         ) : (
           <>
-            The pot is stored exactly as you enter it. Leave both blank and the
-            public card reads &quot;Pending&quot;.
+            Each figure is stored exactly as you enter it. Leave all four blank and the public card reads
+            &quot;Pending&quot;.
           </>
         )}
       </p>
 
       {error ? <p className="text-sm text-loss">{error}</p> : null}
-      {saved && !error ? (
-        <p className="text-sm text-win">Saved — the public card is updated.</p>
-      ) : null}
+      {saved && !error ? <p className="text-sm text-win">Saved - the public card and the Master List are updated.</p> : null}
 
       <div className="flex gap-2">
         <Button size="sm" onClick={() => save(false)} disabled={pending}>
-          {pending ? "Saving…" : "Save pool numbers"}
+          {pending ? "Saving..." : "Save pool figures"}
         </Button>
-        {entryCount !== null || potCents !== null ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => save(true)}
-            disabled={pending}
-          >
+        {anySet ? (
+          <Button size="sm" variant="outline" onClick={() => save(true)} disabled={pending}>
             Clear (back to pending)
           </Button>
         ) : null}

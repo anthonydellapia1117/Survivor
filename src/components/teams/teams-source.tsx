@@ -1,0 +1,74 @@
+"use client";
+
+// Which pool the Teams page reads: the Master List (every entry in the
+// master pool, from the published sheet) or our group (our recorded picks).
+// The Master List is the default, because that is what the group wants to
+// see; our 121 are the admin's concern. The choice is view state only.
+
+import { useState } from "react";
+import type { EntrySummary, GameRow, GridCell } from "@/lib/data/types";
+import { TeamsClient } from "@/components/teams/teams-client";
+import { cn } from "@/lib/utils";
+
+type Source = "pool" | "ours";
+
+interface Dataset {
+  entries: EntrySummary[];
+  cells: GridCell[];
+}
+
+interface Props {
+  ours: Dataset;
+  pool: Dataset;
+  /** The master pool's sheet is loaded (rows exist). */
+  poolLoaded: boolean;
+  /** The sheet carries at least one week pick. */
+  poolHasPicks: boolean;
+  weekCount: number;
+  games: GameRow[];
+}
+
+export function TeamsSource({ ours, pool, poolLoaded, poolHasPicks, weekCount, games }: Props) {
+  const [source, setSource] = useState<Source>(poolLoaded ? "pool" : "ours");
+  const active = source === "pool" ? pool : ours;
+  const options: { key: Source; label: string; n: number; disabled?: boolean }[] = [
+    { key: "pool", label: "Master List", n: pool.entries.length, disabled: !poolLoaded },
+    { key: "ours", label: "Our group", n: ours.entries.length },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div
+          role="radiogroup"
+          aria-label="Master List or our group"
+          className="inline-flex rounded-lg border border-border bg-surface p-0.5"
+        >
+          {options.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              role="radio"
+              aria-checked={source === o.key}
+              disabled={o.disabled}
+              onClick={() => setSource(o.key)}
+              className={cn(
+                "flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold tracking-wide transition-colors duration-150 disabled:opacity-50",
+                source === o.key ? "bg-surface-2 text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {o.label}
+              <span className="tabular-nums opacity-70">{o.n.toLocaleString("en-US")}</span>
+            </button>
+          ))}
+        </div>
+        {source === "pool" && !poolHasPicks ? (
+          <span className="text-xs text-muted-foreground">
+            The published sheet carries no week picks yet, so every entry still holds all 32 teams here.
+          </span>
+        ) : null}
+      </div>
+      <TeamsClient key={source} entries={active.entries} cells={active.cells} weekCount={weekCount} games={games} />
+    </div>
+  );
+}

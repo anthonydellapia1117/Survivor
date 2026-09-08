@@ -257,6 +257,10 @@ export interface AdminBackend {
    *  never derived from an unconfirmed per-entry formula. */
   setPoolPot(args: {
     entryCount: number | null;
+    /** Her "Free" and "Total" lines, as published; the RPC refuses a
+     *  triple that does not add up rather than deriving one. */
+    freeCount: number | null;
+    paidCount: number | null;
     potCents: number | null;
     actor: string;
   }): Promise<void>;

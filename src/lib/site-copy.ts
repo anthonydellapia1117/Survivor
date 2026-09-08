@@ -3,7 +3,7 @@
 // refers to it reads from here. Internal identifiers (lynne_number,
 // lib/lynne/, the export routes) are unchanged: this is copy, not schema.
 export const MASTER_POOL = {
-  tab: "Official Results",
-  title: "Official Board",
-  possessive: "the official pool's",
+  tab: "Master List",
+  title: "Master List",
+  possessive: "the master pool's",
 };
