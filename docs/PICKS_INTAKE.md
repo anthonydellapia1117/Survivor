@@ -71,9 +71,11 @@ Chargers", "Pumpy321 Chargers", "Eagles for both"), then Ctrl-D:
 npm run picks -- --paste --from philadelphiapoultryinc@gmail.com
 ```
 
-`--from` takes an email or a name fragment and must match one owner; it
+`--from` takes an email or a name fragment and must match one person; it
 scopes bare lines and "for both" to that person's entries, and an entry it
-names outside those is staged, never written. `--file picks.txt` reads a
+names outside those is staged, never written. A gifted entry's name resolves
+to the person who plays it, never to the buyer: `--from "Chas Flaster"` is
+Chas and his two, not Kris and his four. `--file picks.txt` reads a
 file instead of stdin. A message that names a week in its subject or first
 lines ("Re: Week 1 picks - ...") is recorded in that week; `--week N`, then
 the open week, is only the fallback for a message that names none. Mail
@@ -94,6 +96,14 @@ you). Picks go through admin_submit_pick with source email or text; a late
 one is stored with late = true, never refused and never hidden. A change to
 a pick that is already scored, an older mail arriving after a newer pick, or
 a change after the lock is staged for you rather than written.
+A team the entry already used in an earlier week is an ELIMINATION in her
+pool, not a warning, so it is never written as an ordinary pick: it is
+staged as a pending pick row that says which week the team was used in, and
+approving it on /admin/queue records it knowingly with its receipt time.
+One entry, one team: a message that gives the same entry two different
+teams is staged with both named rather than written in the order the lines
+happened to come. A week heading on the same line as a team ("Week 2:
+Chiefs") is a bare pick for that week, not an entry called "Week 2".
 Unresolved lines become pending_actions rows (kind identity when there is no
 sender or the sender matches nobody on the roster, player_question when a
 known person sent it and the line itself is the problem) carrying the Gmail

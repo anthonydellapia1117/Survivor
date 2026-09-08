@@ -209,6 +209,25 @@ export async function loadUsedTeams(client: SupabaseClient, week: number): Promi
   return used;
 }
 
+export interface PriorPickRow {
+  entry_id: string;
+  team: string;
+  week: number;
+}
+
+/** Every current pick before `week`, with the week it was made in. */
+export async function loadPriorPicks(client: SupabaseClient, week: number): Promise<PriorPickRow[]> {
+  return unwrap(
+    await client
+      .from("picks")
+      .select("entry_id, team, week")
+      .lt("week", week)
+      .eq("is_current", true)
+      .returns<PriorPickRow[]>(),
+    "picks (prior weeks)",
+  );
+}
+
 export async function loadLynneImports(client: SupabaseClient): Promise<LynneImportRow[]> {
   return unwrap(
     await client
@@ -355,7 +374,7 @@ export async function submitPick(
 export async function stagePending(
   client: SupabaseClient,
   p: {
-    kind: "identity" | "player_question";
+    kind: "identity" | "player_question" | "pick";
     payload: Record<string, unknown>;
     sourceMessageId: string | null;
     actor: string;

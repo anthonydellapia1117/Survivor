@@ -197,3 +197,65 @@ describe("typo tolerance on the token stage", () => {
     expect(resolveEntry("Nicky DiVirgilo", roster)).toMatchObject({ ok: false, reason: "ambiguous" });
   });
 });
+
+import { conflictingKeys, repeatedWeek, stripWeekHeading } from "../../scripts/picks/lib/resolve";
+import { resolveFromArg } from "../../scripts/picks/lib/from";
+
+describe("stripWeekHeading", () => {
+  it("turns a same-line week heading into a bare pick and drops a bare heading", () => {
+    expect(stripWeekHeading("Week 2: Chiefs")).toBe("Chiefs");
+    expect(stripWeekHeading("WEEK 12 picks - Kris Tomasco #1 - Eagles")).toBe("Kris Tomasco #1 - Eagles");
+    expect(stripWeekHeading("Week 2\nEagles for both")).toBe("\nEagles for both");
+    expect(stripWeekHeading("Pumpy321 Eagles")).toBe("Pumpy321 Eagles");
+  });
+});
+
+describe("conflictingKeys", () => {
+  it("names an entry given two teams in one message and ignores a repeated same team", () => {
+    const keys = conflictingKeys([
+      { key: "m1|1|e1", team: "PHI" },
+      { key: "m1|1|e1", team: "KC" },
+      { key: "m1|1|e2", team: "SEA" },
+      { key: "m1|1|e2", team: "SEA" },
+    ]);
+    expect([...keys]).toEqual(["m1|1|e1"]);
+  });
+});
+
+describe("repeatedWeek", () => {
+  it("finds the week a team was already used and is null otherwise", () => {
+    const prior = new Map([["PHI", 1], ["SKIP_WEEK", 3]]);
+    expect(repeatedWeek("PHI", prior)).toBe(1);
+    expect(repeatedWeek("SKIP_WEEK", prior)).toBe(3);
+    expect(repeatedWeek("KC", prior)).toBeNull();
+    expect(repeatedWeek("KC", undefined)).toBeNull();
+  });
+});
+
+describe("resolveFromArg", () => {
+  const owners: OR[] = [
+    { id: "kris", first_name: "Kris", last_name: "Tomasco", email: "kris@x.com", participation_status: "confirmed" },
+    { id: "tim", first_name: "Tim", last_name: "Flaherty", email: null, participation_status: "confirmed" },
+  ];
+  const e = (id: string, owner: string, name: string, extra: Partial<ER> = {}): ER => ({
+    id, owner_id: owner, entry_name: name, player_email: null, is_gifted: false, is_free_entry: false, lynne_number: null, lynne_label: null, voided_at: null, ...extra,
+  });
+  const entries: ER[] = [
+    e("k1", "kris", "Kris Tomasco #1"),
+    e("c1", "kris", "Chas Flaster #1", { is_gifted: true, player_email: "Chas.Flaster@gmail.com" }),
+    e("c2", "kris", "Chas Flaster #2", { is_gifted: true, player_email: "chas.flaster@gmail.com" }),
+    e("p1", "tim", "Pumpy321"),
+  ];
+  it("resolves a gifted entry's name to the player who plays it, never the buyer", () => {
+    expect(resolveFromArg("Chas Flaster", owners, entries)).toEqual({ address: "chas.flaster@gmail.com", ownerId: null });
+    expect(resolveFromArg("chas.flaster@gmail.com", owners, entries)).toEqual({ address: "chas.flaster@gmail.com", ownerId: null });
+  });
+  it("resolves an owner by name, with or without an address on file", () => {
+    expect(resolveFromArg("Tomasco", owners, entries)).toEqual({ address: "kris@x.com", ownerId: "kris" });
+    expect(resolveFromArg("Pumpy", owners, entries)).toEqual({ address: null, ownerId: "tim" });
+  });
+  it("refuses nobody and more than one person", () => {
+    expect(() => resolveFromArg("nobody", owners, entries)).toThrow("matches 0 people");
+    expect(() => resolveFromArg("Flaster", [...owners, { id: "x", first_name: "Chas", last_name: "Flasterson", email: "cf@x.com", participation_status: "confirmed" }], entries)).toThrow("matches 2 people");
+  });
+});

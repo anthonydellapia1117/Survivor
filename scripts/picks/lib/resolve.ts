@@ -440,3 +440,40 @@ export function overrideDecision(
 export function weekOfMessage(subject: string, body: string): number | null {
   return weekNamedIn(leadingLines(stripQuotedReply(body))) ?? weekNamedIn(subject);
 }
+
+/**
+ * A week heading is not an entry: "Week 2: Chiefs" is a bare pick of the
+ * Chiefs for Week 2 (the week is read separately by weekOfMessage), and a
+ * line that is only "Week 2" or "Week 2 picks" carries nothing.
+ */
+export function stripWeekHeading(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*week\s*#?\s*\d{1,2}\b\s*(?:picks?)?\s*[:\-]?\s*/i, ""))
+    .join("\n");
+}
+
+/**
+ * Keys (one entry in one message and week) that were given more than one
+ * team. One entry, one team, or it is reported: a message that names two
+ * teams for the same entry is staged for Anthony, never written in the order
+ * the lines happened to come.
+ */
+export function conflictingKeys(items: { key: string; team: string }[]): Set<string> {
+  const teams = new Map<string, Set<string>>();
+  for (const i of items) {
+    if (!teams.has(i.key)) teams.set(i.key, new Set());
+    teams.get(i.key)!.add(i.team);
+  }
+  return new Set([...teams].filter(([, t]) => t.size > 1).map(([k]) => k));
+}
+
+/**
+ * The week a team was already used by this entry, or null. A repeated team
+ * is an elimination in her pool (CLAUDE.md), not a warning: the intake
+ * stages it for Anthony instead of writing it as an ordinary pick.
+ */
+export function repeatedWeek(team: string, prior: Map<string, number> | undefined): number | null {
+  const w = prior?.get(team);
+  return w === undefined ? null : w;
+}

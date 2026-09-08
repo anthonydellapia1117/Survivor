@@ -27,6 +27,7 @@ import {
   loadGames,
   loadLiveEntries,
   loadOwners,
+  loadPriorPicks,
   loadWeeks,
   stagePending,
   submitPick,
@@ -37,6 +38,7 @@ import { takeValue, weekArg } from "../lib/args";
 import { ADMIN_MAILBOX } from "../lib/constants";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirmedOwners, intakeAddresses } from "../lib/roster";
+import { resolveFromArg } from "./lib/from";
 import { confirm, readStdin } from "../lib/prompt";
 import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from "./lib/deadline";
 import {
@@ -48,7 +50,10 @@ import {
   pickSourceFor,
   resolveEntry,
   scopeCheck,
+  conflictingKeys,
+  repeatedWeek,
   stripQuotedReply,
+  stripWeekHeading,
   weekNamedIn,
   weekOfMessage,
   type RosterEntry,
@@ -118,14 +123,18 @@ interface WeekContext {
   bounds: WeekBounds;
   games: GameLite[];
   currentByEntry: Map<string, CurrentPickRow>;
+  /** entry id -> team -> the earlier week it was used in. */
+  priorByEntry: Map<string, Map<string, number>>;
 }
 
 interface Unresolved {
-  kind: "identity" | "player_question";
+  kind: "identity" | "player_question" | "pick";
   reason: string;
   line: string;
   candidates: string[];
   item: Item;
+  /** A fully resolved pick Anthony has to decide on (a repeated team); approving it on /admin/queue records it. */
+  pick?: { entryId: string; entryName: string; week: number; team: string };
 }
 
 function pad(s: string, n: number): string {
@@ -152,11 +161,21 @@ async function main(): Promise<void> {
     if (cached) return cached;
     const bounds = weeks.find((w) => w.week === week);
     if (!bounds) throw new Error(`Week ${week} not found.`);
-    const [gameRows, current] = await Promise.all([loadGames(client, week), loadCurrentPicks(client, week)]);
+    const [gameRows, current, prior] = await Promise.all([
+      loadGames(client, week),
+      loadCurrentPicks(client, week),
+      loadPriorPicks(client, week),
+    ]);
+    const priorByEntry = new Map<string, Map<string, number>>();
+    for (const r of prior) {
+      if (!priorByEntry.has(r.entry_id)) priorByEntry.set(r.entry_id, new Map());
+      priorByEntry.get(r.entry_id)!.set(r.team, r.week);
+    }
     const ctx: WeekContext = {
       bounds: { week, earlyDeadlineAt: bounds.early_deadline_at, lateDeadlineAt: bounds.late_deadline_at },
       games: gameRows.map((g) => ({ week: g.week, dayOfWeek: g.day_of_week, homeTeam: g.home_team, awayTeam: g.away_team })),
       currentByEntry: new Map(current.map((p) => [p.entry_id, p])),
+      priorByEntry,
     };
     contexts.set(week, ctx);
     return ctx;
@@ -201,25 +220,9 @@ async function main(): Promise<void> {
     let sender: string | null = null;
     let fromOwnerId: string | null = null;
     if (args.from) {
-      const needle = args.from.toLowerCase();
-      const byEmail = owners.filter((o) => (o.email ?? "").toLowerCase() === needle);
-      const byPlayer = entries.filter((e) => (e.player_email ?? "").toLowerCase() === needle);
-      if (byEmail.length === 1 || byPlayer.length > 0) sender = needle;
-      else {
-        const hits = owners.filter(
-          (o) =>
-            `${o.first_name} ${o.last_name}`.toLowerCase().includes(needle) ||
-            (o.email ?? "").toLowerCase().includes(needle) ||
-            entries.some((e) => e.owner_id === o.id && e.entry_name.toLowerCase().includes(needle)),
-        );
-        if (hits.length !== 1) {
-          throw new Error(`--from "${args.from}" matches ${hits.length} owners: ${hits.map((h) => `${h.first_name} ${h.last_name}`).join(", ") || "none"}`);
-        }
-        // The owner is known whether or not an address is on file: the scope
-        // is their entries, and a missing email does not unknow them.
-        sender = hits[0].email?.toLowerCase() ?? null;
-        fromOwnerId = hits[0].id;
-      }
+      const scope = resolveFromArg(args.from, confirmedOwners(owners), entries);
+      sender = scope.address;
+      fromOwnerId = scope.ownerId;
     }
     items.push({
       label: args.file ?? "pasted text",
@@ -267,7 +270,7 @@ async function main(): Promise<void> {
         : [];
     const kind = pendingKind(item.senderAddress, scopeEntries.length);
     const preferredIds = new Set(scopeEntries.map((e) => e.id));
-    const body = stripQuotedReply(item.text);
+    const body = stripWeekHeading(stripQuotedReply(item.text));
     const { picks, unparsed } = parsePickLines(body);
     const fail = (reason: string, line: string, candidates: RosterEntry[] = []) =>
       unresolved.push({
@@ -326,6 +329,21 @@ async function main(): Promise<void> {
           fail(`${t.entry.entryName} -> ${p.team}: ${decision.reason}`, p.line);
           continue;
         }
+        // A team this entry already used is an elimination in her pool, not
+        // a warning (CLAUDE.md). It is staged as a pick with that said, so
+        // Anthony records it knowingly on /admin/queue or dismisses it.
+        const usedIn = repeatedWeek(p.team, ctx.priorByEntry.get(t.entry.id));
+        if (usedIn !== null) {
+          unresolved.push({
+            kind: "pick",
+            reason: `${t.entry.entryName} -> ${p.team}: already used in week ${usedIn}; a repeated team is an ELIMINATION in her pool`,
+            line: p.line,
+            candidates: [],
+            item,
+            pick: { entryId: t.entry.id, entryName: t.entry.entryName, week: item.week, team: p.team },
+          });
+          continue;
+        }
         proposals.push({
           entry: t.entry,
           week: item.week,
@@ -342,6 +360,36 @@ async function main(): Promise<void> {
       }
     }
   }
+
+  // ---- one entry, one team, per message: two teams for one entry are staged
+  const keyOf = (p: Proposal) => `${p.itemLabel}|${p.week}|${p.entry.id}`;
+  const conflicts = conflictingKeys(proposals.map((p) => ({ key: keyOf(p), team: p.team })));
+  if (conflicts.size) {
+    const byKey = new Map<string, Proposal[]>();
+    for (const p of proposals) if (conflicts.has(keyOf(p))) byKey.set(keyOf(p), [...(byKey.get(keyOf(p)) ?? []), p]);
+    for (const group of byKey.values()) {
+      const teams = [...new Set(group.map((p) => p.team))].join(" and ");
+      const first = group[0];
+      const item = items.find((i) => i.label === first.itemLabel)!;
+      unresolved.push({
+        kind: pendingKind(item.senderAddress, 1),
+        reason: `${first.entry.entryName}: ${teams} in one message; one entry, one team`,
+        line: group.map((p) => p.team).join(" / "),
+        candidates: [],
+        item,
+      });
+    }
+  }
+  const seenKey = new Set<string>();
+  const kept: Proposal[] = [];
+  for (const p of proposals) {
+    const k = keyOf(p);
+    if (conflicts.has(k) || seenKey.has(k)) continue;
+    seenKey.add(k);
+    kept.push(p);
+  }
+  proposals.length = 0;
+  proposals.push(...kept);
 
   // ---- show
   const toWrite = proposals.filter((p) => !(p.existing && p.existing.team === p.team));
@@ -416,15 +464,29 @@ async function main(): Promise<void> {
   for (const u of unresolved) {
     await stagePending(client, {
       kind: u.kind,
-      payload: {
-        week: u.item.week,
-        from: u.item.senderAddress,
-        subject: u.item.label,
-        line: u.line,
-        reason: u.reason,
-        candidates: u.candidates,
-        question: `Which entry and team did this mean? ${u.reason}.`,
-      },
+      payload: u.pick
+        ? {
+            entry_id: u.pick.entryId,
+            entry_name: u.pick.entryName,
+            week: u.pick.week,
+            team: u.pick.team,
+            source: u.item.source,
+            received_at: u.item.receivedAt,
+            from: u.item.senderAddress,
+            subject: u.item.label,
+            line: u.line,
+            reason: u.reason,
+            question: `Record this pick anyway? ${u.reason}. Approve writes it with its receipt time; dismiss leaves the entry unpicked.`,
+          }
+        : {
+            week: u.item.week,
+            from: u.item.senderAddress,
+            subject: u.item.label,
+            line: u.line,
+            reason: u.reason,
+            candidates: u.candidates,
+            question: `Which entry and team did this mean? ${u.reason}.`,
+          },
       sourceMessageId: u.item.messageId,
       actor,
     });
