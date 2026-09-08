@@ -1,0 +1,308 @@
+// Loose resolution of what a player wrote to what the roster holds.
+//
+// The loosening is on the comparison only: no stored name is ever changed
+// here, and every match is shown to Anthony before a row is written. Anything
+// that does not resolve to exactly one entry, or exactly one team, is an error
+// to report and never a guess.
+
+import { NFL_TEAMS, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
+import { ENTRY_ALIASES } from "../aliases";
+
+export interface RosterEntry {
+  id: string;
+  entryName: string;
+  ownerId: string;
+  /** "First Last" as stored, edge whitespace included. */
+  ownerName: string;
+  ownerEmail: string | null;
+  playerEmail: string | null;
+}
+
+/** Case, "#" and whitespace do not count. Nothing else is loosened. */
+export function entryKey(s: string): string {
+  return s.toLowerCase().replace(/#/g, "").replace(/\s+/g, " ").trim();
+}
+
+function tokens(s: string): string[] {
+  return s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+export function levenshtein(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+// ---------------------------------------------------------------- teams
+
+const FULL = new Map(NFL_TEAMS.map((t) => [t.name.toLowerCase(), t.abbr]));
+const NICK = new Map<string, string>();
+const CITY = new Map<string, string[]>();
+for (const t of NFL_TEAMS) {
+  const parts = t.name.toLowerCase().split(" ");
+  NICK.set(parts[parts.length - 1], t.abbr);
+  const city = parts.slice(0, -1).join(" ");
+  CITY.set(city, [...(CITY.get(city) ?? []), t.abbr]);
+}
+const TEAM_ALIASES: Record<string, string> = {
+  niners: "SF",
+  jags: "JAX",
+  pats: "NE",
+  skins: "WAS",
+  bucs: "TB",
+  vikes: "MIN",
+  bolts: "LAC",
+  pack: "GB",
+  fins: "MIA",
+  cards: "ARI",
+  hawks: "SEA",
+  gmen: "NYG",
+  "g-men": "NYG",
+  philly: "PHI",
+  bengal: "CIN",
+  cowboy: "DAL",
+};
+const ABBR_ALIASES: Record<string, string> = {
+  JAC: "JAX",
+  WSH: "WAS",
+  LVR: "LV",
+  SFO: "SF",
+  TAM: "TB",
+  GNB: "GB",
+  KAN: "KC",
+  NOR: "NO",
+  NWE: "NE",
+};
+
+/**
+ * Team text to an abbreviation, or null. "New York", "Los Angeles" and "LA"
+ * name two teams and resolve to nothing; a multi-word string falls back to
+ * its last word as the nickname, which is what carries a typo like
+ * "Los Angles Chargers" home.
+ */
+function cleanTeam(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9&\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^the /, "");
+}
+
+export function resolveTeam(raw: string): string | null {
+  const cleaned = cleanTeam(raw);
+  if (!cleaned) return null;
+  if (["bye", "skip", "skip week", "skip_week"].includes(cleaned)) return SKIP_WEEK;
+  const up = cleaned.toUpperCase();
+  if (up in TEAM_NAME) return up;
+  if (up in ABBR_ALIASES) return ABBR_ALIASES[up];
+  const full = FULL.get(cleaned);
+  if (full) return full;
+  const nick = NICK.get(cleaned);
+  if (nick) return nick;
+  if (cleaned in TEAM_ALIASES) return TEAM_ALIASES[cleaned];
+  const city = CITY.get(cleaned);
+  if (city && city.length === 1) return city[0];
+  const words = cleaned.split(" ");
+  if (words.length > 1) {
+    const last = words[words.length - 1];
+    const byLast = NICK.get(last) ?? TEAM_ALIASES[last];
+    if (byLast) return byLast;
+  }
+  return null;
+}
+
+/**
+ * A team and nothing else: every word must belong to that team's name, its
+ * nickname or an alias, one typo allowed per word. "Los Angles Chargers"
+ * passes; "Pumpy321 Chargers" does not, because Pumpy321 is somebody's entry.
+ */
+export function strictTeam(raw: string): string | null {
+  const cleaned = cleanTeam(raw);
+  const team = resolveTeam(cleaned);
+  if (!team) return null;
+  const words = cleaned.split(" ");
+  if (words.length === 1) return team;
+  const nameWords = (TEAM_NAME[team] ?? "").toLowerCase().split(" ");
+  const fits = (w: string) =>
+    nameWords.some((nw) => nw === w || (w.length >= 4 && nw.length >= 4 && levenshtein(w, nw) <= 1)) ||
+    TEAM_ALIASES[w] === team ||
+    NICK.get(w) === team;
+  return words.every(fits) ? team : null;
+}
+
+// -------------------------------------------------------------- entries
+
+export interface EntryScope {
+  /** Entries the sender owns or plays; tried first and preferred on ties. */
+  preferredIds?: Set<string>;
+}
+
+export type EntryResolution =
+  | { ok: true; entry: RosterEntry; how: "exact" | "cosmetic" | "alias" | "tokens" | "owner_name" }
+  | {
+      ok: false;
+      reason: "ambiguous" | "owner_has_multiple_entries" | "unmatched";
+      candidates: RosterEntry[];
+    };
+
+/** "Waggs 3", "Waggs #3", "TJA # 2" split into a base and a number; "Pumpy321" does not. */
+export function splitNumber(raw: string): { base: string; n: number | null } {
+  const m = raw.trim().match(/^(.+?)(?:\s+#?|#)\s*(\d+)\s*$/);
+  if (!m) return { base: raw.trim(), n: null };
+  return { base: m[1].trim(), n: Number(m[2]) };
+}
+
+export function resolveEntry(raw: string, roster: RosterEntry[], scope: EntryScope = {}): EntryResolution {
+  const trimmed = raw.trim();
+  const exact = roster.filter((e) => e.entryName === trimmed);
+  if (exact.length === 1) return { ok: true, entry: exact[0], how: "exact" };
+
+  const key = entryKey(trimmed);
+  const cosmetic = roster.filter((e) => entryKey(e.entryName) === key);
+  if (cosmetic.length === 1) return { ok: true, entry: cosmetic[0], how: "cosmetic" };
+  if (cosmetic.length > 1) return { ok: false, reason: "ambiguous", candidates: cosmetic };
+
+  const { base, n } = splitNumber(trimmed);
+  const alias = ENTRY_ALIASES[entryKey(base)];
+  if (alias) {
+    const target = entryKey(n === null ? alias : `${alias} #${n}`);
+    const hit = roster.filter((e) => entryKey(e.entryName) === target);
+    if (hit.length === 1) return { ok: true, entry: hit[0], how: "alias" };
+  }
+
+  const rawTokens = tokens(base);
+
+  // A player naming himself rather than his entry: the whole owner name, or
+  // every word of what he wrote inside it (two words at least). A trailing
+  // number then picks that owner's numbered entry.
+  const owners = new Map<string, RosterEntry[]>();
+  for (const e of roster) {
+    const ownerTokens = tokens(e.ownerName);
+    const ok =
+      entryKey(e.ownerName) === entryKey(base) ||
+      (rawTokens.length >= 2 && rawTokens.every((t) => ownerTokens.includes(t)));
+    if (ok) owners.set(e.ownerId, [...(owners.get(e.ownerId) ?? []), e]);
+  }
+  if (owners.size === 1) {
+    const [entries] = owners.values();
+    if (entries.length === 1) return { ok: true, entry: entries[0], how: "owner_name" };
+    if (n !== null) {
+      const numbered = entries.filter((e) => splitNumber(e.entryName).n === n);
+      if (numbered.length === 1) return { ok: true, entry: numbered[0], how: "owner_name" };
+    }
+    return { ok: false, reason: "owner_has_multiple_entries", candidates: entries };
+  }
+  if (owners.size > 1) {
+    return { ok: false, reason: "ambiguous", candidates: Array.from(owners.values()).flat() };
+  }
+
+  if (rawTokens.length > 0) {
+    const candidates = roster.filter((e) => {
+      const en = splitNumber(e.entryName);
+      if (n !== null && en.n !== n) return false;
+      const et = tokens(en.base);
+      return rawTokens.every((rt) =>
+        et.some((t) => t === rt || (rt.length >= 4 && t.length >= 4 && levenshtein(rt, t) <= 1)),
+      );
+    });
+    const preferred = scope.preferredIds ? candidates.filter((e) => scope.preferredIds!.has(e.id)) : [];
+    if (preferred.length === 1) return { ok: true, entry: preferred[0], how: "tokens" };
+    if (preferred.length > 1) return { ok: false, reason: "ambiguous", candidates: preferred };
+    if (candidates.length === 1) return { ok: true, entry: candidates[0], how: "tokens" };
+    if (candidates.length > 1) return { ok: false, reason: "ambiguous", candidates };
+  }
+  return { ok: false, reason: "unmatched", candidates: [] };
+}
+
+// ------------------------------------------------------------ pick text
+
+export interface RawPick {
+  /** What the player wrote for the entry; null when only a team was given. */
+  entryRaw: string | null;
+  teamRaw: string;
+  team: string;
+  line: string;
+  /** "Eagles for both": one team for every entry the sender has. */
+  all: boolean;
+}
+
+const SEPARATORS = [" - ", " – ", " — ", ": ", " = ", " -> ", "\t", ", ", " , "];
+
+/**
+ * Lines of "entry, team" in any of the shapes players use. A line that does
+ * not name a resolvable team is returned as unparsed, never dropped.
+ */
+export function parsePickLines(text: string): { picks: RawPick[]; unparsed: string[] } {
+  const picks: RawPick[] = [];
+  const unparsed: string[] = [];
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim();
+    if (!line) continue;
+    const both = line.match(/^(.+?)\s+for\s+(?:both|all|each)\b.*$/i);
+    if (both) {
+      const team = strictTeam(both[1]);
+      if (team) {
+        picks.push({ entryRaw: null, teamRaw: both[1].trim(), team, line, all: true });
+        continue;
+      }
+    }
+    let found: RawPick | null = null;
+    for (const sep of SEPARATORS) {
+      const idx = line.indexOf(sep);
+      if (idx <= 0) continue;
+      const left = line.slice(0, idx).trim();
+      const right = line.slice(idx + sep.length).trim();
+      const rightTeam = strictTeam(right);
+      if (rightTeam && left) {
+        found = { entryRaw: left, teamRaw: right, team: rightTeam, line, all: false };
+        break;
+      }
+      const leftTeam = strictTeam(left);
+      if (leftTeam && right) {
+        found = { entryRaw: right, teamRaw: left, team: leftTeam, line, all: false };
+        break;
+      }
+    }
+    if (!found) {
+      const whole = strictTeam(line);
+      if (whole) found = { entryRaw: null, teamRaw: line, team: whole, line, all: false };
+    }
+    if (!found) {
+      const words = line.split(/\s+/);
+      for (let k = 1; k <= 3 && k < words.length && !found; k++) {
+        const teamRaw = words.slice(-k).join(" ");
+        const team = strictTeam(teamRaw);
+        if (team) {
+          found = { entryRaw: words.slice(0, -k).join(" "), teamRaw, team, line, all: false };
+        }
+      }
+    }
+    if (found) picks.push(found);
+    else unparsed.push(line);
+  }
+  return { picks, unparsed };
+}
+
+/** The player's own words: quoted history and signatures removed. */
+export function stripQuotedReply(body: string): string {
+  const out: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    if (/^On .+wrote:\s*$/i.test(line)) break;
+    if (/^-{2,}\s*Original Message\s*-{2,}/i.test(line)) break;
+    if (/^From:\s.+/i.test(line) && out.length > 0) break;
+    if (/^--\s*$/.test(line)) break;
+    if (/^Sent from my /i.test(line)) continue;
+    if (line.trimStart().startsWith(">")) continue;
+    out.push(line);
+  }
+  return out.join("\n").trim();
+}

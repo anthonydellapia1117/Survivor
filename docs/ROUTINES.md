@@ -353,9 +353,9 @@ The routines above say when each is due.
 | Regenerate the Sheets backup        | /admin (Sheets export)            | Generated export, admin click          |
 | Back up                             | /api/admin/backup                 | Admin login only                       |
 
-The Week 1 roster backlog Lynne is owed (+12 -4 per CLAUDE.md) is Anthony's
-before Tue 09-08 noon; no routine reminds him, and the Friday roster-drift
-line first fires 09-11.
+Anthony sends her the roster by hand; the Friday roster-drift line first
+fires 09-11. Picks arrive through `npm run picks` and the per-lock list goes
+out through `npm run lynne` (docs/PICKS_INTAKE.md).
 
 ## 9. Housekeeping
 

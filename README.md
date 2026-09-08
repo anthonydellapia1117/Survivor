@@ -56,6 +56,9 @@ ADMIN_DEV_BYPASS=1 npm run dev              # dev bypass never works in prod
 `scripts/db/demo-picks.sql` fills weeks 1–5 with fabricated picks for visual
 testing — never run it against production.
 
+`npm run picks` and `npm run lynne` are the season's intake and outbound
+commands; setup and usage are in `docs/PICKS_INTAKE.md`.
+
 ## Google Sheets backup
 
 The Sheet is a **generated export, not a second source of truth** — the app
