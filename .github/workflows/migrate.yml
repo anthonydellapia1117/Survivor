@@ -1,0 +1,69 @@
+# Migrations go in with the code, never ahead of it: on every push to main
+# that touches supabase/migrations, apply each unapplied file to production
+# inside one transaction with a smoke check at a savepoint (entry count,
+# money totals, one entry save, one pick on a scratch entry). A failed check
+# rolls the migration back and opens an issue. Migrations 60 to 62 applied
+# ahead of their code on 2026-09-04 broke entry saves for hours; this is the
+# fix. Needs the repository secret SUPABASE_DB_URL (docs/MERGE_AUTOMATION.md).
+name: migrate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/db/migrate-prod.sh"
+      - "scripts/db/smoke.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: migrate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply unapplied migrations with the smoke check
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          export PATH="/usr/lib/postgresql/16/bin:$PATH"
+          set -o pipefail
+          bash scripts/db/migrate-prod.sh 2>&1 | tee migrate.log
+      - name: Open an issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            let log = "";
+            try { log = fs.readFileSync("migrate.log", "utf8"); } catch {}
+            const tail = log.split("\n").slice(-80).join("\n");
+            const sha = context.sha.slice(0, 7);
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Migration job failed on ${sha}: production unchanged`,
+              body: [
+                `The post-merge migration job failed on ${sha}. Every migration it tried was rolled back in the same transaction as its smoke check, so production carries no partial change.`,
+                "",
+                `Run: ${url}`,
+                "",
+                "Last lines of the log:",
+                "",
+                "```",
+                tail,
+                "```",
+                "",
+                "Fix the cause, then re-run the job from the Actions tab (workflow_dispatch) or push the fix to main.",
+              ].join("\n"),
+            });
