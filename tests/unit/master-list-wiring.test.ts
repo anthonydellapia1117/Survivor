@@ -33,7 +33,11 @@ describe("Master List wiring", () => {
     const m = read("supabase/migrations/20260908224500_master_list.sql");
     const body = /create view v_master_list as([\s\S]*?);/.exec(m)?.[1] ?? "";
     const selectList = /\)\s*select\s+([\s\S]*?)\bfrom lynne_roster r\b/i.exec(body)?.[1] ?? "";
-    const cols = selectList
+    // Fold every parenthesised expression (the gated cells subquery) to a
+    // placeholder so the split on commas sees only the output columns.
+    let flat = selectList;
+    for (let i = 0; i < 20 && /\([^()]*\)/.test(flat); i++) flat = flat.replace(/\([^()]*\)/g, "@");
+    const cols = flat
       .split(",")
       .map((c) => c.trim().split(/\s+as\s+/i).pop()?.replace(/^.*\./, "").trim())
       .filter(Boolean);

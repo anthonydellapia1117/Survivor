@@ -146,10 +146,10 @@ end $$;
 reset role;
 
 -- ------------------------------------------- the reveal gate on her cells
--- Week 1's game has not kicked off; week 2's is long over; week 3 has none.
-insert into weeks (week, window_label, deadline_at)
-values (1, 'sat_mon', now() - interval '1 day'), (2, 'sat_mon', now() - interval '8 day'), (3, 'sat_mon', now() + interval '6 day')
-on conflict (week) do nothing;
+-- The seed carries the real schedule, so the fixture owns weeks 1 to 3
+-- outright (inside this rolled-back transaction): week 1's game has not
+-- kicked off; week 2's is long over; week 3 has none.
+delete from nfl_games where week in (1, 2, 3);
 insert into nfl_games (id, week, kickoff_at, day_of_week, away_team, home_team) values
   ('ml-w1-phi-dal', 1, now() + interval '1 day', 'Sunday', 'PHI', 'DAL'),
   ('ml-w2-kc-buf', 2, now() - interval '7 day', 'Sunday', 'KC', 'BUF');
