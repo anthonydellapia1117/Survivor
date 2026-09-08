@@ -82,9 +82,11 @@ Write 4 pick(s) and stage 1 pending row(s)? (y/N)
 
 Only y or yes writes. Picks go through admin_submit_pick with source email or
 text; a late one is stored with late = true, never refused and never hidden.
-Unresolved lines become pending_actions rows (kind identity when the sender
-is not a known address, player_question otherwise) carrying the Gmail message
-id, for /admin/queue. Processed messages are marked read and filed under
+Unresolved lines become pending_actions rows (kind identity when there is no
+sender or the sender matches nobody on the roster, player_question when a
+known person sent it and the line itself is the problem) carrying the Gmail
+message id, for /admin/queue. Mail read from Gmail is always recorded with
+source email; `--source` applies to pasted or filed text only. Processed messages are marked read and filed under
 Pool-Survivor-Done; `--keep-unread` leaves them. `--dry-run` shows the table
 and stops.
 

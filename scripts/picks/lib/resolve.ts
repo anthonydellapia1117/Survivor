@@ -306,3 +306,32 @@ export function stripQuotedReply(body: string): string {
   }
   return out.join("\n").trim();
 }
+
+/**
+ * Where a pick came from, for picks.source. Mail read from Gmail is always
+ * "email"; the flag only names what pasted or filed text was transcribed from
+ * (a text message by default, an email body pasted by hand with --source
+ * email). Letting the flag relabel a Gmail message would misattribute the
+ * pick in the audit trail.
+ */
+export function pickSourceFor(
+  mode: "gmail" | "paste",
+  flag: "email" | "text" | null,
+): "email" | "text" {
+  if (mode === "gmail") return "email";
+  return flag ?? "text";
+}
+
+/**
+ * Which queue row an unresolved line becomes. "identity" when nobody known
+ * is behind the line: no sender at all (pasted text with no --from) or a
+ * sender address that matches no owner or player. "player_question" only
+ * when the sender is a known person and the line itself is the problem.
+ */
+export function pendingKind(
+  senderAddress: string | null,
+  scopeEntryCount: number,
+): "identity" | "player_question" {
+  if (senderAddress === null) return "identity";
+  return scopeEntryCount > 0 ? "player_question" : "identity";
+}

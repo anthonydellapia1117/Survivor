@@ -34,6 +34,8 @@ import {
   resolveEntry,
   stripQuotedReply,
   type RosterEntry,
+  pendingKind,
+  pickSourceFor,
 } from "./lib/resolve";
 
 const DONE_LABEL = "Pool-Survivor-Done";
@@ -154,8 +156,11 @@ async function main(): Promise<void> {
         else throw new Error(`--from "${args.from}" matches ${hits.length} owners: ${hits.map((h) => `${h.first_name} ${h.last_name}`).join(", ") || "none"}`);
       }
     }
-    items.push({ label: args.file ?? "pasted text", text, source: args.source ?? "text", senderAddress: sender, messageId: null });
+    items.push({ label: args.file ?? "pasted text", text, source: pickSourceFor("paste", args.source), senderAddress: sender, messageId: null });
   } else {
+    if (args.source !== null) {
+      throw new Error("--source applies to --paste or --file only; mail read from Gmail is always recorded as email.");
+    }
     const gmail = gmailClient();
     const addresses = [
       ...owners.map((o) => o.email ?? ""),
@@ -166,7 +171,7 @@ async function main(): Promise<void> {
       items.push({
         label: `${m.from} | ${m.subject || "(no subject)"} | ${m.date}`,
         text: m.body,
-        source: args.source ?? "email",
+        source: pickSourceFor("gmail", args.source),
         senderAddress: m.fromAddress,
         messageId: m.id,
       });
@@ -179,13 +184,13 @@ async function main(): Promise<void> {
   const unresolved: Unresolved[] = [];
   for (const item of items) {
     const scopeEntries = item.senderAddress ? entriesFor(item.senderAddress) : [];
-    const senderKnown = item.senderAddress === null || scopeEntries.length > 0;
+    const kind = pendingKind(item.senderAddress, scopeEntries.length);
     const preferredIds = new Set(scopeEntries.map((e) => e.id));
     const body = stripQuotedReply(item.text);
     const { picks, unparsed } = parsePickLines(body);
     const fail = (reason: string, line: string, candidates: RosterEntry[] = []) =>
       unresolved.push({
-        kind: senderKnown ? "player_question" : "identity",
+        kind,
         reason,
         line,
         candidates: candidates.map((c) => c.entryName),
