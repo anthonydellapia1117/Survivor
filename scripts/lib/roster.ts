@@ -124,3 +124,29 @@ export function earliestOpenDeadline(
     lateDeadlineIso: bounds.lateDeadlineAt,
   };
 }
+
+/**
+ * The addresses the picks intake reads mail from: every confirmed owner's
+ * own address and every player_email on their live entries, once each,
+ * never the admin's own mailbox. The free entries sit under the admin's
+ * owner row, so without the exclusion every self-sent mail (a chase or
+ * distribute copy, a DECISION note) would be read as a player's picks.
+ */
+export function intakeAddresses(owners: OwnerRow[], entries: EntryRow[], adminMailbox: string): string[] {
+  const admin = adminMailbox.trim().toLowerCase();
+  const confirmed = new Set(confirmedOwners(owners).map((o) => o.id));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (a: string | null) => {
+    const key = (a ?? "").trim().toLowerCase();
+    if (!key || key === admin || seen.has(key)) return;
+    seen.add(key);
+    out.push(key);
+  };
+  for (const o of confirmedOwners(owners)) add(o.email);
+  for (const e of entries) {
+    if (e.voided_at !== null || !confirmed.has(e.owner_id)) continue;
+    add(e.player_email);
+  }
+  return out;
+}

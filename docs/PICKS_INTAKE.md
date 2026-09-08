@@ -53,8 +53,11 @@ gate in section 4c and is left unset unless you mean it.
 
 ## 2. Picks
 
-2a. From Gmail. Every unread message from any owner email or player email on
-the live roster, whatever its subject and whatever label it carries:
+2a. From Gmail. Every unread message from any confirmed owner's email or
+any player email on their live entries, whatever its subject and whatever
+label it carries. Your own mailbox is never on that list (the free entries
+sit under your owner row), so your self-sent copies and DECISION notes are
+not read as picks; picks for the AAA entries go in by paste (2b):
 
 ```
 npm run picks
@@ -114,7 +117,8 @@ Thursday games, thu the Friday games, fri Saturday, Sunday and Monday. It
 refuses to run before that tier has closed (the list is not final until
 then; `--before-lock` overrides), prints `<number>  <label>  -  <team>` in
 her own team vocabulary (Seattle, Green Bay, BYE) sorted by her number,
-names any entry it refused (no Lynne number or label on file), and creates
+names any entry it refused (no Lynne number on file; a missing label means
+she holds our entry name, which is what goes out), and creates
 the same text as a draft in the "Survivor - DellaPia | 2026 Entry List"
 thread. You should see `Draft <id> created ... Not sent`. Open Gmail, check
 it, send. `--no-draft` prints only.

@@ -57,3 +57,17 @@ describe("lock deadline and her vocabulary", () => {
     expect(fullTeamName("SKIP_WEEK")).toBe("BYE");
   });
 });
+
+describe("her label", () => {
+  it("uses our entry name when she holds no different label, and still refuses no number", () => {
+    const r = selectForLock(
+      [
+        { entryName: "Pumpy321", lynneNumber: 1001, lynneLabel: null, team: "PHI", gameDay: "Sunday" },
+        { entryName: "TNat", lynneNumber: null, lynneLabel: null, team: "PHI", gameDay: "Sunday" },
+      ],
+      "fri",
+    );
+    expect(r.lines).toEqual(["1001  Pumpy321  -  Philadelphia"]);
+    expect(r.excluded.map((x) => x.why)).toEqual(["no Lynne number on file"]);
+  });
+});

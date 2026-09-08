@@ -428,3 +428,13 @@ export function overrideDecision(
   }
   return { ok: true };
 }
+
+/**
+ * The week a message means: the player's own words first (the leading
+ * lines of the unquoted body), then the subject, which a reply inherits
+ * from whatever thread it answers. "Week 2: Chiefs" sent as a reply on the
+ * Week 1 thread is a Week 2 pick.
+ */
+export function weekOfMessage(subject: string, body: string): number | null {
+  return weekNamedIn(leadingLines(stripQuotedReply(body))) ?? weekNamedIn(subject);
+}

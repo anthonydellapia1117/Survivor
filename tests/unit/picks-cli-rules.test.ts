@@ -116,3 +116,52 @@ describe("stripQuotedReply", () => {
     expect(stripQuotedReply("On second thought, Ravens\nthanks")).toBe("On second thought, Ravens\nthanks");
   });
 });
+
+import { weekOfMessage } from "../../scripts/picks/lib/resolve";
+import { intakeAddresses } from "../../scripts/lib/roster";
+import { takeValue, weekArg } from "../../scripts/lib/args";
+import type { EntryRow as ER, OwnerRow as OR } from "../../scripts/lib/db";
+
+describe("weekOfMessage", () => {
+  it("prefers the week the player wrote over the thread's subject", () => {
+    expect(weekOfMessage("Re: Survivor - Week 1 picks posted", "Week 2: Chiefs\n\nOn Sun wrote:\n> old")).toBe(2);
+  });
+  it("falls back to the subject when the body names none", () => {
+    expect(weekOfMessage("Re: Week 1 picks - Kris - 2 entries", "Eagles for both")).toBe(1);
+    expect(weekOfMessage("Re: hi", "Eagles for both")).toBeNull();
+  });
+});
+
+describe("intakeAddresses", () => {
+  const owners: OR[] = [
+    { id: "adm", first_name: "Anthony", last_name: "DellaPia", email: "AnthonyDellaPia@gmail.com", participation_status: "confirmed" },
+    { id: "o1", first_name: "Kris", last_name: "Tomasco", email: "kris@x.com", participation_status: "confirmed" },
+    { id: "o2", first_name: "John", last_name: "Vassallo", email: "john@x.com", participation_status: "declined" },
+  ];
+  const e = (id: string, owner: string, extra: Partial<ER> = {}): ER => ({
+    id, owner_id: owner, entry_name: id, player_email: null, is_gifted: false, is_free_entry: false, lynne_number: null, lynne_label: null, voided_at: null, ...extra,
+  });
+  const entries: ER[] = [
+    e("AAA #1", "adm", { is_free_entry: true }),
+    e("Kris Tomasco #1", "o1"),
+    e("Chas Flaster #1", "o1", { is_gifted: true, player_email: "Chas@x.com" }),
+    e("John Vassallo #1", "o2", { is_gifted: true, player_email: "someone@x.com" }),
+    e("Old #1", "o1", { is_gifted: true, player_email: "gone@x.com", voided_at: "2026-09-01T00:00:00Z" }),
+  ];
+  it("lists confirmed owners and their players once, never the admin mailbox", () => {
+    expect(intakeAddresses(owners, entries, "anthonydellapia@gmail.com")).toEqual(["kris@x.com", "chas@x.com"]);
+  });
+});
+
+describe("args", () => {
+  it("refuses a flag with no value or with another flag as its value", () => {
+    expect(() => takeValue(["--file"], 1, "--file")).toThrow("--file needs a value");
+    expect(() => takeValue(["--file", "--week"], 1, "--file")).toThrow("--file needs a value");
+    expect(takeValue(["--file", "picks.txt"], 1, "--file")).toBe("picks.txt");
+  });
+  it("accepts only a week from 1 to 18", () => {
+    expect(weekArg("1")).toBe(1);
+    expect(weekArg("18")).toBe(18);
+    for (const bad of ["0", "19", "x", "1.5", ""]) expect(() => weekArg(bad)).toThrow();
+  });
+});

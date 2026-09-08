@@ -257,6 +257,16 @@ async function main(): Promise<void> {
     let sent = 0;
     let skipped = 0;
     for (const c of chases) {
+      // A pick can land between the snapshot and this person's turn (a long
+      // run, a y typed late). Re-read the week's current picks now; if any
+      // of their entries is picked, this message is stale and is not sent.
+      const nowPicked = new Set((await loadCurrentPicks(client, week)).map((p) => p.entry_id));
+      const arrived = c.recipient.entries.filter((e) => nowPicked.has(e.id)).map((e) => e.entryName);
+      if (arrived.length) {
+        skipped++;
+        console.log(`pick arrived since the snapshot for ${arrived.join(", ")} -> ${c.recipient.email}, skipped; re-run to chase the rest`);
+        continue;
+      }
       let out;
       try {
         out = await sendAllowlisted(gmail, client, prior, {

@@ -54,8 +54,13 @@ export function lockDeadlineIso(lock: LockDay, earlyDeadlineAt: string, lateDead
   return pickDeadlineIso(LOCK_GAME_DAYS[lock][0], earlyDeadlineAt, lateDeadlineAt);
 }
 
+/** Her label when her file calls it something else, our name otherwise. */
+export function labelFor(p: OutboundPick): string {
+  return p.lynneLabel ?? p.entryName;
+}
+
 export function formatLine(p: OutboundPick): string {
-  return `${p.lynneNumber}  ${p.lynneLabel}  -  ${fullTeamName(p.team)}`;
+  return `${p.lynneNumber}  ${labelFor(p)}  -  ${fullTeamName(p.team)}`;
 }
 
 export function selectForLock(picks: OutboundPick[], lock: LockDay): OutboundResult {
@@ -64,8 +69,10 @@ export function selectForLock(picks: OutboundPick[], lock: LockDay): OutboundRes
   const included: OutboundPick[] = [];
   const excluded: OutboundResult["excluded"] = [];
   for (const p of inTier) {
+    // lynne_label is set only when her file calls the entry something other
+    // than our name (admin_update_entry stores nullif(label, '')); a null
+    // label is normal and means the entry name is what she holds.
     if (p.lynneNumber === null) excluded.push({ pick: p, why: "no Lynne number on file" });
-    else if (p.lynneLabel === null) excluded.push({ pick: p, why: "no Lynne label on file" });
     else included.push(p);
   }
   included.sort((a, b) => (a.lynneNumber ?? 0) - (b.lynneNumber ?? 0));

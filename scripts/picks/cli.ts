@@ -33,7 +33,10 @@ import {
   type CurrentPickRow,
 } from "../lib/db";
 import { gmailClient, listUnreadFrom, markProcessed, type InboundMessage } from "../lib/gmail";
+import { takeValue, weekArg } from "../lib/args";
+import { ADMIN_MAILBOX } from "../lib/constants";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
+import { confirmedOwners, intakeAddresses } from "../lib/roster";
 import { confirm, readStdin } from "../lib/prompt";
 import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from "./lib/deadline";
 import {
@@ -47,6 +50,7 @@ import {
   scopeCheck,
   stripQuotedReply,
   weekNamedIn,
+  weekOfMessage,
   type RosterEntry,
 } from "./lib/resolve";
 
@@ -66,12 +70,12 @@ function parseArgs(argv: string[]): Args {
   const a: Args = { week: null, paste: false, file: null, from: null, source: null, dryRun: false, keepUnread: false };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
-    if (x === "--week") a.week = Number(argv[++i]);
+    if (x === "--week") a.week = weekArg(takeValue(argv, ++i, x));
     else if (x === "--paste") a.paste = true;
-    else if (x === "--file") a.file = argv[++i];
-    else if (x === "--from") a.from = argv[++i];
+    else if (x === "--file") a.file = takeValue(argv, ++i, x);
+    else if (x === "--from") a.from = takeValue(argv, ++i, x);
     else if (x === "--source") {
-      const s = argv[++i];
+      const s = takeValue(argv, ++i, x);
       if (s !== "email" && s !== "text") throw new Error("--source must be email or text");
       a.source = s;
     } else if (x === "--dry-run") a.dryRun = true;
@@ -156,8 +160,11 @@ async function main(): Promise<void> {
     return ctx;
   };
 
-  const ownerById = new Map(owners.map((o) => [o.id, o]));
-  const roster: RosterEntry[] = entries.map((e) => {
+  // Only entries of confirmed owners are in play: changing an owner's
+  // participation_status does not void their entries, and the app's own
+  // views keep the same line.
+  const ownerById = new Map(confirmedOwners(owners).map((o) => [o.id, o]));
+  const roster: RosterEntry[] = entries.filter((e) => ownerById.has(e.owner_id)).map((e) => {
     const o = ownerById.get(e.owner_id);
     return {
       id: e.id,
@@ -212,7 +219,8 @@ async function main(): Promise<void> {
       source: pickSourceFor("paste", args.source),
       senderAddress: sender,
       messageId: null,
-      week: weekFor(args.week ?? weekNamedIn(leadingLines(text))),
+      // The pasted block's own week wins; --week is the fallback.
+      week: weekFor(weekNamedIn(leadingLines(text))),
       receivedAt: null,
     });
   } else {
@@ -220,10 +228,7 @@ async function main(): Promise<void> {
       throw new Error("--source applies to --paste or --file only; mail read from Gmail is always recorded as email.");
     }
     const gmail = gmailClient();
-    const addresses = [
-      ...owners.map((o) => o.email ?? ""),
-      ...entries.map((e) => e.player_email ?? ""),
-    ].filter(Boolean);
+    const addresses = intakeAddresses(owners, entries, ADMIN_MAILBOX);
     const msgs: InboundMessage[] = await listUnreadFrom(gmail, addresses);
     for (const m of msgs) {
       items.push({
@@ -232,7 +237,7 @@ async function main(): Promise<void> {
         source: pickSourceFor("gmail", args.source),
         senderAddress: m.fromAddress,
         messageId: m.id,
-        week: weekFor(weekNamedIn(m.subject) ?? weekNamedIn(leadingLines(stripQuotedReply(m.body)))),
+        week: weekFor(weekOfMessage(m.subject, m.body)),
         receivedAt: m.receivedAt,
       });
     }
@@ -354,8 +359,24 @@ async function main(): Promise<void> {
     console.log("\nDry run. Nothing written.");
     return;
   }
+  // A message whose every pick is already on file is handled: it is filed
+  // like any other, or it stays unread and comes back on every run.
+  const fileOnly = new Set<string>();
+  for (const p of already) if (p.messageId) fileOnly.add(p.messageId);
+  for (const p of toWrite) if (p.messageId) fileOnly.delete(p.messageId);
+  for (const u of unresolved) if (u.item.messageId) fileOnly.delete(u.item.messageId);
+  const fileMessages = async (ids: Set<string>) => {
+    if (!ids.size || args.keepUnread || args.paste || args.file) return;
+    const gmail = gmailClient();
+    for (const id of ids) {
+      const labelled = await markProcessed(gmail, id, DONE_LABEL);
+      if (!labelled) console.log(`label ${DONE_LABEL} not found; ${id} marked read only`);
+    }
+    console.log(`${ids.size} message(s) marked read and filed under ${DONE_LABEL}.`);
+  };
   if (!toWrite.length && !unresolved.length) {
-    console.log("\nNothing to write.");
+    console.log(`\nNothing to write.${fileOnly.size ? ` ${fileOnly.size} message(s) already recorded in full.` : ""}`);
+    await fileMessages(fileOnly);
     return;
   }
   const ok = await confirm(`\nWrite ${toWrite.length} pick(s) and stage ${unresolved.length} pending row(s)? (y/N) `);
@@ -365,7 +386,7 @@ async function main(): Promise<void> {
   }
 
   // ---- write
-  const touched = new Set<string>();
+  const touched = new Set<string>(fileOnly);
   for (const p of toWrite) {
     const id = await submitPick(client, {
       entryId: p.entry.id,
@@ -399,14 +420,7 @@ async function main(): Promise<void> {
     await notify(needsAnthonyLine("picks", u.kind, `${u.reason} - week ${u.item.week} - /admin/queue`), { tags: "warning" });
     if (u.item.messageId) touched.add(u.item.messageId);
   }
-  if (touched.size && !args.keepUnread && !args.paste && !args.file) {
-    const gmail = gmailClient();
-    for (const id of touched) {
-      const labelled = await markProcessed(gmail, id, DONE_LABEL);
-      if (!labelled) console.log(`label ${DONE_LABEL} not found; ${id} marked read only`);
-    }
-    console.log(`${touched.size} message(s) marked read and filed under ${DONE_LABEL}.`);
-  }
+  await fileMessages(touched);
   console.log(`\nDone. ${toWrite.length} written, ${unresolved.length} staged.`);
   await notify(finishedLine("picks", `week${weeksSeen.length > 1 ? "s" : ""} ${weeksSeen.join(", ") || String(fallbackWeek ?? "?")}: ${toWrite.length} written, ${unresolved.length} staged`));
 }
