@@ -225,6 +225,28 @@ message. A legacy per-week file carries no week of its own, so it is never
 taken by date at all: it imports only from a message named with
 `--message-id`.
 
+5b. Her master sheet as a reference. Every row of the newest Football
+xlsx she sends, one row per NO., the NAMES cell verbatim (trailing spaces,
+her spelling), her filled week cells as she wrote them, keyed by the file's
+sha256:
+
+```
+npm run lynne:roster -- --file "Football 2026-3.xlsx" --message-id <gmail id>
+```
+
+It prints the sha256 and the row counts first, names the duplicate names
+her sheet carries (Ian Lubin 1 and 2 at 674-675 and again at 1319-1320 on
+the 2026-09-08 sheet; stored as-is, one row per NO., never merged), and
+when a prior sheet is loaded prints the diff against it (added, removed and
+renamed NO.s) before anything is written. After `y` it loads through
+`admin_load_lynne_roster`, the only write path, which writes every row and
+one audit row together. A sheet already loaded is reported and left alone.
+It never creates an owner or an entry and never changes a lynne_number; the
+numbers are set through `admin_update_entry` as the 2026-09-08 renumber
+was. `--dry-run` prints and stops; `--yes` skips the prompt. You should see
+`Loaded <n> rows (<d> duplicate names kept as-is). Owners and entries
+untouched.`
+
 ## 6. The week's picks, after the lock
 
 ```

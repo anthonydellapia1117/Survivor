@@ -737,5 +737,6 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |
+| Her master sheet, read-only         | `lynne_roster` table, `scripts/lynne/roster.ts` |
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |
