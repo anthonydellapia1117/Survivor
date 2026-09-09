@@ -495,9 +495,16 @@ now:
   written as a pick.
 - The week reminder goes six hours before each of a week's two stored
   boundaries, from the weeks table. The lead is `reminderLeadHours` in the
-  config and nowhere else: `npm run remind` reads it and passes it in, and
-  `dueBoundary` has no default of its own, so a reviewed change to the config
-  moves the reminder instead of silently doing nothing (issue #41).
+  config and nowhere else that the command reads: `npm run remind` passes it
+  in and `dueBoundary` has no default of its own (issue #41).
+  **The lead and the `pick-reminder` cron are one setting in two places.**
+  `reminderLeadHours` only widens or narrows the window the command tests; the
+  instant the mail goes is the cron's slots, which are the season's deadline
+  hours (noon, 1 PM and 2 PM ET - 16:00, 17:00 and 18:00 UTC in EDT) less the
+  lead. Changing one alone does nothing useful and can do harm: a lead of 3
+  with the slots left at 10, 11 and 12 UTC sends nothing at all, with no
+  error. `tests/unit/ops.test.ts` holds the two together, so a change to
+  either fails CI until the other follows.
 - Only `pick-reminder` and `chase` may send, and only through
   `scripts/lib/send.ts` with `REMINDER_AUTOSEND=true`; the loader refuses a
   config that marks any other job as sending or hands it `--send`. Every

@@ -28,7 +28,8 @@ import { getAttachment, getMessageMeta, gmailClient, searchMessages, type Messag
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { autosendEnabled } from "../lib/send";
 import { footballAttachment, selectFootballMessage } from "../results/lib/select";
-import { JOB_NAMES, loadOpsConfig, type JobConfig, type JobName } from "./lib/config";
+import { JOB_NAMES, loadOpsConfig, slotBreaches, type JobConfig, type JobName } from "./lib/config";
+import { tempSheetName } from "./lib/attachment";
 import { dueInWindow } from "./lib/cron";
 import { latestLockedWeek } from "./lib/weeks";
 
@@ -95,14 +96,11 @@ async function extraArgs(job: JobName, dryRun: boolean): Promise<{ args: string[
     const attachment = footballAttachment(selection.message);
     if (!attachment) return { args: [], skip: "the newest message carries no Football .xlsx" };
     const buf = await getAttachment(gmail, selection.message.id, attachment.attachmentId);
-    // The path is ours, never hers. Her filename is metadata on the message:
-    // a slash in it targets a directory that does not exist and "../" lands
-    // outside the temporary directory (issue #40). The message id, which
-    // Gmail gives as hex, is the name, and it is sanitised anyway; her
-    // filename travels only as the label on the log line below.
-    const safeId = selection.message.id.replace(/[^A-Za-z0-9_-]/g, "");
-    if (!safeId) return { args: [], skip: `message id ${JSON.stringify(selection.message.id)} is not a usable file name` };
-    const file = path.join(os.tmpdir(), `survivor-roster-${safeId}.xlsx`);
+    // The path is ours; her basename survives, sanitised, because
+    // scripts/lynne/roster.ts records it as p_source_file (issue #40).
+    const stem = tempSheetName(selection.message.id, attachment.filename);
+    if (!stem) return { args: [], skip: `message id ${JSON.stringify(selection.message.id)} is not a usable file name` };
+    const file = path.join(os.tmpdir(), stem);
     fs.writeFileSync(file, buf);
     console.log(`lynne-import: ${attachment.filename} (${buf.length} bytes) written to ${file}`);
     return { args: ["--file", file, "--message-id", selection.message.id] };
@@ -128,6 +126,11 @@ async function runJob(job: JobName, cfg: JobConfig, dryRun: boolean): Promise<Jo
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const config = loadOpsConfig();
+  // A schedule is only as good as the tick that observes it, and this is the
+  // tick: refuse here rather than in the shared loader, which every command
+  // imports (issue #41).
+  const breaches = slotBreaches(config);
+  if (breaches.length) throw new Error(`scripts/ops/config.json: a job would lose a run to the tick\n  ${breaches.join("\n  ")}`);
   const now = new Date();
 
   const targets: JobName[] =

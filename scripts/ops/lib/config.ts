@@ -91,20 +91,31 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
     if (!j.sends && args.includes("--send")) fail(`${name}: --send on a job that does not send`);
     if (j.sends && typeof j.template !== "string") fail(`${name}: a sending job names its template`);
   }
-  // No job may lose a run to the tick that observes it: either every slot it
-  // names falls inside a tick's look-back window, or it is due at every tick
-  // anyway (missedSlots decides which). The pick-reminder's 10:00 UTC slot
-  // sat in the gap before the first tick of the day, so the EDT early
-  // reminder would have gone four hours late (issue #41). Checked at load, so
-  // a schedule change that orphans a slot is refused and names it.
-  const tick = c.tickSchedule as string;
-  const window = c.tickWindowMinutes as number;
-  for (const name of JOB_NAMES) {
-    const j = jobs[name] as Record<string, unknown>;
-    const missed = checkCron(`${name}: schedule`, () => missedSlots(j.schedule as string, tick, window));
-    if (missed.length) fail(`${name}: ${missed.join(", ")} falls outside every ${window}-minute tick window of "${tick}"`);
-  }
   return raw as OpsConfig;
+}
+
+/**
+ * The jobs that would lose a run to the tick that observes them, named, or an
+ * empty list when none would: either every slot a job names falls inside a
+ * tick's look-back window, or it is due at every tick anyway (missedSlots
+ * decides which). The pick-reminder's 10:00 UTC slot sat in the gap before
+ * the first tick of the day, so the EDT early reminder would have gone four
+ * hours late (issue #41).
+ *
+ * This is deliberately NOT part of validateOpsConfig. scripts/lib/constants.ts
+ * calls loadOpsConfig() at module scope for EXPECTED_ROSTER_ADDRESSES, so
+ * every command - the Week 1 picks intake included - dies at import on
+ * anything the loader refuses. The shape of the file has to hold for all of
+ * them; how a schedule lines up against the tick only matters to the tick, so
+ * `npm run ops` is where it is checked and where it refuses.
+ */
+export function slotBreaches(c: OpsConfig): string[] {
+  const out: string[] = [];
+  for (const name of JOB_NAMES) {
+    const missed = checkCron(`${name}: schedule`, () => missedSlots(c.jobs[name].schedule, c.tickSchedule, c.tickWindowMinutes));
+    if (missed.length) out.push(`${name}: ${missed.join(", ")} falls outside every ${c.tickWindowMinutes}-minute tick window of "${c.tickSchedule}"`);
+  }
+  return out;
 }
 
 let cached: OpsConfig | null = null;

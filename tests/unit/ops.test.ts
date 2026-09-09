@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { EXPECTED_ROSTER_ADDRESSES } from "../../scripts/lib/constants";
-import { CONFIG_PATH, JOB_NAMES, loadOpsConfig, SEND_JOBS, validateOpsConfig } from "../../scripts/ops/lib/config";
+import { CONFIG_PATH, JOB_NAMES, loadOpsConfig, SEND_JOBS, slotBreaches, validateOpsConfig } from "../../scripts/ops/lib/config";
 import { cronMatches, describeSlot, dueAtEveryTick, dueInWindow, missedSlots, parseCron, unobservedSlots } from "../../scripts/ops/lib/cron";
+import { dueBoundary } from "../../scripts/remind/lib/due";
+import { tempSheetName } from "../../scripts/ops/lib/attachment";
 import { latestLockedWeek } from "../../scripts/ops/lib/weeks";
 import { draftedWeekOf, priorDraftFor } from "../../scripts/distribute/lib/drafted";
 
@@ -190,10 +193,48 @@ describe("the tick that observes the schedules", () => {
     for (const j of JOB_NAMES) {
       expect({ job: j, missed: missedSlots(c.jobs[j].schedule, c.tickSchedule, c.tickWindowMinutes) }).toEqual({ job: j, missed: [] });
     }
-    // A schedule an hour before the first tick of the day is refused, named.
-    expect(() => validateOpsConfig(withJob("distribute", { schedule: "20 8 * * 5" }))).toThrow(/distribute: Fri 08:20 UTC falls outside/);
+    // A schedule an hour before the first tick of the day is named.
+    expect(slotBreaches(validateOpsConfig(withJob("distribute", { schedule: "20 8 * * 5" })))).toEqual([
+      expect.stringMatching(/^distribute: Fri 08:20 UTC falls outside/),
+    ]);
     // So is a tick that stops observing a schedule that used to be fine.
-    expect(() => validateOpsConfig({ ...raw(), tickSchedule: "43 11-23,0-2 * * *" })).toThrow(/pick-reminder: Wed 10:00 UTC, Fri 10:00 UTC falls outside/);
+    expect(slotBreaches(validateOpsConfig({ ...raw(), tickSchedule: "43 11-23,0-2 * * *" }))).toEqual([
+      expect.stringMatching(/^pick-reminder: Wed 10:00 UTC, Fri 10:00 UTC falls outside/),
+    ]);
+  });
+
+  it("is checked by the tick and NOT by the shared loader, so a bad schedule cannot stop the picks intake", () => {
+    // scripts/lib/constants.ts calls loadOpsConfig() at module scope for
+    // EXPECTED_ROSTER_ADDRESSES, and picks, chase, remind, distribute, lynne
+    // and results all import it. If the loader refused a job/tick mismatch,
+    // one bad cron would kill the Week 1 mail intake, not just the tick.
+    const bad = withJob("distribute", { schedule: "20 8 * * 5" });
+    expect(() => validateOpsConfig(bad)).not.toThrow();
+    expect(slotBreaches(validateOpsConfig(bad)).length).toBe(1);
+    // The dispatcher is where it refuses, and it names the job.
+    const cli = readFileSync("scripts/ops/cli.ts", "utf8");
+    expect(cli).toMatch(/const breaches = slotBreaches\(config\);/);
+    expect(cli).toMatch(/if \(breaches\.length\) throw new Error\(/);
+    expect(readFileSync("scripts/ops/lib/config.ts", "utf8")).not.toMatch(/missedSlots\([^)]*\)[\s\S]{0,80}?fail\(/);
+  });
+
+  it("keeps the reminder's slots and its lead in step, so changing one alone cannot silently stop the mail", () => {
+    // reminderLeadHours only widens the window dueBoundary tests; the instant
+    // the mail goes is the pick-reminder cron. Dropping the lead to 3 with the
+    // slots left alone sends NOTHING, with no error - the exact silent failure
+    // 41.1 claims to prevent. The two are held together here: every deadline
+    // hour the season uses (noon, 1 PM and 2 PM ET, which in EDT are 16:00,
+    // 17:00 and 18:00 UTC) must have its slot at deadline minus the lead.
+    const c = loadOpsConfig();
+    const DEADLINE_HOURS_UTC = [16, 17, 18];
+    const slots = [...parseCron(c.jobs["pick-reminder"].schedule).hour].sort((a, b) => a - b);
+    expect(slots).toEqual(DEADLINE_HOURS_UTC.map((h) => h - c.reminderLeadHours).sort((a, b) => a - b));
+    // And prove the pairing actually fires: at each slot's tick, the boundary is due.
+    const weeks = [{ week: 1, early_deadline_at: "2026-09-09T16:00:00Z", late_deadline_at: "2026-09-11T18:00:00Z" }];
+    const fired = ["2026-09-09T10:43:00Z", "2026-09-09T11:43:00Z", "2026-09-09T12:43:00Z"].filter(
+      (t) => dueInWindow(c.jobs["pick-reminder"].schedule, new Date(t), c.tickWindowMinutes) && dueBoundary(weeks, new Date(t), c.reminderLeadHours) !== null,
+    );
+    expect(fired.length).toBeGreaterThan(0);
   });
 
   it("attributes a bad cron to the file it came from, like every other breach", () => {
@@ -206,8 +247,9 @@ describe("the tick that observes the schedules", () => {
     expect(() => validateOpsConfig({ ...raw(), tickSchedule: "43 9-23,0-2 * * ?" })).toThrow(
       /^scripts\/ops\/config\.json: tickSchedule: cron day-of-week/,
     );
-    // The slot comparison's own refusals are attributed too.
-    expect(() => validateOpsConfig(withJob("chase", { schedule: "5 13 1 * *" }))).toThrow(
+    // The slot comparison's own refusals are attributed too, where it now
+    // lives: on the tick's side, not in the loader every command imports.
+    expect(() => slotBreaches(validateOpsConfig(withJob("chase", { schedule: "5 13 1 * *" })))).toThrow(
       /^scripts\/ops\/config\.json: chase: schedule: cron job: day-of-month and month/,
     );
   });
@@ -246,12 +288,26 @@ describe("the tick's report", () => {
     expect(src.indexOf("if (dryRun) {")).toBeLessThan(src.indexOf("gmailClient()"));
   });
 
-  it("writes her attachment under a path it generates, never under her filename", () => {
+  it("writes her attachment under a name it generates, keeping her filename as a sanitised basename", () => {
     // The filename is metadata on the message: a slash targets a directory
     // that does not exist and "../" lands outside the temp directory (#40).
+    // But scripts/lynne/roster.ts records path.basename(--file) as
+    // p_source_file on every lynne_roster row, so dropping her name puts a
+    // generated temp name in the database where her sheet's name belongs.
+    expect(tempSheetName("19abc0de", "Football 2026-4.xlsx")).toBe("survivor-roster-19abc0de-Football 2026-4.xlsx");
+    // Traversal and separators cannot escape the temp directory or name one.
+    for (const hostile of ["../../etc/passwd", "a/b/Football.xlsx", "..\\..\\x.xlsx", "..", ".", "", "Foot;rm -rf.xlsx"]) {
+      const n = tempSheetName("19abc0de", hostile);
+      expect({ hostile, name: n }).toEqual({ hostile, name: expect.stringMatching(/^survivor-roster-19abc0de[-.]/) });
+      expect({ hostile, escapes: n!.includes("/") || n!.includes("\\") || n!.includes("..") }).toEqual({ hostile, escapes: false });
+      expect(join("/tmp", n!).startsWith("/tmp/survivor-roster-")).toBe(true);
+    }
+    // A message id with nothing usable in it names no file at all.
+    expect(tempSheetName("///", "Football.xlsx")).toBeNull();
+    // And the dispatcher uses it rather than building a path of its own.
     const src = code("scripts/ops/cli.ts");
-    expect(src).toMatch(/const safeId = selection\.message\.id\.replace\(\/\[\^A-Za-z0-9_-\]\/g, ""\);/);
-    expect(src).toMatch(/path\.join\(os\.tmpdir\(\), `survivor-roster-\$\{safeId\}\.xlsx`\)/);
+    expect(src).toMatch(/const stem = tempSheetName\(selection\.message\.id, attachment\.filename\);/);
+    expect(src).toMatch(/path\.join\(os\.tmpdir\(\), stem\)/);
     expect(src).not.toMatch(/tmpdir\(\)[^)]*attachment\.filename/);
   });
 
@@ -267,6 +323,19 @@ describe("the tick's report", () => {
     // The check comes before the draft, and the row after it.
     expect(src.indexOf("loadAuditByAction(client, DRAFTED_ACTION)")).toBeLessThan(src.indexOf("createDraft("));
     expect(src.indexOf("createDraft(")).toBeLessThan(src.indexOf("action: DRAFTED_ACTION"));
+  });
+
+  it("does not block the preview or a deliberate redraft: --dry-run creates nothing and --again is the escape hatch", () => {
+    // The guard is against a second tick, not against Anthony. Blocking
+    // --dry-run made a documented read-only preview unavailable for the rest
+    // of the week, and with an append-only audit ledger there was no way back
+    // once a week's row existed - he deletes a draft in Gmail and cannot redo it.
+    const src = code("scripts/distribute/cli.ts");
+    expect(src).toMatch(/if \(prior && !dryRun && !again\) \{/);
+    expect(src).toMatch(/x === "--again"/);
+    expect(src).toMatch(/Pass --again to draft it again/);
+    // A redraft still records its own row, so the next tick sees it.
+    expect(src.indexOf("if (prior && !dryRun && !again)")).toBeLessThan(src.indexOf("action: DRAFTED_ACTION"));
   });
 });
 

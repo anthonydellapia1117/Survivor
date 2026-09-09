@@ -10,6 +10,7 @@
 //   --week N      required
 //   --dry-run     print the message and the count, create no draft
 //   --yes         skip the confirmation prompt
+//   --again       draft this week again, after one has already been drafted
 
 import { groupSendList } from "@/lib/emails/group-send";
 import { EXPECTED_ROSTER_ADDRESSES, SITE_URL } from "../lib/constants";
@@ -30,25 +31,29 @@ interface Args {
   week: number;
   dryRun: boolean;
   yes: boolean;
+  /** Draft again for a week that already has one: Anthony deleting a draft and redoing it. */
+  again: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
   let week: number | null = null;
   let dryRun = false;
   let yes = false;
+  let again = false;
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--week") week = Number(argv[++i]);
     else if (x === "--dry-run") dryRun = true;
     else if (x === "--yes") yes = true;
+    else if (x === "--again") again = true;
     else throw new Error(`Unknown argument ${x}`);
   }
   if (week === null || !Number.isInteger(week)) throw new Error("--week N is required");
-  return { week, dryRun, yes };
+  return { week, dryRun, yes, again };
 }
 
 async function main(): Promise<void> {
-  const { week, dryRun, yes } = parseArgs(process.argv.slice(2));
+  const { week, dryRun, yes, again } = parseArgs(process.argv.slice(2));
   // The token check is local and instant; do it before asking for a password.
   const gmail = gmailClient();
   const { client, actor } = await adminClient();
@@ -70,14 +75,20 @@ async function main(): Promise<void> {
   }
 
   // ---- already drafted for this week?
+  // The guard exists to stop a second tick, or a hand run beside a scheduled
+  // one, leaving two whole-roster Bcc drafts in Gmail (issue #40). It must not
+  // stop the two things a person legitimately does: read the preview, and
+  // deliberately draft again after deleting the first. A dry run creates
+  // nothing, so it is never blocked; --again is the deliberate redraft, and it
+  // records its own row like any other.
   const priorDrafts = await loadAuditByAction(client, DRAFTED_ACTION);
   const prior = priorDraftFor(priorDrafts, week);
-  if (prior) {
-    const line = `Already drafted for week ${week} at ${prior.at}; nothing to do.`;
-    console.log(line);
+  if (prior && !dryRun && !again) {
+    console.log(`Already drafted for week ${week} at ${prior.at}; nothing to do. Pass --again to draft it again.`);
     await notify(finishedLine("distribute", `week ${week}: already drafted, skipped`));
     return;
   }
+  if (prior) console.log(`Note: week ${week} was already drafted at ${prior.at}.${dryRun ? "" : " Drafting again (--again)."}`);
 
   const [owners, entries, standings] = await Promise.all([
     loadOwners(client),
