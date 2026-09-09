@@ -69,17 +69,25 @@ vi.mock("../../src/lib/data", () => ({
 import MasterListPage from "../../src/app/master-list/page";
 
 describe("Master List, signed out", () => {
-  it("shows her figures as published and never a per-entry rate", async () => {
+  it("no longer carries her four figures - they open the dashboard now - and still never a rate", async () => {
+    // The figures moved to the dashboard so the site opens on them; this page
+    // keeps the one thing only it can say, how her published total sits
+    // against the rows actually on the sheet. The rate guard stays here as
+    // well as there: it must appear on no public route at all.
     const html = renderToStaticMarkup(await MasterListPage());
     expect(html).toContain("Master List");
-    expect(html).toContain("Total in Pool");
-    expect(html).toContain("1,318");
-    expect(html).toContain(">46<");
-    expect(html).toContain("1,272");
-    expect(html).toContain("$28,620");
-    // Neither quotient of her pot, by paying entries or by total, in any form.
+    expect(html).not.toContain("Total in Pool");
+    expect(html).not.toContain("Total Payout");
     for (const s of ["$22.50", "22.5", "$21.71", "21.71", "2250", "2171"]) expect(html).not.toContain(s);
     expect(html).not.toMatch(/per (paying )?entry|apiece|each entry|\/\s*entry/i);
+  });
+
+  it("reports the gap between her published total and the rows on the sheet, correcting neither", async () => {
+    // 1,318 published against 4 mocked rows: both numbers, no arithmetic on
+    // either (CLAUDE.md - report the variance, never auto-resolve).
+    const html = renderToStaticMarkup(await MasterListPage());
+    expect(html).toContain("1,318");
+    expect(html).toMatch(/this sheet carries 4 rows/);
   });
 
   it("never shows the uploaded filename or the runner's name, and keeps the weekly files", async () => {
