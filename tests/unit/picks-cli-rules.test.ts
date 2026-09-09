@@ -433,6 +433,9 @@ describe("two messages for one entry in one run", () => {
     // still sees both teams rather than a stale-pick complaint.
     expect(src.indexOf("picksToCarryForward(itemPicks, itemTeams)")).toBeGreaterThan(src.indexOf("proposals.push({"));
     expect(src).toMatch(/sawTeam\(t\.entry\.id, p\.team\);/);
+    // The accepted pick is RECORDED, or there is nothing to carry forward and
+    // the snapshot never moves - the original bug, with the suite green.
+    expect(src).toMatch(/itemPicks\.set\(t\.entry\.id, \{\n\s*entry_id: t\.entry\.id,\n\s*team: p\.team,/);
   });
 });
 
@@ -444,7 +447,11 @@ describe("a bye the database would refuse", () => {
     const src = readFileSync("scripts/picks/cli.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
     expect(src).toMatch(/if \(p\.team === SKIP_WEEK\) \{/);
     expect(src).toMatch(/byeRefusal\(item\.week, standingByEntry\.get\(t\.entry\.id\) \?\? null, doubleElimThroughWeek\)/);
-    expect(src).toMatch(/fail\(`\$\{t\.entry\.entryName\} -> bye: \$\{why\}`, p\.line\);/);
+    // Staging is not enough: the proposal has to be ABANDONED. With the
+    // continue dropped the bye is staged and still proposed, so it still
+    // reaches admin_submit_pick and still kills the run - the whole bug - and
+    // every other assertion here, and the whole suite, stays green.
+    expect(src).toMatch(/if \(why !== null\) \{\n\s*fail\(`\$\{t\.entry\.entryName\} -> bye: \$\{why\}`, p\.line\);\n\s*continue;\n\s*\}/);
     // The check comes before the proposal, not after it.
     expect(src.indexOf("if (p.team === SKIP_WEEK)")).toBeLessThan(src.indexOf("proposals.push({"));
     // The window comes from config, never a literal.

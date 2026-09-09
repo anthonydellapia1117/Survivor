@@ -318,6 +318,10 @@ describe("the tick's report", () => {
     const src = code("scripts/distribute/cli.ts");
     expect(src).toMatch(/loadAuditByAction\(client, DRAFTED_ACTION\)/);
     expect(src).toMatch(/Already drafted for week \$\{week\}/);
+    // The block has to END THE RUN. Every other assertion here holds with the
+    // return deleted, and so does the whole suite, so the guard has to pin the
+    // shape of the block and not just its contents.
+    expect(src).toMatch(/if \(prior && !dryRun && !again\) \{[\s\S]{0,400}?\n    return;\n  \}/);
     expect(src).toMatch(/action: DRAFTED_ACTION/);
     // The week is CLAIMED before the Gmail call and recorded after it, the
     // way scripts/lib/send.ts claims a send. Recording only afterwards left a
