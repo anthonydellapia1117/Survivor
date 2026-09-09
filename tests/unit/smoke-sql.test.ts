@@ -20,6 +20,30 @@ function unwrapDoBlocks(text: string): string {
   return text.replace(/\bdo\s+(\$[a-z_]?[a-z0-9_]*\$)([\s\S]*?)\1/gi, (_all, _tag, body) => body);
 }
 
+// SQL block comments nest, and one can carry an apostrophe just as a line
+// comment can. Skipping to the first `*/` would stop inside a nested pair,
+// so the depth is counted.
+function blockComment(text: string, i: number): number | null {
+  if (!text.startsWith("/*", i)) return null;
+  let depth = 0;
+  let j = i;
+  while (j < text.length) {
+    if (text.startsWith("/*", j)) {
+      depth += 1;
+      j += 2;
+      continue;
+    }
+    if (text.startsWith("*/", j)) {
+      depth -= 1;
+      j += 2;
+      if (depth === 0) return j;
+      continue;
+    }
+    j += 1;
+  }
+  return text.length;
+}
+
 // Where a dollar-quoted literal starts here, and where its content ends.
 function dollarQuote(text: string, i: number): { content: string; next: number } | null {
   // The tag grammar is a letter or underscore then letters, digits and
@@ -52,6 +76,11 @@ function messageText(text: string): string[] {
     if (text.startsWith("--", i)) {
       const nl = text.indexOf("\n", i);
       i = nl < 0 ? text.length : nl;
+      continue;
+    }
+    const block = blockComment(text, i);
+    if (block !== null) {
+      i = block;
       continue;
     }
     const dollar = text[i] === "$" ? dollarQuote(text, i) : null;
@@ -108,6 +137,11 @@ function normalize(text: string): string {
     if (text.startsWith("--", i)) {
       const nl = text.indexOf("\n", i);
       i = nl < 0 ? text.length : nl;
+      continue;
+    }
+    const block = blockComment(text, i);
+    if (block !== null) {
+      i = block;
       continue;
     }
     const dollar = text[i] === "$" ? dollarQuote(text, i) : null;

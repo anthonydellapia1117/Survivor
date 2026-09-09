@@ -36,14 +36,26 @@ with its own values, and submits one pick on a scratch owner and entry; the
 rollback to the savepoint drops all of that, and its audit rows with it. It
 runs as the admin through the JWT claims for that transaction only.
 
-**Run it with `psql -v ON_ERROR_STOP=1`, or in a client that aborts the whole
-batch on an error.** This is not a preference. `rollback to savepoint smoke`
-is the step for a check that PASSED: it drops the scratch writes and keeps
-the migration. Issued after a check that RAISED, it clears the failed state
-and keeps the migration too - and the tracking row and the commit then
-succeed, applying a migration whose smoke check failed. Plain interactive
-psql keeps reading commands after an error, so nothing stops that sequence
-but the flag. The deleted wrapper set it; a person typing the steps has to.
+**Assemble the whole batch into a file and run that file. Do not paste the
+steps into an interactive psql.** This is not a preference, and the flag
+alone is not enough. `rollback to savepoint smoke` is the step for a check
+that PASSED: it drops the scratch writes and keeps the migration. Issued
+after a check that RAISED, it clears the failed state and keeps the
+migration too, and the tracking row and the commit then succeed, applying a
+migration whose smoke check failed.
+
+`ON_ERROR_STOP=1` prevents that **only when psql is not interactive.**
+PostgreSQL is explicit: in interactive mode psql returns to the prompt after
+an error rather than exiting, so the rest of a pasted block still runs. The
+deleted wrapper piped an assembled batch into `psql -f -`, which is why it
+was safe. Do the same:
+
+```
+psql "$CONNECTION_STRING" -X -v ON_ERROR_STOP=1 -f batch.sql
+```
+
+where `batch.sql` is the file built below. The connection string is the
+operator's own, typed for the run; it is not stored anywhere in this repo.
 
 **If the smoke check raises: `rollback`, the whole transaction, and stop.**
 Not `rollback to savepoint`. Read the raise, fix the migration, start over
@@ -73,12 +85,14 @@ because there is no transaction to save inside, and ON_ERROR_STOP stops the
 run only after the schema change has already committed, unrecorded, with no
 smoke check having run and nothing to roll back.
 
+`batch.sql` opens with it:
+
 ```sql
 begin;
 ```
 
 Then, for each pending file, in order, with `20260908224500_master_list.sql`
-as the example:
+as the example, appended to the same file:
 
 ```sql
 -- 1. the migration itself, pasted whole
@@ -94,13 +108,16 @@ values ('20260908224500', 'master_list', array[$migration_body$
 $migration_body$]);
 ```
 
-Then `commit;` once, after the last file. A raise anywhere stops the run
-(that is what ON_ERROR_STOP is for) and the whole batch is rolled back, so
+Then `commit;` once, at the end of the file, after the last migration. A
+raise anywhere stops psql before that commit is reached, the connection
+closes with the transaction open, and the whole batch is discarded - so
 production carries every pending file or none of them, never the first few.
 
-Check you are actually inside a transaction before pasting a migration: in
-psql the prompt ends `*#` inside one and `=#` outside, and `select
-txid_current_if_assigned() is not null;` answers it either way.
+There is nothing to verify by hand about the transaction state: the file
+opens with `begin;` and psql runs it as one batch. (An earlier version of
+this doc suggested `txid_current_if_assigned()` as a check. It is not one -
+no XID is assigned until something writes, so it reads null immediately
+after a perfectly good `begin;`.)
 
 The `statements` array is what the Supabase tooling reads back as the
 migration's text. Writing a pointer there instead of the body is a

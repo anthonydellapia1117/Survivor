@@ -704,9 +704,11 @@ Two standing facts that are NOT snapshots and must survive:
   service-role key this project deliberately does not have. The attended
   procedure is unchanged and is now the only one: the migration, `savepoint
   smoke`, `scripts/db/smoke.sql`, `rollback to savepoint smoke`, the tracking
-  row, one commit. **Run it with `psql -v ON_ERROR_STOP=1`** or a client that
-  aborts the batch on an error, and **if the smoke check raises, `rollback`
-  the whole transaction, never `rollback to savepoint`** - that step is for a
+  row, one commit. **Assemble it into a file and run `psql -X -v
+  ON_ERROR_STOP=1 -f batch.sql`, never paste it into an interactive psql** -
+  the flag exits only when psql is not interactive, so a pasted block keeps
+  running after the raise. And **if the smoke check raises, `rollback` the
+  whole transaction, never `rollback to savepoint`** - that step is for a
   check that passed, and after a failure it clears the error while keeping the
   migration, so the tracking row and the commit would apply a migration whose
   smoke check failed. The deleted wrapper set the flag; a person typing the
