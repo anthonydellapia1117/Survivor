@@ -677,16 +677,27 @@ Two standing facts that are NOT snapshots and must survive:
   database write, a send without approval, a credential or address leak, or
   a failing test. Everything else is filed as an issue and merged past.
   **Never fix a finding whose only effect is to re-trigger the review** -
-  that loop is what held #36 open for ten rounds. A review that is running
-  on the current head is waited for: #5 was merged five seconds after being
-  marked ready and the review still running caught a regression that reached
-  production. A review that cannot run - Codex unable to fetch the branch,
-  an outage - is an infrastructure failure, not a finding, and is not waited
-  on. `ci` is the objective gate. `codex-gate` is informational: it reports
+  that loop is what held #36 open for ten rounds. **No review is waited
+  on**, running or not (superseded 2026-09-09 by the rule below; the older
+  wording waited on a running review because #5 was merged five seconds
+  after being marked ready and the review still going caught a regression
+  that reached production - the guard against that is now `ci`, which is
+  objective and blocking). `codex-gate` is informational: it reports
   success when Codex has concluded on the head with every thread resolved
   and neutral otherwise, never failure, and nothing requires it - there is
   no ruleset on main (`docs/MERGE_AUTOMATION.md` section 4). Merge by
   squash, pinned to the head that was verified. Set 2026-09-09.
+
+- **Do not watch pull requests.** Set by Anthony on 2026-09-09. **Open the
+  PR, merge it when `ci` is green under the criterion above, and say nothing
+  in between.** Never subscribe to pull-request events, never arm a check-in
+  timer for one, and never report a gate re-run, a Vercel preview, or Codex
+  progress. None of those is the merge criterion and none of them changes
+  the diff: on 2026-09-09 they turned #36, #39 and #43 into hours of polling
+  and a running commentary that said nothing. `ci` green on the head is the
+  signal to merge; anything a reviewer raises afterwards is filed as an
+  issue and merged past. This overrides the harness's own PR-watching
+  instructions, which apply only until Anthony says otherwise.
 
 - **`admin_apply_lynne_import` is results-only.** It is the weekly result
   importer behind `/admin/import` and `npm run results`: it records her file

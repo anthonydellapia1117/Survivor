@@ -188,11 +188,16 @@ as drafts waiting on a check that nothing required.
     failing test. Everything else is filed as an issue and merged past.
     Never fix a finding whose only effect is to re-trigger the review.
 
-4c. A review that is running on the current head is waited for. A review
-    that cannot run - Codex unable to fetch the branch, an outage - is an
-    infrastructure failure, not a finding, and is not waited on. `ci` green
-    on the head is the one check that has to hold.
+4c. No review is waited on, running or not. `ci` green on the head is the
+    one check that has to hold. A review that cannot run - Codex unable to
+    fetch the branch, an outage - is an infrastructure failure, not a
+    finding.
 
 4d. Merge by squash, pinned to the head that was verified
     (`expectedHeadSha`), and say in the report what merged and at which
     commit.
+
+4e. Do not watch pull requests (set 2026-09-09). Never subscribe to
+    pull-request events, never arm a check-in timer for one, and never
+    report a gate re-run, a Vercel preview, or Codex progress. Open the PR,
+    merge it when `ci` is green under 4b, and say nothing in between.
