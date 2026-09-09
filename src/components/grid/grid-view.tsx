@@ -80,6 +80,24 @@ interface PopState {
   y: number;
 }
 
+/** Her rows have no entry page; ours do. Same markup either way. */
+function PoolRowName({
+  entry,
+  children,
+}: {
+  entry: EntrySummary;
+  children: React.ReactNode;
+}) {
+  if (entry.id.startsWith("pool-")) {
+    return <span className="flex items-center gap-2">{children}</span>;
+  }
+  return (
+    <Link href={`/entry/${entry.id}`} className="flex items-center gap-2">
+      {children}
+    </Link>
+  );
+}
+
 const RESULT_CELL: Record<string, string> = {
   win: "bg-win/20 text-win border-win/40",
   loss: "bg-loss/20 text-loss border-loss/40",
@@ -427,10 +445,11 @@ export function GridView({
                     e.status === "eliminated" && "opacity-55",
                   )}
                 >
-                  <Link
-                    href={`/entry/${e.id}`}
-                    className="flex items-center gap-2"
-                  >
+                  {/* A row of her sheet that is not one of ours has no entry
+                      page of its own - poolAsEntries gives it a synthetic id -
+                      so it renders as plain text rather than as a link to a
+                      404. Rows that ARE ours carry their real id and link. */}
+                  <PoolRowName entry={e}>
                     <StatusDot status={e.status} className="shrink-0" />
                     <span className="truncate font-medium">{e.entryName}</span>
                     {e.status === "eliminated" ? (
@@ -438,7 +457,7 @@ export function GridView({
                         OUT{elimWeekById.get(e.id) ? ` · WK ${elimWeekById.get(e.id)}` : ""}
                       </span>
                     ) : null}
-                  </Link>
+                  </PoolRowName>
                 </td>
                 {visibleWeeks.map((w) => {
                   const cell = cellMap.get(`${e.id}:${w.week}`);

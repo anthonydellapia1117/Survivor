@@ -245,7 +245,7 @@ export default async function DashboardPage() {
                   {poolStand.out.toLocaleString()}
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  in the master pool
+                  struck out on this sheet
                 </p>
               </CardContent>
             </Card>
@@ -256,7 +256,9 @@ export default async function DashboardPage() {
               ? `, scored through Week ${poolStand.scoredThrough}`
               : ", before any week has been scored"}
             . Our own count from her published picks; a row she has struck out
-            is out whatever we compute.
+            is out whatever we compute. She removes eliminated entries as the
+            season goes, so these describe the rows on her newest sheet rather
+            than a running total for the season.
           </p>
         </div>
       ) : null}

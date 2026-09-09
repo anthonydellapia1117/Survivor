@@ -226,20 +226,50 @@ export function poolAsEntries(
     let wins = 0;
     let losses = 0;
     let lastScoredWeek: number | null = null;
+    // Her own entry id where the row is one of ours, so the Grid can link the
+    // row to its real page; a synthetic id otherwise, which the Grid renders
+    // without a link because no such page exists.
+    const id = r.entryId ?? `pool-${r.no}`;
     for (const col of columns) {
-      const team = herTeam(herCell(r, col));
-      if (team === null) continue;
+      const cell = herCell(r, col);
+      const team = herTeam(cell);
+      if (team === null) {
+        // A published BYE is a real week with a real state, and the legend
+        // advertises it; dropping it left a blank where the grid should show
+        // the bye. Other non-team text (OUT, a note) is still left alone.
+        if (cell !== undefined && /^\s*bye\s*$/i.test(cell)) {
+          cells.push({
+            entryId: id,
+            week: col.week,
+            team: SKIP_WEEK,
+            result: "bye",
+            late: false,
+            submittedAt: at,
+            source: "master_list",
+            resultSource: null,
+          });
+        }
+        continue;
+      }
       used.push(team);
       const scored = results.get(`${col.week}:${team}`);
       if (scored !== undefined) lastScoredWeek = col.week;
       if (scored === "win") wins += 1;
-      if (scored === "loss") losses += 1;
+      if (scored === "loss" || scored === "tie") losses += 1;
       cells.push({
-        entryId: `pool-${r.no}`,
+        entryId: id,
         week: col.week,
         team,
-        // A tie is survival in her pool, so it is not a loss result here.
-        result: scored === undefined ? null : scored === "loss" ? "loss" : "win",
+        // The real result, so a tie reads as a tie rather than as a win. It
+        // still counts as a loss above, which is what tie_loss means.
+        result:
+          scored === undefined
+            ? null
+            : scored === "loss"
+              ? "loss"
+              : scored === "tie"
+                ? "tie_loss"
+                : "win",
         late: false,
         submittedAt: at,
         source: "master_list",
@@ -248,7 +278,7 @@ export function poolAsEntries(
     }
     const bucket = poolBucketOf(r, results, columns, doubleElimThrough);
     entries.push({
-      id: `pool-${r.no}`,
+      id,
       entryName: `${r.no} ${r.names}`,
       nameIsDefault: false,
       ownerId: "",
@@ -302,7 +332,14 @@ export function defaultTeamsSource(poolLoaded: boolean, poolHasPicks: boolean): 
 // puts an entry there without a loss. The label follows her wording so the
 // site, lynneBucket() and the stats she emails all count the same thing.
 
-/** A team's result in a week, from the final score. Null while unplayed or unscored. */
+/**
+ * A team's result in a week, from the final score.
+ *
+ * A tie is a LOSS in this pool, as it is everywhere else in this app: the
+ * pick result is `tie_loss`, v_entry_public counts it in `losses`, and
+ * standing.ts labels it "Tie (loss)". An earlier draft of this file treated a
+ * tie as survival, which was invented rather than read off the rules.
+ */
 export type TeamResult = "win" | "loss" | "tie";
 
 /**
@@ -353,10 +390,18 @@ export function poolBucketOf(
 ): PoolBucket {
   if (herOut(row)) return "Out";
   let losses = 0;
+  const used = new Set<string>();
   for (const col of columns) {
     const team = herTeam(herCell(row, col));
     if (team === null) continue;
-    if (results.get(`${col.week}:${team}`) !== "loss") continue;
+    // A repeated team is an ELIMINATION in this pool, not a caution
+    // (CLAUDE.md), and it eliminates whatever the repeated team's results
+    // were - so it is checked before the results are.
+    if (used.has(team)) return "Out";
+    used.add(team);
+    const r = results.get(`${col.week}:${team}`);
+    // A tie counts here for the same reason it counts in v_entry_public.
+    if (r !== "loss" && r !== "tie") continue;
     losses += 1;
     if (col.week > doubleElimThrough || losses >= 2) return "Out";
   }

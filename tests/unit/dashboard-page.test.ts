@@ -126,6 +126,15 @@ describe("Dashboard, signed out", () => {
     expect(out).toMatch(/text-loss">\s*1\s*</);
   });
 
+  it("says the buckets describe this sheet, not a season running total", async () => {
+    // She deletes eliminated entries as the season goes, so an "Eliminated"
+    // card read as cumulative would drift toward zero. The card and the
+    // caption both say what is actually being counted.
+    const out = await html();
+    expect(out).toContain("struck out on this sheet");
+    expect(out).toMatch(/removes eliminated entries as the season goes/);
+  });
+
   it("says which week the pool count is scored through", async () => {
     const out = await html();
     expect(out).toContain("scored through Week 1");

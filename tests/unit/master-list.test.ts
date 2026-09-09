@@ -131,7 +131,7 @@ describe("poolAsEntries", () => {
     expect(entries.find((e) => e.id === "pool-674")!.status).toBe("eliminated");
     expect(cells.some((c) => c.entryId === "pool-674")).toBe(false);
     expect(cells.some((c) => c.entryId === "pool-1319")).toBe(false);
-    expect(entries.find((e) => e.id === "pool-983")!.isAdminEntry).toBe(true);
+    expect(entries.find((e) => e.id === "e-983")!.isAdminEntry).toBe(true);
     expect(entries.find((e) => e.id === "pool-1")!.isAdminEntry).toBe(false);
     expect(cells[0].submittedAt).toBe("2026-09-08T21:53:00Z");
     expect(herOut(ROWS[1])).toBe(true);
