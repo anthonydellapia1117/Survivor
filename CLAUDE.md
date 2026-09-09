@@ -285,7 +285,8 @@ whole pool, so the public site defaults to it.
   entry when she has published them, with "Our group" as the other setting;
   until she publishes a week, our group stands in and says so.
 - **Her four figures are public as she publishes them:** Total in Pool,
-  Free, Total (paying) and Total Pay Out, entered on `/admin` and stored as
+  Free, Total Paid and Total Payout (his 2026-09-09 labels for her sheet's
+  Total and Total Pay Out; the values are hers verbatim), entered on `/admin` and stored as
   given (`config.pool_entry_count`, `pool_free_count`, `pool_paid_count`,
   `pool_pot_cents`). `admin_set_pool_pot` refuses a triple that does not
   add up rather than deriving one. **The per-entry rate behind her pot is

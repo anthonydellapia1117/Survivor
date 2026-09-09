@@ -11,6 +11,7 @@
 // on the strip are hers, verbatim.
 
 import {
+  gameIsRevealed,
   LOCKED_TEAM,
   type EntrySummary,
   type GameRow,
@@ -278,8 +279,9 @@ export function poolAsEntries(
                 ? "tie_loss"
                 : "win",
         late: false,
+        // When her sheet was loaded: the only time this copy of her row has.
         submittedAt: at,
-        source: "master_list",
+        source: MASTER_LIST_SOURCE,
         resultSource: null,
       });
     }
@@ -293,7 +295,9 @@ export function poolAsEntries(
       wins,
       losses,
       livesRemaining: Math.max(0, 2 - losses),
-      status: bucket === "Out" ? "eliminated" : "active",
+      // The same statuses v_entry_public gives our 121: one loss is at_risk,
+      // so a one-loss row of hers sorts and colours like a one-loss row of ours.
+      status: bucket === "Out" ? "eliminated" : losses === 1 ? "at_risk" : "active",
       byeUsed: herBye(r),
       teamsUsed: used,
       lastScoredWeek,
@@ -381,14 +385,15 @@ export interface PoolStandings {
   /** Rows counted: every row of her newest sheet. */
   total: number;
   /**
-   * The highest week every published pick of which has been scored, with
-   * every week before it fully scored too. Null until a whole week is in.
-   * "Scored through" has to mean the buckets will not move for that week; a
-   * week with one early game final and the Sunday picks still pending is not
-   * that week.
+   * The highest week every GAME of which is final, with every week before it
+   * final too. Null until a whole week is in. "Scored through" has to mean
+   * the buckets will not move for that week, and that is decided from the
+   * schedule, never from the cells: the public view omits each team cell
+   * until its game kicks off, so "every revealed pick is scored" is true on
+   * a Sunday afternoon with the whole late slate still hidden.
    */
   scoredThrough: number | null;
-  /** The first week past that with some published picks scored and some not; null when none is part-way. */
+  /** The first week past that with some games final and some not; null when none is part-way. */
   inProgressWeek: number | null;
 }
 
@@ -439,30 +444,63 @@ export function poolStandings(
     else if (bucket === "No Losses") noLosses += 1;
     else lossBye += 1;
   }
-  // Week order, and contiguous: once a week is found part-scored (or not
-  // scored at all), no later week advances the marker, however complete it
+  // Completeness from the SCHEDULE. Week order, and contiguous: once a week
+  // is found open, no later week advances the marker however complete it
   // is - "through Week 3" with Week 2 still open would be a lie.
+  const byWeek = new Map<number, { total: number; final: number }>();
+  for (const g of games) {
+    const w = byWeek.get(g.week) ?? { total: 0, final: 0 };
+    w.total += 1;
+    if (g.status === "final" && g.homeScore !== null && g.awayScore !== null) w.final += 1;
+    byWeek.set(g.week, w);
+  }
   let scoredThrough: number | null = null;
   let inProgressWeek: number | null = null;
   let blocked = false;
-  for (const col of columns) {
-    let picks = 0;
-    let scored = 0;
-    for (const r of list.rows) {
-      const team = herTeam(herCell(r, col));
-      if (team === null) continue;
-      picks += 1;
-      if (results.has(`${col.week}:${team}`)) scored += 1;
-    }
-    if (picks === 0) continue;
-    if (!blocked && scored === picks) {
-      scoredThrough = col.week;
+  for (const week of [...byWeek.keys()].sort((a, b) => a - b)) {
+    const w = byWeek.get(week)!;
+    if (!blocked && w.final === w.total) {
+      scoredThrough = week;
       continue;
     }
     blocked = true;
-    if (scored > 0 && scored < picks && inProgressWeek === null) inProgressWeek = col.week;
+    if (w.final > 0 && w.final < w.total && inProgressWeek === null) inProgressWeek = week;
   }
   return { noLosses, lossBye, out, total: list.rows.length, scoredThrough, inProgressWeek };
+}
+
+/** The source every cell built from her sheet carries. */
+export const MASTER_LIST_SOURCE = "master_list";
+
+/**
+ * What a cell's timestamp is. Our cells carry when the pick was submitted;
+ * a cell built from her sheet carries when the sheet was loaded, which is
+ * not a submission time and must not be labelled as one.
+ */
+export function cellTimeLabel(cell: Pick<GridCell, "source">): "Submitted" | "Sheet as of" {
+  return cell.source === MASTER_LIST_SOURCE ? "Sheet as of" : "Submitted";
+}
+
+/**
+ * The weeks every game of which has kicked off (or been overridden public),
+ * so a tally over their cells describes the whole slate. Until then the
+ * public view holds back every unrevealed cell and a tally is a subset.
+ */
+export function fullyRevealedWeeks(
+  games: Pick<GameRow, "week" | "revealOverride" | "kickoffAt">[],
+  now: Date = new Date(),
+): number[] {
+  const byWeek = new Map<number, boolean>();
+  for (const g of games) byWeek.set(g.week, (byWeek.get(g.week) ?? true) && gameIsRevealed(g, now));
+  return [...byWeek]
+    .filter(([, all]) => all)
+    .map(([w]) => w)
+    .sort((a, b) => a - b);
+}
+
+/** The words before the tally: plain once the week is fully revealed, qualified until then. */
+export function tallyHeading(week: number, fullyRevealed: boolean): string {
+  return fullyRevealed ? `Week ${week}:` : `Week ${week} so far, revealed picks only:`;
 }
 
 /**

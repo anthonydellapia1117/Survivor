@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import React from "react";
 import {
   bucketOfEntry,
+  cellTimeLabel,
+  fullyRevealedWeeks,
+  MASTER_LIST_SOURCE,
   matchesStanding,
   poolAsEntries,
   poolStandings,
   standingCounts,
+  tallyHeading,
   tallySentence,
   tallyWeekOf,
   type MasterRow,
@@ -55,6 +60,24 @@ describe("the pool as grid rows", () => {
     expect(five.lastScoredWeek).toBeNull();
     expect(cells.find((c) => c.entryId === "e-5")!.result).toBeNull();
     expect(bucketOfEntry(five)).toBe("No Losses");
+  });
+
+  it("gives a one-loss row the same at_risk status our own one-loss rows carry", () => {
+    // v_entry_public: losses = 1 is at_risk. The chip already said 1 Loss/Bye;
+    // the status dot and the sort order must say the same thing.
+    const { entries } = poolAsEntries(LIST, GAMES);
+    const byId = new Map(entries.map((e) => [e.id, e]));
+    expect(byId.get("pool-2")!.status).toBe("at_risk");
+    expect(byId.get("pool-1")!.status).toBe("active");
+    expect(byId.get("pool-3")!.status).toBe("eliminated");
+  });
+
+  it("stamps every cell of hers as the sheet's, so its time reads as the sheet's and not as a submission", () => {
+    const { cells } = poolAsEntries(LIST, GAMES);
+    expect(cells.every((c) => c.source === MASTER_LIST_SOURCE)).toBe(true);
+    expect(cellTimeLabel({ source: MASTER_LIST_SOURCE })).toBe("Sheet as of");
+    expect(cellTimeLabel({ source: "email" })).toBe("Submitted");
+    expect(cellTimeLabel({ source: "text" })).toBe("Submitted");
   });
 
   it("keeps her OUT authoritative and puts a burned bye in the middle bucket", () => {
@@ -116,15 +139,38 @@ describe("scored through", () => {
     expect(s.inProgressWeek).toBeNull();
   });
 
-  it("names a week with some picks scored and some not as in progress, not scored through", () => {
-    const rows = [
-      ...ROWS,
-      // Buffalo has no Week 1 game in the fixture: a pick still waiting.
-      { no: 8, names: "Waiting Row", cells: { "Week 1": "Buffalo" }, entryId: null },
+  it("decides completeness from the schedule, so a week with a game still to play is in progress even when every REVEALED pick is scored", () => {
+    // The public view withholds each cell until its game kicks off. On this
+    // sheet every revealed Week 1 pick (PHI, DAL, PHI) has a final, and yet
+    // Week 1 has a game still scheduled: the hidden picks are for that game.
+    const games = [
+      ...GAMES,
+      { week: 1, homeTeam: "BUF", awayTeam: "MIA", homeScore: null, awayScore: null, status: "scheduled" as const },
     ];
-    const s = poolStandings({ rows }, GAMES);
+    const s = poolStandings(LIST, games);
     expect(s.scoredThrough).toBeNull();
     expect(s.inProgressWeek).toBe(1);
+  });
+});
+
+describe("what the tally can claim", () => {
+  it("counts a week fully revealed only when every game of it has kicked off or been overridden", () => {
+    const now = new Date("2026-09-13T20:00:00Z");
+    const games = [
+      { week: 1, kickoffAt: "2026-09-10T00:20:00Z", revealOverride: null },
+      { week: 1, kickoffAt: "2026-09-13T17:00:00Z", revealOverride: null },
+      { week: 2, kickoffAt: "2026-09-13T17:00:00Z", revealOverride: null },
+      { week: 2, kickoffAt: "2026-09-21T00:20:00Z", revealOverride: null },
+      { week: 3, kickoffAt: "2026-09-28T00:20:00Z", revealOverride: true },
+    ];
+    expect(fullyRevealedWeeks(games, now)).toEqual([1, 3]);
+    // The override can hold a game back as well as let it out.
+    expect(fullyRevealedWeeks([{ week: 1, kickoffAt: "2026-09-10T00:20:00Z", revealOverride: false }], now)).toEqual([]);
+  });
+
+  it("qualifies the tally until the week is fully revealed", () => {
+    expect(tallyHeading(1, true)).toBe("Week 1:");
+    expect(tallyHeading(1, false)).toBe("Week 1 so far, revealed picks only:");
   });
 });
 
@@ -227,7 +273,8 @@ vi.mock("../../src/lib/data", () => ({
       id: `g-${i}`,
       kickoffAt: "2026-09-13T17:00:00Z",
       dayOfWeek: "Sunday",
-      revealOverride: null,
+      // Held back: nothing in the mock has been revealed, whatever the clock says.
+      revealOverride: false,
       network: null,
     })),
     getPot: async () => ({
@@ -268,9 +315,19 @@ describe("Grid, signed out", () => {
     expect(html).not.toContain("Filter by owner");
   });
 
-  it("derives the week's tally from the grid rather than being told it", async () => {
+  it("derives the week's tally from the grid rather than being told it, and says it is a subset until the week is fully revealed", async () => {
     const html = renderToStaticMarkup(await GridPage());
-    expect(html).toMatch(/Week 3: 1 picked/);
+    expect(html).toMatch(/Week 3 so far, revealed picks only: 1 picked/);
+    expect(html).not.toMatch(/Week 3: 1 picked/);
+  });
+
+  it("labels a cell of hers with the sheet's time, not a submission time", () => {
+    // The popup is client state a static render never opens, so the wiring
+    // is read from the source: the label comes from cellTimeLabel and the
+    // fixed word is gone.
+    const src = readFileSync(new URL("../../src/components/grid/grid-view.tsx", import.meta.url), "utf8");
+    expect(src).toContain("cellTimeLabel(pop.cell)");
+    expect(src).not.toContain('>Submitted</dt>');
   });
 
   it("counts the footer against the scope on screen, not against our 121", async () => {

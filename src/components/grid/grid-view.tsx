@@ -21,6 +21,8 @@ import {
   matchesStanding,
   standingCounts,
   STANDING_FILTERS,
+  cellTimeLabel,
+  tallyHeading,
   tallySentence,
   tallyWeekOf,
   type PoolBucket,
@@ -52,6 +54,8 @@ interface Props {
   poolCells: GridCell[];
   /** One line naming the sheet and any gap against her published total. */
   poolNote: string | null;
+  /** Weeks every game of which has kicked off; a tally on any other week is a revealed subset and says so. */
+  revealedWeeks: number[];
 }
 
 /** Everyone is her whole sheet; Our group is the 121 Anthony manages. */
@@ -114,6 +118,7 @@ export function GridView({
   poolEntries,
   poolCells,
   poolNote,
+  revealedWeeks,
 }: Props) {
   const poolLoaded = poolEntries.length > 0;
   // The whole pool is the front door when there is a sheet to show it from;
@@ -371,9 +376,9 @@ export function GridView({
         ))}
       </div>
 
-      {tally ? (
+      {tally && tallyWeek !== null ? (
         <p className="text-xs text-muted-foreground">
-          Week {tallyWeek}: {tally}
+          {tallyHeading(tallyWeek, revealedWeeks.includes(tallyWeek))} {tally}
         </p>
       ) : null}
       {!ours && poolNote ? (
@@ -568,7 +573,7 @@ export function GridView({
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-muted-foreground">Submitted</dt>
+                <dt className="text-muted-foreground">{cellTimeLabel(pop.cell)}</dt>
                 <dd>
                   {formatEtDateTime(pop.cell.submittedAt)} ET
                   {pop.cell.late ? (

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getData } from "@/lib/data";
-import { countVariance, poolAsEntries } from "@/lib/master-list";
+import { countVariance, fullyRevealedWeeks, poolAsEntries } from "@/lib/master-list";
 import { formatEtDate } from "@/lib/format";
 import { GridView } from "@/components/grid/grid-view";
 import { EmptyState } from "@/components/empty-state";
@@ -25,6 +25,7 @@ export default async function GridPage() {
   // cells her public view has revealed reach this, so a week still masked on
   // our 121 is masked here too.
   const pool = poolAsEntries(master, games);
+  const revealedWeeks = fullyRevealedWeeks(games);
   const variance = countVariance(pot.poolEntryCount, master.rows.length);
   const poolNote =
     master.rows.length === 0
@@ -65,6 +66,7 @@ export default async function GridPage() {
           poolEntries={pool.entries}
           poolCells={pool.cells}
           poolNote={poolNote}
+          revealedWeeks={revealedWeeks}
         />
       )}
     </div>
