@@ -19,6 +19,49 @@ const sql = () => readFileSync(here("../../scripts/db/smoke.sql"), "utf8");
 // text once, dropping comments and emptying literals, and only then look for
 // statements. A format string prints no value on its own; only the arguments
 // after it can, and those are what has to be read.
+// The same walk, keeping what the literals SAY. normalize() blanks them, so
+// a total typed straight into a message - `raise notice 'money total 284000'`
+// - leaves no argument to check and would pass a guard that only reads
+// arguments. The text has to be looked at before it is thrown away.
+function messageText(text: string): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text.startsWith("--", i)) {
+      const nl = text.indexOf("\n", i);
+      i = nl < 0 ? text.length : nl;
+      continue;
+    }
+    if (text[i] === "'") {
+      i += 1;
+      let literal = "";
+      while (i < text.length) {
+        if (text[i] !== "'") {
+          literal += text[i];
+          i += 1;
+          continue;
+        }
+        if (text[i + 1] === "'") {
+          literal += "'";
+          i += 2;
+          continue;
+        }
+        i += 1;
+        break;
+      }
+      out.push(literal);
+      continue;
+    }
+    i += 1;
+  }
+  return out;
+}
+
+// A figure that reads as money: a currency mark on a number, four or more
+// digits run together or grouped with commas (284000, 2,840), or a decimal
+// with two places. A week number or a count of entries is none of those.
+const MONEY_SHAPED = /[$\u00a3\u20ac]\s*\d|\d[\d,]{3,}|\b\d+\.\d{2}\b/;
+
 function normalize(text: string): string {
   let out = "";
   let i = 0;
@@ -144,6 +187,15 @@ describe("smoke check", () => {
     expect(found.length).toBeGreaterThan(0);
     const unlisted = found.flatMap(printed).filter((name) => !PRINTABLE.has(name));
     expect(unlisted).toEqual([]);
+  });
+
+  it("types no money figure into a message either", () => {
+    // The arguments are checked above; this is the other half of the same
+    // promise. A total hardcoded in the message text reaches the log just as
+    // surely, and blanking literals to find statement ends is exactly what
+    // would hide it.
+    const typed = messageText(sql()).filter((t) => MONEY_SHAPED.test(t));
+    expect(typed).toEqual([]);
   });
 
   it("reads every raise through to its arguments", () => {

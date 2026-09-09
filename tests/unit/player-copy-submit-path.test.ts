@@ -24,9 +24,45 @@ const CHASE = "../../scripts/chase/lib/message.ts";
 // to the phrase rule like the rest.
 const DISTRIBUTE = "../../scripts/distribute/lib/message.ts";
 
+// Walk the source once rather than pattern-matching quotes: an apostrophe in
+// a comment ("picks.source = 'text'", or any possessive) pairs with the next
+// real quote and drags comment prose into the result, which then matches the
+// very phrases these rules forbid. Comments are dropped first, then the
+// string literals are collected as the copy they are.
 function literals(src: string): string {
-  const found = src.match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\[\s\S])*`/g) ?? [];
-  return found.join("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < src.length) {
+    if (src.startsWith("//", i)) {
+      const nl = src.indexOf("\n", i);
+      i = nl < 0 ? src.length : nl;
+      continue;
+    }
+    if (src.startsWith("/*", i)) {
+      const end = src.indexOf("*/", i + 2);
+      i = end < 0 ? src.length : end + 2;
+      continue;
+    }
+    const quote = src[i];
+    if (quote === '"' || quote === "'" || quote === "`") {
+      i += 1;
+      let text = "";
+      while (i < src.length && src[i] !== quote) {
+        if (src[i] === "\\") {
+          text += src[i + 1] ?? "";
+          i += 2;
+          continue;
+        }
+        text += src[i];
+        i += 1;
+      }
+      i += 1;
+      out.push(text);
+      continue;
+    }
+    i += 1;
+  }
+  return out.join("\n");
 }
 
 // The app's own host, however it is written.
@@ -71,6 +107,22 @@ describe("player-facing copy", () => {
       const src = read(file);
       expect({ file, url: APP_DOMAIN.test(literals(src)) }).toEqual({ file, url: false });
       expect({ file, siteUrl: /\bSITE_URL\b/.test(src) }).toEqual({ file, siteUrl: false });
+    }
+  });
+
+  it("names both real paths wherever it asks for a pick", () => {
+    // Reply and text are the two ways a pick can be sent, and both are
+    // recorded (picks.source is 'email' or 'text'). A message that asks for a
+    // pick and names only one tells the player the other does not count.
+    // DISTRIBUTE is not on this list: it goes out AFTER the lock, when there
+    // is no pick left to ask for.
+    for (const file of [PICK_REQUEST, CHASE]) {
+      const copy = literals(read(file));
+      expect({
+        file,
+        reply: /reply to this/i.test(copy),
+        text: /\btext\b/i.test(copy),
+      }).toEqual({ file, reply: true, text: true });
     }
   });
 
