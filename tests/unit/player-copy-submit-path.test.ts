@@ -104,6 +104,21 @@ const chaseInput = (entryNames: string[]) => ({
   lateDeadlineIso: WEEK1.lateDeadlineAt,
 });
 
+// An entry as the generator sees it. A gift is is_gifted plus the address the
+// pick request goes to - the two columns CLAUDE.md keeps separate.
+const owned = (entryName: string) => ({
+  id: `e-${entryName}`,
+  entryName,
+  isGifted: false,
+  playerEmail: null,
+});
+const giftedTo = (entryName: string, playerEmail: string) => ({
+  id: `e-${entryName}`,
+  entryName,
+  isGifted: true,
+  playerEmail,
+});
+
 const pickRequest = (entryNames: string[]) =>
   buildPickRequests(
     [
@@ -112,17 +127,42 @@ const pickRequest = (entryNames: string[]) =>
         greetingName: "Caroline",
         fullName: "Caroline Reichenback",
         email: "owner@example.com",
-        entries: entryNames.map((entryName) => ({
-          id: `e-${entryName}`,
-          entryName,
-          isGifted: false,
-          playerEmail: null,
-        })),
+        entries: entryNames.map(owned),
       },
     ],
     WEEK1,
     GAMES,
   ).built[0];
+
+// The generator groups by RECIPIENT, so who a message reaches depends on the
+// gifts, not on the owner rows. `kind` picks the footer branch: a person who
+// only owns, a person who only plays entries somebody else bought, and a
+// person who does both in one mailbox.
+function builtOfKind(kind: "owner" | "player" | "mixed") {
+  const owners = [
+    {
+      id: "o1",
+      greetingName: "Kris",
+      fullName: "Kris Tomasco",
+      email: "buyer@example.com",
+      entries: [owned("Kris #1"), giftedTo("Chas #1", "player@example.com")],
+    },
+    {
+      id: "o2",
+      greetingName: "Chas",
+      fullName: "Chas Flaster",
+      email: "player@example.com",
+      // The mixed case needs the same mailbox to own something too.
+      entries: kind === "mixed" ? [owned("Chas own")] : [],
+    },
+  ];
+  const { built } = buildPickRequests(owners, WEEK1, GAMES);
+  const wanted = built.find((message) => message.kind === kind);
+  if (!wanted) {
+    throw new Error(`fixture built no ${kind} message; kinds were ${built.map((b) => b.kind).join(", ")}`);
+  }
+  return wanted;
+}
 
 // Every message a recipient can actually receive that ASKS for a pick, each
 // branch built on its own. The post-lock message is not one of them: by then
@@ -138,6 +178,14 @@ function pickAsks(): { what: string; body: string }[] {
     const built = pickRequest(names);
     asks.push({ what: `pick request text, ${names.length} entry`, body: built.text });
     asks.push({ what: `pick request html, ${names.length} entry`, body: built.html });
+  }
+  // The footer has an owner, a player and a mixed branch. Building only owner
+  // messages leaves a regression confined to a giftee's copy invisible, and a
+  // giftee is exactly the person least able to ask Anthony what to do.
+  for (const kind of ["owner", "player", "mixed"] as const) {
+    const built = builtOfKind(kind);
+    asks.push({ what: `pick request text, ${kind} recipient`, body: built.text });
+    asks.push({ what: `pick request html, ${kind} recipient`, body: built.html });
   }
   return asks;
 }

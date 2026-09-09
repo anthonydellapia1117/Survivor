@@ -66,6 +66,29 @@ function dollarQuote(text: string, i: number): { content: string; next: number }
 // text once, dropping comments and emptying literals, and only then look for
 // statements. A format string prints no value on its own; only the arguments
 // after it can, and those are what has to be read.
+// A double-quoted identifier is NOT a string, but it can carry an apostrophe -
+// `declare "it's" int` is valid - and a walker that only counts single quotes
+// pairs that apostrophe with the next real one, shifting every literal after it
+// and swallowing whole statements. Doubled double quotes escape a quote inside
+// one, exactly as doubled single quotes do in a literal. Returns where the
+// identifier ends.
+function quotedIdentifier(text: string, i: number): number | null {
+  if (text[i] !== '"') return null;
+  let j = i + 1;
+  while (j < text.length) {
+    if (text[j] !== '"') {
+      j += 1;
+      continue;
+    }
+    if (text[j + 1] === '"') {
+      j += 2;
+      continue;
+    }
+    return j + 1;
+  }
+  return text.length;
+}
+
 // PostgreSQL's E'...' strings take backslash escapes, so the apostrophe in
 // E'the migration\'s check' does NOT close the literal. Plain '...' strings do
 // not take them: standard_conforming_strings has been on by default since 9.1
@@ -175,6 +198,12 @@ function messageText(text: string): string[] {
       i = dollar.next;
       continue;
     }
+    const ident = quotedIdentifier(text, i);
+    if (ident !== null) {
+      // Skipped, not collected: an identifier is not something the log prints.
+      i = ident;
+      continue;
+    }
     const quoted = stringAt(text, i);
     if (quoted) {
       push(quoted.content, quoted.quoteAt);
@@ -226,6 +255,15 @@ function normalize(text: string): string {
       i = dollar.next;
       continue;
     }
+    const ident = quotedIdentifier(text, i);
+    if (ident !== null) {
+      // Emptied like a literal, and deliberately NOT on the allowlist: a
+      // quoted identifier handed to a raise is an unknown value and should
+      // fail like any other.
+      out += '""';
+      i = ident;
+      continue;
+    }
     const quoted = stringAt(text, i);
     if (quoted) {
       // The whole token, prefix included, becomes the same '' a plain literal
@@ -271,19 +309,26 @@ const PRINTABLE = new Set([
   "''",
 ]);
 
-// Why this file does not chase every remaining lexical form. A quoted
-// identifier can carry an apostrophe too - `declare "it's" int` is valid, and
-// this walker does not treat `"` as a quote - but the allowlist makes that
-// fail closed rather than open: a mis-parse shifts the quotes and the
-// arguments come out as junk, and junk is not on the list. Three shapes were
-// run against postgres 16 to check that rather than assume it - one such
-// identifier before a leaking raise, two of them (restoring quote parity, so
-// the shift cancels), and one before a quote-free `raise using message =
-// v_due::text` - and the guard failed on all three, reporting the leaked
-// argument or the junk. So the forms handled above are handled because a
-// mis-parse there can leave NO raise matchable at all, which is the one mode
-// that passes silently; a shift that leaves the statement matchable catches
-// itself.
+// A note on how this guard fails, because an earlier version of this comment
+// got it wrong and the mistake is worth keeping visible. It claimed the
+// argument allowlist made a mis-parse fail CLOSED - that a shifted quote
+// leaves junk arguments and junk is not on the list. Three shapes were run
+// against postgres 16 and all three failed the guard, which looked like
+// proof. It was not: all three happened to leave a digit or a money word in
+// the swallowed span, so it was the MESSAGE check catching them, not the
+// argument check.
+//
+// The shape with neither passes. `declare "it's" int;` followed by a raise
+// whose total comes from a query, not from a typed constant, leaves the
+// swallowed span free of both, no raise is matched at all, and every check
+// finds nothing to look at while postgres prints the value. That is why
+// quoted identifiers are handled above rather than argued about here.
+//
+// The general rule, restated correctly: a mis-parse that leaves the raise
+// matchable catches itself, and one that destroys the keyword passes
+// silently. Every literal form that can carry a bare quote has to be
+// recognized for that reason - comments, dollar quotes, E strings and
+// quoted identifiers all can.
 
 // WHOLE arguments, not the identifiers inside them. Pulling out names that
 // start with v_ finds nothing at all in `raise notice 'money %', 284000;` or
