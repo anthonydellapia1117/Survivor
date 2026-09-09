@@ -285,7 +285,52 @@ command ran.
 - One entry, one team, or it is reported. No guess is ever written.
 - Every write is an audited RPC as the admin. No service-role key exists.
 - Drafts only. The one send path is `scripts/lib/send.ts`, allowlisted to
-  `pick_reminder`, gated on `REMINDER_AUTOSEND=true`, once per recipient per
-  lock day, every send audited.
+  `pick_reminder` (once per recipient per lock day) and `week_reminder`
+  (once per week boundary, exact recipient count), both gated on
+  `REMINDER_AUTOSEND=true`, every send audited.
 - A variance is printed with both values and never resolved.
 - Nothing here touches money or identity resolution.
+
+## 9. The week reminder
+
+```
+npm run remind
+```
+
+Six hours before a week's early deadline and again six hours before its late
+deadline, one message to everyone: To yourself, Bcc every address on the live
+roster (every owner address and every `player_email` on a live entry,
+lowercased, once each, yours included). Set by Anthony on 2026-09-09; the
+text is his Week 1 reminder with the deadline sentences derived from the
+week's games, so Week 12 and Week 16 read right without a special case.
+
+With no arguments it reads the weeks table and the clock, finds the boundary
+whose six-hour window holds now, and drafts for it; outside every window it
+prints `Nothing due` and exits. `--week N --boundary early|late` names one
+for a hand run (a boundary that has passed is refused). `--dry-run` prints
+the message and stops. `--yes` skips the y prompt.
+
+9a. **The count gate.** The derived recipient count must equal
+`WEEK_REMINDER_EXPECTED_RECIPIENTS` in `scripts/lib/constants.ts` (39)
+exactly. Anything else prints the whole list and the delta, pushes a NEEDS
+ANTHONY line, and stops before any draft or send. Not a range: a range let a
+wrong count through once. When an address is corrected the count usually
+stays 39; when it does not, the constant changes in a reviewed PR.
+
+9b. **Sending.** `--send` mails the `week_reminder` template instead of
+drafting, only when the environment has `REMINDER_AUTOSEND=true`, only once
+per boundary (a `week_reminder_claim` or `week_reminder_sent` audit row on
+`week:N:early` or `week:N:late` makes a re-run print `already sent` and
+skip), and only when the Bcc count equals the expected count - the gate is
+checked again inside `sendWeekReminder`, not only by the command. The claim
+row goes in before the Gmail call, the sent row with the message id and the
+full Bcc after it. The subject must begin `Survivor` or the send is refused.
+
+9c. **What it says, and the one link.** Reply to the email or text the
+number; more than one entry means one team for each; and the site link on
+exactly one line, "You do not make picks in the app. It is there to look
+at:". That line is the only place any pick-asking message may carry the
+link, and `tests/unit/player-copy-submit-path.test.ts` holds it there.
+
+9d. **The schedule** is a Routine, documented in `docs/ROUTINES.md`
+section 10.

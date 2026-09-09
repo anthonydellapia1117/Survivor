@@ -640,6 +640,11 @@ Two standing facts that are NOT snapshots and must survive:
   which shows picks as their games kick off - a results link, never a
   submission instruction. `tests/unit/player-copy-submit-path.test.ts` holds
   every player-facing template to this.
+  **One exception, set by Anthony on 2026-09-09** when he wrote the Week 1
+  reminder himself: the `week_reminder` template carries the site link on
+  exactly one line, the one that denies it - "You do not make picks in the
+  app. It is there to look at: <url>". The same test holds it to that line
+  and nowhere else; no other template gets the link.
 - **Audit every write in the same transaction as the write.** The data row
   and its `audit_log` row commit together or neither does. This is why the
   admin mutations are transactional RPCs rather than plain updates.
@@ -747,6 +752,7 @@ in any of them.**
 | `npm run chase -- --week N [--bcc]`      | One draft per recipient with no pick (or one BCC draft) naming their entries and the earliest deadline still open               |
 | `npm run results -- --week N`            | Her newest Football xlsx from Gmail through `admin_apply_lynne_import`; refuses a sha256 seen before; prints the variance table |
 | `npm run distribute -- --week N`         | After the Friday lock, one BCC draft to every owner and player address with the /grid link and the standings sentence           |
+| `npm run remind [-- --send --yes]`      | The week reminder due now (six hours before a week's early or late deadline) to every live address, exact count gate, drafted or sent |
 | `npm run notify -- "line"`               | One line to ntfy.sh/`NTFY_TOPIC`, printed when the topic is unset                                                               |
 | `npm run gmail:auth`                     | One-time OAuth consent for the Gmail token                                                                                     |
 
@@ -761,14 +767,27 @@ in any of them.**
   the sweep reads and stages, because those are Anthony's calls and the
   commands never resolve identity or mark Paid.
 - **Drafts only, with one gate.** Nothing under `scripts/` sends except
-  `scripts/lib/send.ts`, which sends exactly one template, `pick_reminder`,
-  only when the environment has `REMINDER_AUTOSEND=true`, only to a
-  recipient with no current pick, at most once per recipient per ET lock
-  day (judged from `audit_log` rows with actions `pick_reminder_claim` and
-  `pick_reminder_sent`), and every send writes a claim row before the Gmail
-  call and a sent row with the Gmail message id after it. Unset is the
-  default and means drafts only. Adding a second template is a reviewed
-  change to the allowlist, never a flag.
+  `scripts/lib/send.ts`, which sends exactly two templates, each behind the
+  same switch: the environment must have `REMINDER_AUTOSEND=true`, and
+  unset (the default) means drafts only. Every send writes a claim row
+  before the Gmail call and a sent row with the Gmail message id after it.
+  - `pick_reminder` (`npm run chase --send`): one message per recipient
+    with no current pick, at most once per recipient per ET lock day
+    (`audit_log` actions `pick_reminder_claim`, `pick_reminder_sent`).
+  - `week_reminder` (`npm run remind --send`, set by Anthony on
+    2026-09-09): one message per week boundary, To his mailbox and Bcc
+    every address on the live roster, six hours before the early and the
+    late deadline, at most once per boundary (`week_reminder_claim`,
+    `week_reminder_sent` on the key `week:N:early|late`). Recipients are
+    derived on the run - every owner address and every `player_email` on
+    a live entry, lowercased, once each - and **the count must equal
+    `WEEK_REMINDER_EXPECTED_RECIPIENTS` (39) exactly or the run stops**
+    with the list and the delta printed; a range is what let a wrong
+    count through once in another pool. Subject begins `Survivor` so
+    replies hit the filter. The body is his Week 1 text with the deadline
+    sentences derived from the games. Changing the count is a reviewed
+    change to the constant, never a flag.
+  Adding a template is a reviewed change to the allowlist, never a flag.
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
   Anthony's to choose and is never invented.

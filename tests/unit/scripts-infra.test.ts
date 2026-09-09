@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { notify } from "../../scripts/lib/notify";
-import { alreadySent, isSendable, lockDayKey, priorSendFrom, type PriorSend } from "../../scripts/lib/send";
+import { alreadySent, isSendable, lockDayKey, priorSendFrom, type PriorSend, SEND_ALLOWLIST } from "../../scripts/lib/send";
 import { encodeRaw } from "../../scripts/lib/gmail";
 import { buildRecipientOwners, earliestOpenDeadline, unpickedEntries } from "../../scripts/lib/roster";
 import type { EntryRow, OwnerRow, StandingRow } from "../../scripts/lib/db";
@@ -58,10 +58,13 @@ describe("notify", () => {
 });
 
 describe("send gate", () => {
-  it("allows only pick_reminder", () => {
+  it("allows exactly pick_reminder and week_reminder", () => {
     expect(isSendable("pick_reminder")).toBe(true);
+    expect(isSendable("week_reminder")).toBe(true);
     expect(isSendable("pick_request")).toBe(false);
+    expect(isSendable("distribute")).toBe(false);
     expect(isSendable("")).toBe(false);
+    expect(SEND_ALLOWLIST).toEqual(["pick_reminder", "week_reminder"]);
   });
 
   it("keys the lock day on the ET calendar date of the deadline", () => {

@@ -1,7 +1,8 @@
 # Routines
 
 TLDR: five scheduled jobs run this pool beyond the hourly Gmail sweep, plus
-one Thanksgiving one-shot. All are read-only reporters. Each fires a fresh
+one Thanksgiving one-shot. All but the Week Reminder (section 10) are
+read-only reporters. Each fires a fresh
 session on this repo with the Gmail connector and nothing else, reads
 CLAUDE.md first, and ends with either a NEEDS ANTHONY section or the two
 words NO ACTION. None writes, sends, labels, marks Paid, resolves an
@@ -437,3 +438,66 @@ one line to ntfy when `NTFY_TOPIC` is set, and prints it otherwise.
 | Survivor Lynne Echo Check (Thanksgiving)  | once, Thu 2026-11-26 11:05 AM   | section 5 |            |
 | Survivor Final Sheet Watch                | Tue and Thu 5:05 PM             | section 6 |            |
 | Survivor Venmo Wide Sweep                 | Mon 8:05 AM                     | section 7 |            |
+| Survivor Week Reminder                    | Wed and Fri 6, 7 and 8 AM       | section 10 | trig_01W9BrBAoWKBQm9AjJ9FVVKK |
+
+## 10. Week Reminder
+
+Name: **Survivor Week Reminder**
+Cron (America/New_York): `0 6,7,8 * * 3,5` (Wednesday and Friday)
+Cron stored (UTC): `0 10,11,12 * * 3,5`
+Trigger ID: `trig_01W9BrBAoWKBQm9AjJ9FVVKK`, created 2026-09-09 15:19 UTC from a
+session by `create_trigger` (fresh session per fire, environment
+`env_01E2ghUxXKj19qoDX3bTxf3p`, push notifications on, no connector - the
+command uses the Gmail token from the environment, not the connector). Its
+first scheduled fire is Friday 2026-09-11 at 6 AM ET. The session config it
+came back with lists no repo source and no environment variables, the same
+gap section 1a saw on 2026-09-04, so before that fire open it in the
+claude.ai Routines UI and confirm the repository and the environment match
+the Survivor Gmail Sweep. Until the environment carries the variables below
+every fire reports NEEDS ANTHONY and sends nothing.
+
+Why: set by Anthony on 2026-09-09, after writing the Week 1 reminder by
+hand: "Anthony should not have to authorize a reminder again." The message
+goes six hours before each of a week's two stored boundaries, the early
+(Wednesday) and the late (Friday). Every deadline in the weeks table sits at
+noon, 1 PM or 2 PM ET, so six hours before is 6, 7 or 8 AM ET; the cron
+covers those three hours and the command decides. A tick outside a window
+prints `Nothing due` and the run reports NO ACTION; the first tick inside a
+window sends once, and every later tick that day finds the audit row and
+skips. A deadline moved to another hour or day needs this cron widened.
+
+This is the one Routine that sends. It does so only through
+`scripts/lib/send.ts` (`sendWeekReminder`), which refuses unless the
+environment has `REMINDER_AUTOSEND=true`, refuses a second send for the same
+boundary, and refuses a recipient count that is not exactly
+`WEEK_REMINDER_EXPECTED_RECIPIENTS`. The environment therefore needs what
+section 3e lists: `ADMIN_EMAIL`, `SURVIVOR_ADMIN_PASSWORD`,
+`GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`,
+`GMAIL_OAUTH_TOKEN_JSON`, `REMINDER_AUTOSEND=true`, optionally
+`NTFY_TOPIC`. Without them the command exits before touching Gmail and the
+run reports the one line it printed. Setting them is Anthony's step; nothing
+in this repo holds or requests a secret.
+
+Prompt, pasted whole into the Routine:
+
+```
+0. Read this repo's CLAUDE.md before anything else: it is the only rulebook and wins over this prompt wherever they disagree. Hyphens only, no emojis. This job is the Survivor pool only.
+
+You are the Week Reminder for the Survivor sub-pool. You run exactly one command and report what it printed. You never compose, draft, send, reply, label or read mail yourself, never open Gmail, and never touch the database except through the command.
+
+1. From the repo root run: npm run remind -- --send --yes
+   Run it once. Never run it a second time in the same session, never with any other flag, and never fall back to any other way of sending or drafting.
+
+2. Report in 6 lines or fewer, from the command's output alone:
+   - "Nothing due" -> report the two words NO ACTION.
+   - a line starting "sent" -> NEEDS ANTHONY is not needed; report the line as printed (it names the boundary, the recipient count and the message id).
+   - "already sent" or "already claimed" -> report that line as printed.
+   - "Count gate" or any error -> a section headed NEEDS ANTHONY with the error line as printed and, for a count gate, the expected and derived counts; never list the addresses in the report.
+   - "REMINDER_AUTOSEND is not true" -> NEEDS ANTHONY: the Routine's environment is not set up to send; nothing was drafted or sent.
+
+3. Never mark anything Paid, never resolve who anyone is, never write to Lynne, never quote or name anything that belongs to another pool.
+```
+
+Expected on a Wednesday 6 AM ET tick with a noon deadline: `Nothing due`
+(the window opens at 6 AM for a noon deadline, so this tick sends and the
+7 and 8 AM ticks skip); expected on a Thursday: the Routine does not fire.

@@ -1,7 +1,12 @@
-// The one place in scripts/ that can send mail, and it can send exactly one
-// template. Set by Anthony on 2026-09-08 (C3):
+// The one place in scripts/ that can send mail, and it can send exactly the
+// templates on its allowlist: pick_reminder (set by Anthony on 2026-09-08,
+// C3) and week_reminder (set by Anthony on 2026-09-09, the reminder he wrote
+// for Week 1 made repeatable). Each template has its own function and its
+// own gate; nothing else here sends.
 //
-//   - only a template on SEND_ALLOWLIST (today: pick_reminder)
+// pick_reminder, one message per recipient with no pick:
+//
+//   - only a template on SEND_ALLOWLIST
 //   - only when the environment has REMINDER_AUTOSEND=true; unset means
 //     drafts only, and every command behaves that way by default
 //   - only to a recipient who still has no current pick (the caller decides
@@ -28,7 +33,7 @@ import { loadEnv } from "./env";
 import { encodeRaw, type OutboundMessage } from "./gmail";
 import { loadAuditByAction, recordAudit } from "./db";
 
-export const SEND_ALLOWLIST = ["pick_reminder"] as const;
+export const SEND_ALLOWLIST = ["pick_reminder", "week_reminder"] as const;
 export type SendableTemplate = (typeof SEND_ALLOWLIST)[number];
 export const SEND_AUDIT_ACTION = "pick_reminder_sent";
 /**
@@ -135,6 +140,9 @@ export async function sendAllowlisted(
   if (!isSendable(req.template)) {
     throw new Error(`Template "${req.template}" is not on the send allowlist (${SEND_ALLOWLIST.join(", ")}).`);
   }
+  if (req.template !== "pick_reminder") {
+    throw new Error(`sendAllowlisted sends pick_reminder only; ${req.template} has its own gate.`);
+  }
   if (!autosendEnabled()) {
     throw new Error("REMINDER_AUTOSEND is not true: drafts only.");
   }
@@ -202,4 +210,144 @@ export async function sendAllowlisted(
     );
   }
   return { kind: "sent", messageId, auditId, lockDay };
+}
+
+// ------------------------------------------------------------ week_reminder
+//
+// One message per boundary (a week's early or late deadline), To the admin's
+// mailbox and Bcc every address on the live roster, sent REMINDER_LEAD_HOURS
+// before the boundary by `npm run remind`. Its gate, all enforced here:
+//
+//   - REMINDER_AUTOSEND=true, the same switch as pick_reminder
+//   - the Bcc count equals the expected count the caller passes, exactly;
+//     the caller derives both, this refuses to send when they differ
+//   - at most once per boundary, judged from audit_log rows with actions
+//     week_reminder_claim and week_reminder_sent on the boundary's key
+//   - a claim row goes in BEFORE the Gmail call, the sent row with the
+//     message id after it, so at most once holds if the run dies mid-send
+
+export const WEEK_REMINDER_CLAIM_ACTION = "week_reminder_claim";
+export const WEEK_REMINDER_SENT_ACTION = "week_reminder_sent";
+
+export interface PriorWeekReminder {
+  /** week:N:early or week:N:late. */
+  key: string;
+  messageId: string;
+  at: string;
+}
+
+export function priorWeekReminderFrom(r: { at: string; target_id: string | null; after: Record<string, unknown> | null }): PriorWeekReminder | null {
+  const a = r.after ?? {};
+  const key = String(a.boundary_key ?? "");
+  if (!key) return null;
+  return { key, messageId: String(a.message_id ?? ""), at: r.at };
+}
+
+/** Every week_reminder claim and send on record. A claim counts as a send. */
+export async function priorWeekReminders(client: SupabaseClient): Promise<PriorWeekReminder[]> {
+  const [claims, sends] = await Promise.all([
+    loadAuditByAction(client, WEEK_REMINDER_CLAIM_ACTION),
+    loadAuditByAction(client, WEEK_REMINDER_SENT_ACTION),
+  ]);
+  const out: PriorWeekReminder[] = [];
+  for (const r of [...sends, ...claims]) {
+    const p = priorWeekReminderFrom(r);
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+export interface WeekReminderRequest {
+  template: "week_reminder";
+  to: string;
+  bcc: string[];
+  subject: string;
+  body: string;
+  week: number;
+  boundary: "early" | "late";
+  deadlineIso: string;
+  /** The count gate's expected number; bcc.length must equal it. */
+  expectedRecipients: number;
+  actor: string;
+}
+
+export type WeekReminderOutcome =
+  | { kind: "sent"; messageId: string; auditId: number; key: string }
+  | { kind: "already_sent"; prior: PriorWeekReminder; key: string };
+
+export async function sendWeekReminder(
+  gmail: gmail_v1.Gmail,
+  client: SupabaseClient,
+  req: WeekReminderRequest,
+): Promise<WeekReminderOutcome> {
+  if (req.template !== "week_reminder" || !isSendable(req.template)) {
+    throw new Error(`Template "${req.template}" is not week_reminder.`);
+  }
+  if (!autosendEnabled()) {
+    throw new Error("REMINDER_AUTOSEND is not true: drafts only.");
+  }
+  if (req.bcc.length === 0) {
+    throw new Error("Nobody to send to: the Bcc list is empty.");
+  }
+  if (req.bcc.length !== req.expectedRecipients) {
+    throw new Error(`Count gate: ${req.bcc.length} recipients on the Bcc, ${req.expectedRecipients} expected. Not sent.`);
+  }
+  if (!/^Survivor\b/.test(req.subject)) {
+    throw new Error(`Subject must begin with "Survivor" so replies hit the pool filter: "${req.subject}".`);
+  }
+  const key = `week:${req.week}:${req.boundary}`;
+  // Read right before the send, never from a caller's snapshot.
+  const prior = await priorWeekReminders(client);
+  const dup = prior.find((p) => p.key === key);
+  if (dup) return { kind: "already_sent", prior: dup, key };
+
+  const recipients = req.bcc.map((a) => a.trim().toLowerCase());
+  await recordAudit(client, {
+    actor: req.actor,
+    action: WEEK_REMINDER_CLAIM_ACTION,
+    targetTable: "gmail",
+    targetId: key,
+    after: {
+      template: req.template,
+      boundary_key: key,
+      week: req.week,
+      boundary: req.boundary,
+      deadline_at: req.deadlineIso,
+      subject: req.subject,
+      recipient_count: recipients.length,
+      recipients,
+    },
+    note: `week_reminder claim for ${key}; a sent row follows on success`,
+  });
+
+  const m: OutboundMessage = { to: [req.to], bcc: recipients, subject: req.subject, body: req.body };
+  const res = await gmail.users.messages.send({ userId: "me", requestBody: { raw: encodeRaw(m) } });
+  const messageId = res.data.id ?? "";
+  let auditId: number;
+  try {
+    auditId = await recordAudit(client, {
+      actor: req.actor,
+      action: WEEK_REMINDER_SENT_ACTION,
+      targetTable: "gmail",
+      targetId: messageId,
+      after: {
+        template: req.template,
+        boundary_key: key,
+        week: req.week,
+        boundary: req.boundary,
+        deadline_at: req.deadlineIso,
+        message_id: messageId,
+        subject: req.subject,
+        recipient_count: recipients.length,
+        recipients,
+      },
+      note: `week_reminder ${key} to ${recipients.length} recipients on Bcc`,
+    });
+  } catch (e: unknown) {
+    const why = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `SENT ${key} as Gmail message ${messageId} but the sent audit row failed (${why}). The claim row stands, so no run sends it again; record message ${messageId} against it on /admin/audit.`,
+    );
+  }
+  return { kind: "sent", messageId, auditId, key };
 }

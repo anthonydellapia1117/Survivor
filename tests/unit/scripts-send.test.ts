@@ -8,7 +8,17 @@ vi.mock("../../scripts/lib/db", () => ({
 }));
 
 import { loadAuditByAction, recordAudit } from "../../scripts/lib/db";
-import { SEND_AUDIT_ACTION, SEND_CLAIM_ACTION, sendAllowlisted, type PriorSend, type SendRequest } from "../../scripts/lib/send";
+import {
+  SEND_AUDIT_ACTION,
+  SEND_CLAIM_ACTION,
+  sendAllowlisted,
+  sendWeekReminder,
+  WEEK_REMINDER_CLAIM_ACTION,
+  WEEK_REMINDER_SENT_ACTION,
+  type PriorSend,
+  type SendRequest,
+  type WeekReminderRequest,
+} from "../../scripts/lib/send";
 
 const audit = vi.mocked(recordAudit);
 const loadAudit = vi.mocked(loadAuditByAction);
@@ -119,5 +129,106 @@ describe("sendAllowlisted", () => {
     });
     await expect(sendAllowlisted(gmail, client, [], req)).rejects.toThrow(/gmail-msg-1[\s\S]*claim row stands/);
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ------------------------------------------------------------ week_reminder
+const weekReq: WeekReminderRequest = {
+  template: "week_reminder",
+  to: "anthonydellapia@gmail.com",
+  bcc: ["A@example.com", "b@example.com", "c@example.com"],
+  subject: "Survivor Week 1 - picks due today at 2 PM",
+  body: "Week 1 is here.\n",
+  week: 1,
+  boundary: "early",
+  deadlineIso: "2026-09-09T18:00:00+00:00",
+  expectedRecipients: 3,
+  actor: "anthonydellapia@gmail.com",
+};
+
+describe("sendWeekReminder", () => {
+  const original = process.env.REMINDER_AUTOSEND;
+  beforeEach(() => {
+    process.env.REMINDER_AUTOSEND = "true";
+    audit.mockReset();
+    loadAudit.mockReset();
+    loadAudit.mockResolvedValue([]);
+    let n = 0;
+    audit.mockImplementation(async () => ++n);
+  });
+  afterEach(() => {
+    if (original === undefined) delete process.env.REMINDER_AUTOSEND;
+    else process.env.REMINDER_AUTOSEND = original;
+  });
+
+  it("refuses unless REMINDER_AUTOSEND is exactly true", async () => {
+    const { gmail, send } = fakeGmail();
+    process.env.REMINDER_AUTOSEND = "TRUE";
+    await expect(sendWeekReminder(gmail, client, weekReq)).rejects.toThrow(/drafts only/);
+    expect(send).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the Bcc count is not exactly the expected count", async () => {
+    const { gmail, send } = fakeGmail();
+    await expect(sendWeekReminder(gmail, client, { ...weekReq, expectedRecipients: 4 })).rejects.toThrow(/Count gate: 3 recipients on the Bcc, 4 expected/);
+    await expect(sendWeekReminder(gmail, client, { ...weekReq, bcc: [] })).rejects.toThrow(/Bcc list is empty/);
+    expect(send).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a subject that does not begin with Survivor", async () => {
+    const { gmail, send } = fakeGmail();
+    await expect(sendWeekReminder(gmail, client, { ...weekReq, subject: "Week 1 - picks due" })).rejects.toThrow(/begin with "Survivor"/);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("sends a boundary once: a claim or a sent row on its key skips it", async () => {
+    const { gmail, send } = fakeGmail();
+    loadAudit.mockImplementation(async (_c, action) =>
+      action === WEEK_REMINDER_CLAIM_ACTION
+        ? [{ id: 9, at: "2026-09-09T12:00:00Z", actor: "a", action, target_id: "week:1:early", after: { boundary_key: "week:1:early" } }]
+        : [],
+    );
+    const out = await sendWeekReminder(gmail, client, weekReq);
+    expect(out).toMatchObject({ kind: "already_sent", key: "week:1:early" });
+    expect(send).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+    // A different boundary of the same week is its own send.
+    const late = await sendWeekReminder(gmail, client, { ...weekReq, boundary: "late" });
+    expect(late.kind).toBe("sent");
+  });
+
+  it("writes the claim before the Gmail call and the sent row with the message id and the Bcc after it", async () => {
+    const { gmail, send } = fakeGmail();
+    const order: string[] = [];
+    audit.mockImplementation(async (_c, a) => {
+      order.push(a.action);
+      return order.length;
+    });
+    send.mockImplementation(async () => {
+      order.push("gmail");
+      return { data: { id: "gmail-msg-7" } };
+    });
+    const out = await sendWeekReminder(gmail, client, weekReq);
+    expect(order).toEqual([WEEK_REMINDER_CLAIM_ACTION, "gmail", WEEK_REMINDER_SENT_ACTION]);
+    expect(out).toEqual({ kind: "sent", messageId: "gmail-msg-7", auditId: 3, key: "week:1:early" });
+    const claim = audit.mock.calls[0][1];
+    expect(claim.targetId).toBe("week:1:early");
+    expect(claim.after).toMatchObject({ boundary_key: "week:1:early", recipient_count: 3, recipients: ["a@example.com", "b@example.com", "c@example.com"] });
+    const sentRow = audit.mock.calls[1][1];
+    expect(sentRow.targetId).toBe("gmail-msg-7");
+    expect(sentRow.after).toMatchObject({ boundary_key: "week:1:early", message_id: "gmail-msg-7", week: 1, boundary: "early", template: "week_reminder" });
+    // The raw message carries To and every Bcc, lowercased.
+    const call = (send.mock.calls as unknown as [{ requestBody: { raw: string } }][])[0][0];
+    const raw = Buffer.from(call.requestBody.raw, "base64url").toString("utf8");
+    expect(raw).toContain("To: anthonydellapia@gmail.com");
+    expect(raw).toContain("Bcc: a@example.com, b@example.com, c@example.com");
+  });
+
+  it("is the only door for week_reminder: sendAllowlisted refuses it", async () => {
+    const { gmail, send } = fakeGmail();
+    await expect(sendAllowlisted(gmail, client, [], { ...req, template: "week_reminder" })).rejects.toThrow(/pick_reminder only/);
+    expect(send).not.toHaveBeenCalled();
   });
 });
