@@ -258,7 +258,10 @@ export default async function DashboardPage() {
             Across all {poolStand.total.toLocaleString()} rows of her sheet
             {poolStand.scoredThrough !== null
               ? `, scored through Week ${poolStand.scoredThrough}`
-              : ", before any week has been scored"}
+              : poolStand.inProgressWeek !== null
+                ? ", no week fully scored yet"
+                : ", before any week has been scored"}
+            {poolStand.inProgressWeek !== null ? `, Week ${poolStand.inProgressWeek} in progress` : ""}
             . Our own count from her published picks; a row her sheet writes
             OUT on is out whatever we compute. She removes eliminated entries
             as the season goes, so these describe the rows on her newest sheet

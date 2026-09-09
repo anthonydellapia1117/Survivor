@@ -14,6 +14,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 // Two of her rows are scored here so the buckets are not all in one pile:
 // pool-1 picked a winner, pool-2 a loser, pool-3 is struck OUT on her sheet,
 // pool-4 burned a bye.
+// Extra rows switchable per test: one test adds a Week 1 pick whose game has
+// not been played, to show a part-scored week is not "scored through".
+const sheet = vi.hoisted(() => ({ extraRows: [] as { no: number; names: string; cells: Record<string, string>; entryId: null }[] }));
+
 vi.mock("../../src/lib/data", () => ({
   getData: () => ({
     getEntries: async () => [
@@ -81,6 +85,7 @@ vi.mock("../../src/lib/data", () => ({
         { no: 2, names: "Loser Row", cells: { "Week 1": "Dallas" }, entryId: null },
         { no: 3, names: "Struck Row", cells: { "Week 1": "OUT" }, entryId: null },
         { no: 4, names: "Bye Row", cells: { "Week 1": "BYE" }, entryId: null },
+        ...sheet.extraRows,
       ],
     }),
   }),
@@ -146,8 +151,25 @@ describe("Dashboard, signed out", () => {
   });
 
   it("says which week the pool count is scored through", async () => {
+    // Every Week 1 pick on the sheet (PHI, DAL) has a final: the week is in.
     const out = await html();
     expect(out).toContain("scored through Week 1");
+    expect(out).not.toContain("in progress");
+  });
+
+  it("calls a part-scored week in progress rather than scored through", async () => {
+    // One more row picks Buffalo in Week 1 and Buffalo has no final yet. The
+    // buckets can still move for that week, so the page must not say the
+    // count is scored through it.
+    sheet.extraRows = [{ no: 5, names: "Pending Row", cells: { "Week 1": "Buffalo" }, entryId: null }];
+    try {
+      const out = await html();
+      expect(out).not.toContain("scored through Week 1");
+      expect(out).toContain("Week 1 in progress");
+      expect(out).toContain("no week fully scored yet");
+    } finally {
+      sheet.extraRows = [];
+    }
   });
 
   it("puts none of this group's money on the page", async () => {

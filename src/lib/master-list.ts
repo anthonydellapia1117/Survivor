@@ -380,8 +380,16 @@ export interface PoolStandings {
   out: number;
   /** Rows counted: every row of her newest sheet. */
   total: number;
-  /** Highest week any of her published cells has been scored through. Null before Week 1 scores. */
+  /**
+   * The highest week every published pick of which has been scored, with
+   * every week before it fully scored too. Null until a whole week is in.
+   * "Scored through" has to mean the buckets will not move for that week; a
+   * week with one early game final and the Sunday picks still pending is not
+   * that week.
+   */
   scoredThrough: number | null;
+  /** The first week past that with some published picks scored and some not; null when none is part-way. */
+  inProgressWeek: number | null;
 }
 
 /**
@@ -431,15 +439,30 @@ export function poolStandings(
     else if (bucket === "No Losses") noLosses += 1;
     else lossBye += 1;
   }
+  // Week order, and contiguous: once a week is found part-scored (or not
+  // scored at all), no later week advances the marker, however complete it
+  // is - "through Week 3" with Week 2 still open would be a lie.
   let scoredThrough: number | null = null;
+  let inProgressWeek: number | null = null;
+  let blocked = false;
   for (const col of columns) {
-    const scored = list.rows.some((r) => {
+    let picks = 0;
+    let scored = 0;
+    for (const r of list.rows) {
       const team = herTeam(herCell(r, col));
-      return team !== null && results.has(`${col.week}:${team}`);
-    });
-    if (scored) scoredThrough = col.week;
+      if (team === null) continue;
+      picks += 1;
+      if (results.has(`${col.week}:${team}`)) scored += 1;
+    }
+    if (picks === 0) continue;
+    if (!blocked && scored === picks) {
+      scoredThrough = col.week;
+      continue;
+    }
+    blocked = true;
+    if (scored > 0 && scored < picks && inProgressWeek === null) inProgressWeek = col.week;
   }
-  return { noLosses, lossBye, out, total: list.rows.length, scoredThrough };
+  return { noLosses, lossBye, out, total: list.rows.length, scoredThrough, inProgressWeek };
 }
 
 /**

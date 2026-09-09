@@ -5,6 +5,7 @@ import {
   bucketOfEntry,
   matchesStanding,
   poolAsEntries,
+  poolStandings,
   standingCounts,
   tallySentence,
   tallyWeekOf,
@@ -100,6 +101,30 @@ describe("the pool as grid rows", () => {
     // A published BYE is a bye whether or not anything has been scored; every
     // TEAM pick is what must come back unscored.
     expect(cells.filter((c) => c.result !== "bye").every((c) => c.result === null)).toBe(true);
+  });
+});
+
+describe("scored through", () => {
+  it("advances only past a week whose every published pick is scored, and never over an open week", () => {
+    // Week 1's picks (PHI, DAL, PHI) are all final; Week 2's one pick (BUF)
+    // is unplayed; Week 3's one pick (CHI) is final. "Through Week 3" would
+    // skip an open week, so the marker stops at 1.
+    const s = poolStandings(LIST, GAMES);
+    expect(s.scoredThrough).toBe(1);
+    expect(s.scoredThrough).not.toBe(3);
+    // Week 2 has nothing scored, so nothing is "in progress" there either.
+    expect(s.inProgressWeek).toBeNull();
+  });
+
+  it("names a week with some picks scored and some not as in progress, not scored through", () => {
+    const rows = [
+      ...ROWS,
+      // Buffalo has no Week 1 game in the fixture: a pick still waiting.
+      { no: 8, names: "Waiting Row", cells: { "Week 1": "Buffalo" }, entryId: null },
+    ];
+    const s = poolStandings({ rows }, GAMES);
+    expect(s.scoredThrough).toBeNull();
+    expect(s.inProgressWeek).toBe(1);
   });
 });
 
