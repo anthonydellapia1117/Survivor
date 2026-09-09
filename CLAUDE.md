@@ -680,6 +680,21 @@ Two standing facts that are NOT snapshots and must survive:
   the smoke check at a savepoint, ahead of the merge of the PR that carries
   it (#25, #28), on Anthony's instruction for that run.
 
+  **Nothing applies a migration automatically, and there is no database
+  credential in this repo.** A workflow used to: `.github/workflows/migrate.yml`
+  ran on every push to main touching `supabase/migrations` and applied the
+  pending batch through `scripts/db/migrate-prod.sh`, reading a repository
+  secret `SUPABASE_DB_URL`. **Both were removed on 2026-09-09, on Anthony's
+  instruction.** Applying a migration the moment a PR merges is unattended by
+  definition, which is this rule pointed backwards; and the secret was a
+  standing production credential in repository settings, the same shape as the
+  service-role key this project deliberately does not have. The attended
+  procedure is unchanged and is now the only one: the migration, `savepoint
+  smoke`, `scripts/db/smoke.sql`, `rollback to savepoint smoke`, the tracking
+  row, one commit. **The smoke check stays** - `scripts/db/smoke.sql` and its
+  guard `tests/unit/smoke-sql.test.ts`, which holds it to printing no money
+  total, because a person reads that output and pastes it into a report.
+
 ## Gmail
 
 **Fetch threads in full (`get_thread`), never rely on search previews.**
