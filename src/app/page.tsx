@@ -16,6 +16,7 @@ import { eliminationWeekOf } from "@/lib/alive";
 import { TEAM_PALETTE } from "@/lib/team-colors";
 import { lynneBucket } from "@/lib/lynne/names";
 import {
+  fullyRevealedWeeks,
   poolDistribution,
   poolStandings,
   poolStats,
@@ -77,6 +78,10 @@ export default async function DashboardPage() {
     playWeek && poolWeekFilled(master.rows, playWeek.week)
       ? poolDistribution(master.rows, playWeek.week)
       : null;
+  // The public view serves her cells only as their games kick off, so until
+  // every game of the week has, the chart is the revealed subset and the
+  // caption says so rather than claiming the whole pool.
+  const poolDistWhole = playWeek !== null && fullyRevealedWeeks(games, now).includes(playWeek.week);
   // Her four figures, from the same poolStats() the Master List reads, so
   // the two pages cannot drift apart.
   const herFigures = poolStats(pot);
@@ -376,7 +381,9 @@ export default async function DashboardPage() {
               <>
                 <PickDistributionLazy rows={poolDist.rows} />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Every entry in the master pool, from the published sheet
+                  {poolDistWhole
+                    ? "Every entry in the master pool, from the published sheet"
+                    : `Revealed picks so far in the master pool, ${poolDist.revealed.toLocaleString("en-US")} of ${master.rows.length.toLocaleString("en-US")} rows on the published sheet; the rest appear as their games kick off`}
                   {poolDist.other > 0
                     ? `; ${poolDist.other} cells are not a team (OUT or a note)`
                     : ""}

@@ -179,6 +179,32 @@ describe("scored through", () => {
   });
 });
 
+describe("scored through, bounded to her sheet", () => {
+  it("does not advance past a week her newest sheet does not carry, however final the schedule is", () => {
+    // A stale sheet: Week 1 published, Weeks 2 and 3 fully played. The
+    // buckets above read only her columns, so nothing from Weeks 2 or 3 is
+    // in them and "scored through Week 3" would describe counts that do
+    // not exist.
+    const rows: MasterRow[] = [{ no: 30, names: "Only Week 1", cells: { "Week 1": "Philadelphia" }, entryId: null }];
+    const games = [
+      { week: 1, homeTeam: "PHI", awayTeam: "DAL", homeScore: 24, awayScore: 17, status: "final" as const },
+      { week: 2, homeTeam: "BUF", awayTeam: "NYJ", homeScore: 30, awayScore: 3, status: "final" as const },
+      { week: 3, homeTeam: "CHI", awayTeam: "GB", homeScore: 20, awayScore: 20, status: "final" as const },
+    ];
+    const s = poolStandings({ rows }, games);
+    expect(s.scoredThrough).toBe(1);
+    expect(s.inProgressWeek).toBeNull();
+    // A part-played week she has not published is not "in progress" here
+    // either: its picks are in no count on this page.
+    const partial = [
+      games[0],
+      { week: 2, homeTeam: "BUF", awayTeam: "NYJ", homeScore: 30, awayScore: 3, status: "final" as const },
+      { week: 2, homeTeam: "KC", awayTeam: "LAC", homeScore: null, awayScore: null, status: "scheduled" as const },
+    ];
+    expect(poolStandings({ rows }, partial)).toMatchObject({ scoredThrough: 1, inProgressWeek: null });
+  });
+});
+
 describe("what the tally can claim", () => {
   it("counts a week fully revealed only when every game of it has kicked off or been overridden", () => {
     const now = new Date("2026-09-13T20:00:00Z");

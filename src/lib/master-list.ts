@@ -403,7 +403,7 @@ export interface PoolStandings {
    * a Sunday afternoon with the whole late slate still hidden.
    */
   scoredThrough: number | null;
-  /** The first week past that with some games final and some not; null when none is part-way. */
+  /** The first week past that, on her sheet, with some games final and some not; null when none is part-way. */
   inProgressWeek: number | null;
 }
 
@@ -454,9 +454,14 @@ export function poolStandings(
     else if (bucket === "No Losses") noLosses += 1;
     else lossBye += 1;
   }
-  // Completeness from the SCHEDULE. Week order, and contiguous: once a week
-  // is found open, no later week advances the marker however complete it
-  // is - "through Week 3" with Week 2 still open would be a lie.
+  // Completeness from the SCHEDULE, bounded to the weeks her sheet carries:
+  // a week that is final on the schedule but absent from her newest sheet
+  // has put nothing into the buckets above, so it is neither scored through
+  // nor in progress here, and it stops the marker like an open week would.
+  // Week order, and contiguous: once a week is found open (or unpublished),
+  // no later week advances the marker however complete it is - "through
+  // Week 3" with Week 2 still open would be a lie.
+  const onSheet = new Set(columns.map((c) => c.week));
   const byWeek = new Map<number, { total: number; final: number }>();
   for (const g of games) {
     const w = byWeek.get(g.week) ?? { total: 0, final: 0 };
@@ -469,12 +474,12 @@ export function poolStandings(
   let blocked = false;
   for (const week of [...byWeek.keys()].sort((a, b) => a - b)) {
     const w = byWeek.get(week)!;
-    if (!blocked && w.final === w.total) {
+    if (!blocked && onSheet.has(week) && w.final === w.total) {
       scoredThrough = week;
       continue;
     }
     blocked = true;
-    if (w.final > 0 && w.final < w.total && inProgressWeek === null) inProgressWeek = week;
+    if (onSheet.has(week) && w.final > 0 && w.final < w.total && inProgressWeek === null) inProgressWeek = week;
   }
   return { noLosses, lossBye, out, total: list.rows.length, scoredThrough, inProgressWeek };
 }

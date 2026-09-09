@@ -17,7 +17,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 // Extra games switchable per test: one test adds a Week 1 game still to be
 // played, to show a part-played week is not "scored through" even when every
 // revealed pick on the sheet has a result.
-const sheet = vi.hoisted(() => ({ extraGames: [] as Record<string, unknown>[] }));
+const sheet = vi.hoisted(() => ({
+  extraGames: [] as Record<string, unknown>[],
+  // The Week 1 game's reveal override: false holds the week back whatever
+  // the clock says, true lets it out. Pinned so no test depends on today.
+  reveal: false as boolean | null,
+}));
 
 vi.mock("../../src/lib/data", () => ({
   getData: () => ({
@@ -75,7 +80,7 @@ vi.mock("../../src/lib/data", () => ({
         homeScore: 24,
         awayScore: 17,
         status: "final",
-        revealOverride: null,
+        revealOverride: sheet.reveal,
         network: "FOX",
       },
       ...sheet.extraGames,
@@ -171,6 +176,23 @@ describe("Dashboard, signed out", () => {
       expect(out).toContain("no week fully scored yet");
     } finally {
       sheet.extraGames = [];
+    }
+  });
+
+  it("qualifies the master-pool distribution until every game of the week has kicked off", async () => {
+    // Held back: the chart is whatever cells the view has revealed, and the
+    // caption must not call that the whole pool.
+    let out = await html();
+    expect(out).toContain("Revealed picks so far in the master pool");
+    expect(out).not.toContain("Every entry in the master pool");
+    // Every game revealed: the whole pool, said plainly.
+    sheet.reveal = true;
+    try {
+      out = await html();
+      expect(out).toContain("Every entry in the master pool");
+      expect(out).not.toContain("Revealed picks so far");
+    } finally {
+      sheet.reveal = false;
     }
   });
 
