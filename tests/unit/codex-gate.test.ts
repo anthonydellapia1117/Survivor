@@ -1,6 +1,9 @@
-// The codex-gate workflow is the merge gate, so its script is run here with
-// a fake GitHub: the check it writes must refuse a lookalike summary comment
-// from anyone but the Codex app, and must read every page of review threads.
+// The codex-gate workflow writes an informational check, so its script is
+// run here with a fake GitHub: the check it writes must refuse a lookalike
+// summary comment from anyone but the Codex app, must read every page of
+// review threads, and must never conclude "failure" - success or neutral
+// only, because nothing requires it and a red mark only stalls a merge the
+// criterion allows (Anthony, 2026-09-09).
 // The script is lifted from the YAML as text (the block scalar under
 // `script: |`), so the file under .github/workflows is the thing under test.
 
@@ -88,7 +91,7 @@ describe("codex-gate", () => {
     const jobs = yml.slice(yml.indexOf("\njobs:"));
     // The job's check run and the written check come from the same app; if
     // both were "codex-gate", the job's success (completed last) would be
-    // the one a ruleset requiring that name reads.
+    // the one anything reading that name sees.
     expect(jobs).not.toMatch(/^\s+name: codex-gate\s*$/m);
     expect(jobs).toMatch(/name: "codex-gate"/);
   });
@@ -99,17 +102,36 @@ describe("codex-gate", () => {
   });
   it("ignores a lookalike summary from any author but the Codex app", async () => {
     const c = await runGate([summaryComment(completedRow(SHORT), { login: "someone", type: "User" })], [[true]]);
-    expect(c.conclusion).toBe("failure");
+    expect(c.conclusion).toBe("neutral");
     expect(c.output.summary).toContain("no Codex summary comment yet");
   });
   it("does not take a Codex row for another commit as this one's", async () => {
     const c = await runGate([summaryComment(completedRow("0000000"))], [[true]]);
-    expect(c.conclusion).toBe("failure");
+    expect(c.conclusion).toBe("neutral");
     expect(c.output.summary).toContain(`Codex has not reviewed ${SHORT} yet`);
+  });
+  it("never concludes failure, whatever it finds", async () => {
+    // Static: the word is not in the job at all, so no branch can reach it.
+    const path = fileURLToPath(new URL("../../.github/workflows/codex-gate.yml", import.meta.url));
+    const yml = readFileSync(path, "utf8");
+    expect(yml.slice(yml.indexOf("\njobs:"))).not.toMatch(/failure/);
+    // Dynamic: every negative case is neutral, the one positive case success.
+    const cases: [Comment[], boolean[][]][] = [
+      [[], [[]]],
+      [[summaryComment(completedRow("0000000"))], [[true]]],
+      [[summaryComment(`| Code Review | **Running** | \`${SHORT}\` | Manual request |`)], [[true]]],
+      [[summaryComment(`| Code Review | **Failed** | \`${SHORT}\` | Manual request |`)], [[true]]],
+      [[summaryComment(completedRow(SHORT))], [[false]]],
+    ];
+    for (const [comments, pages] of cases) {
+      const c = await runGate(comments, pages);
+      expect(c.conclusion).toBe("neutral");
+    }
+    expect((await runGate([summaryComment(completedRow(SHORT))], [[true]])).conclusion).toBe("success");
   });
   it("counts an unresolved thread on a later page", async () => {
     const c = await runGate([summaryComment(completedRow(SHORT))], [[true, true], [true, false]]);
-    expect(c.conclusion).toBe("failure");
+    expect(c.conclusion).toBe("neutral");
     expect(c.output.summary).toContain("Unresolved review threads: 1.");
   });
 });

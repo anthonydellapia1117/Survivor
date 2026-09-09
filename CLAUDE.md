@@ -668,15 +668,25 @@ Two standing facts that are NOT snapshots and must survive:
   This is why the verification notes in this repo's commits say "confirmed to
   FAIL when broken" rather than "tests pass".
 
-- **Wait for the review to finish before merging.** Every review pass on this
-  repo has found something real. Marking a PR ready and merging inside the
-  review window costs nothing to wait for and has already cost one live P1 —
-  #5 was merged five seconds after being marked ready, and the review that was
-  still running caught a regression that reached production. Wait for the
-  review to complete **on the current head**, then merge on the drift
-  argument: a migration live in production but absent from `main` is the worse
-  state, so a clean review is a reason to merge promptly, not to keep
-  iterating.
+- **Open pull requests ready for review, never as drafts.** A draft blocks
+  its own merge, and it is why #36, #39 and #43 each stalled for hours on
+  2026-09-09. Draft only when Anthony explicitly asks to look first, and say
+  so in the PR body. Set 2026-09-09.
+
+- **Merge when the criterion is met.** Blocking is data loss, a wrong
+  database write, a send without approval, a credential or address leak, or
+  a failing test. Everything else is filed as an issue and merged past.
+  **Never fix a finding whose only effect is to re-trigger the review** -
+  that loop is what held #36 open for ten rounds. A review that is running
+  on the current head is waited for: #5 was merged five seconds after being
+  marked ready and the review still running caught a regression that reached
+  production. A review that cannot run - Codex unable to fetch the branch,
+  an outage - is an infrastructure failure, not a finding, and is not waited
+  on. `ci` is the objective gate. `codex-gate` is informational: it reports
+  success when Codex has concluded on the head with every thread resolved
+  and neutral otherwise, never failure, and nothing requires it - there is
+  no ruleset on main (`docs/MERGE_AUTOMATION.md` section 4). Merge by
+  squash, pinned to the head that was verified. Set 2026-09-09.
 
 - **`admin_apply_lynne_import` is results-only.** It is the weekly result
   importer behind `/admin/import` and `npm run results`: it records her file
