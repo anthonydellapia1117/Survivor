@@ -107,7 +107,13 @@ function quotedIdentifier(text: string, i: number): number | null {
 // The prefix has to START a token. `select 1 as typee'x'` is the identifier
 // typee followed by a plain string, not an escape string, so the character
 // before it must not be one an identifier can carry.
-const IDENT = /[A-Za-z0-9_$]/;
+// What can CONTINUE an unquoted identifier, which is what both boundary
+// checks below ask. scan.l spells it [A-Za-z\200-\377_0-9\$] - byte-based, so
+// every non-ASCII character counts, not only the ASCII word characters.
+// `vé$tag$` is one identifier and `vé` is a legal name; an ASCII-only
+// predicate read the `$tag$` in it as a delimiter. Confirmed against
+// postgres 16 on a UTF8 server: that body runs and prints.
+const IDENT = /[A-Za-z0-9_$]|[^\u0000-\u007f]/;
 
 // Where a single-quoted literal ends, and what it says. A doubled quote is an
 // escaped quote in both forms; a backslash escapes the next character only in
