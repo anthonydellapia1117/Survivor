@@ -253,7 +253,7 @@ export function poolAsEntries(
             result: "bye",
             late: false,
             submittedAt: at,
-            source: "master_list",
+            source: MASTER_LIST_SOURCE,
             resultSource: null,
           });
         }
@@ -294,10 +294,20 @@ export function poolAsEntries(
       ownerName: "",
       wins,
       losses,
-      livesRemaining: Math.max(0, 2 - losses),
-      // The same statuses v_entry_public gives our 121: one loss is at_risk,
-      // so a one-loss row of hers sorts and colours like a one-loss row of ours.
-      status: bucket === "Out" ? "eliminated" : losses === 1 ? "at_risk" : "active",
+      // Lives and status mirror v_entry_standing exactly, so a row of hers
+      // sorts, colours and reads like the same row of ours: an eliminated row
+      // has no lives whatever its loss count (her OUT and a repeated team
+      // eliminate without one), one loss is at_risk, and a clean row is bye
+      // eligible once it has been scored into the single-elimination weeks.
+      livesRemaining: bucket === "Out" ? 0 : Math.max(0, 2 - losses),
+      status:
+        bucket === "Out"
+          ? "eliminated"
+          : losses === 1
+            ? "at_risk"
+            : lastScoredWeek !== null && lastScoredWeek > doubleElimThrough && losses === 0 && !herBye(r)
+              ? "bye_eligible"
+              : "active",
       byeUsed: herBye(r),
       teamsUsed: used,
       lastScoredWeek,

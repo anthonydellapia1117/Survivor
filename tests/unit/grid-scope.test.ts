@@ -72,6 +72,32 @@ describe("the pool as grid rows", () => {
     expect(byId.get("pool-3")!.status).toBe("eliminated");
   });
 
+  it("gives an eliminated row no lives, however it was eliminated", () => {
+    // v_entry_standing: lives_remaining is 0 for an eliminated entry. Her
+    // OUT and a repeated team eliminate a row with no loss on it, so
+    // 2 - losses would have read "2 lives" on a row that is out.
+    const { entries } = poolAsEntries(LIST, GAMES);
+    const byId = new Map(entries.map((e) => [e.id, e]));
+    expect(byId.get("pool-3")!.livesRemaining).toBe(0);
+    expect(byId.get("pool-6")!.livesRemaining).toBe(0);
+    expect(byId.get("pool-2")!.livesRemaining).toBe(1);
+    expect(byId.get("pool-1")!.livesRemaining).toBe(2);
+  });
+
+  it("marks a clean row bye eligible once it is scored into the single-elimination weeks, as the view does", () => {
+    // v_entry_standing: last_scored_week >= 7 (past the double-elimination
+    // window), no losses, bye unused. A row scored only in Week 1 is active.
+    const games = [...GAMES, { week: 8, homeTeam: "DEN", awayTeam: "LV", homeScore: 27, awayScore: 10, status: "final" as const }];
+    const rows: MasterRow[] = [
+      { no: 20, names: "Deep Row", cells: { "Week 1": "Philadelphia", "Week 8": "Denver" }, entryId: null },
+      { no: 21, names: "Deep Bye Row", cells: { "Week 1": "BYE", "Week 8": "Denver" }, entryId: null },
+    ];
+    const { entries } = poolAsEntries({ loadedAt: LIST.loadedAt, rows }, games);
+    expect(entries.find((e) => e.id === "pool-20")!.status).toBe("bye_eligible");
+    expect(entries.find((e) => e.id === "pool-21")!.status).toBe("active");
+    expect(poolAsEntries(LIST, GAMES).entries.find((e) => e.id === "pool-1")!.status).toBe("active");
+  });
+
   it("stamps every cell of hers as the sheet's, so its time reads as the sheet's and not as a submission", () => {
     const { cells } = poolAsEntries(LIST, GAMES);
     expect(cells.every((c) => c.source === MASTER_LIST_SOURCE)).toBe(true);
