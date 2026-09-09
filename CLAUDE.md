@@ -626,6 +626,19 @@ Two standing facts that are NOT snapshots and must survive:
   edits or deletes.
 - **A draft is never a send.** Never treat a drafted email as sent, and never
   send on Anthony's behalf without being asked.
+- **Players submit by email reply or text. Nothing else.** Set by Anthony on
+  2026-09-09. **No player-facing message ever tells anyone to submit a pick in
+  the app, and no player-facing message links the site for submitting one** -
+  there is no pick entry on the public site, so the instruction would send a
+  player somewhere that cannot take their pick and the deadline would pass
+  while they looked for it. The two paths are: reply to the email, or text
+  Anthony. That is what `pick-request.ts` already says ("Reply to this address;
+  picks are not accepted anywhere else.") and what `scripts/chase` says; the
+  rule is written down so a future message cannot quietly add a third.
+  The one link a player may be sent is the **`/grid` link after the lock**,
+  which shows picks as their games kick off - a results link, never a
+  submission instruction. `tests/unit/player-copy-submit-path.test.ts` holds
+  every player-facing template to this.
 - **Audit every write in the same transaction as the write.** The data row
   and its `audit_log` row commit together or neither does. This is why the
   admin mutations are transactional RPCs rather than plain updates.
