@@ -134,7 +134,16 @@ export function deadlineRows(
  * the two footers and being quietly wrong about half the list.
  */
 function recipientFooter(recipient: Recipient, n: number): string {
-  const REPLY = "Reply to this address; picks are not accepted anywhere else.";
+  // Both paths, because both are real: a pick sent by text is recorded the
+  // same way (picks.source = 'text'). Naming only the reply and then saying
+  // "nowhere else" told a player their text would not count, which is the
+  // opposite of the rule in CLAUDE.md. What "nowhere else" rules out is the
+  // app: there is no pick entry on the site.
+  //
+  // No "below" or "above": this footer renders AFTER the signoff block that
+  // carries the number, so "the number below" pointed at nothing, and any
+  // direction word here breaks again the next time a block moves.
+  const REPLY = "Reply to this address, or text me; picks are not accepted anywhere else.";
   const buyers = recipient.buyers.map((b) => b.name);
   const named =
     buyers.length <= 1
@@ -197,7 +206,7 @@ export function buildPickRequest(
       {
         kind: "signoff",
         from: FROM,
-        phoneLabel: "Questions or a late change — text me:",
+        phoneLabel: "Picks, a question or a late change - text me:",
         phone: CONTACT_PHONE,
       },
     ],

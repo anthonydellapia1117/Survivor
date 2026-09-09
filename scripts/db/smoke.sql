@@ -1,7 +1,8 @@
 -- Post-migration smoke check. Runs INSIDE the migration's transaction, after
 -- a savepoint, and everything it writes is rolled back to that savepoint by
--- the caller (scripts/db/migrate-prod.sh). Any raise here aborts the whole
--- transaction, migration included: that is the point.
+-- whoever is applying the migration (the attended procedure in
+-- docs/MERGE_AUTOMATION.md). Any raise here aborts the whole transaction,
+-- migration included: that is the point.
 --
 -- The RPCs check is_admin() through the JWT claims, so the check acts as the
 -- admin for the duration of the transaction only.
@@ -37,8 +38,9 @@ begin
   if v_entries < 1 then
     raise exception 'smoke: no live entries read back';
   end if;
-  -- The totals are read and compared, never printed: this log reaches a
-  -- GitHub issue on failure, and the money is admin-only (CLAUDE.md).
+  -- The totals are read and compared, never printed: a person reads this log
+  -- and pastes it into a report, and the money is admin-only (CLAUDE.md).
+  -- tests/unit/smoke-sql.test.ts holds every raise below to that.
   raise notice 'smoke: % live entries (% recruited); money totals read',
     v_entries, v_recruited;
 

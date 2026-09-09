@@ -626,6 +626,19 @@ Two standing facts that are NOT snapshots and must survive:
   edits or deletes.
 - **A draft is never a send.** Never treat a drafted email as sent, and never
   send on Anthony's behalf without being asked.
+- **Players submit by email reply or text. Nothing else.** Set by Anthony on
+  2026-09-09, correcting a draft built the other way. **The app has no pick
+  entry.** So: **never tell a player to submit a pick there, and never link
+  the site in a picks message.** The instruction would send a player somewhere
+  that cannot take their pick, and the deadline would pass while they looked
+  for it. The two paths are: reply to the email, or text
+  Anthony. That is what `pick-request.ts` already says ("Reply to this address;
+  picks are not accepted anywhere else.") and what `scripts/chase` says; the
+  rule is written down so a future message cannot quietly add a third.
+  The one link a player may be sent is the **`/grid` link after the lock**,
+  which shows picks as their games kick off - a results link, never a
+  submission instruction. `tests/unit/player-copy-submit-path.test.ts` holds
+  every player-facing template to this.
 - **Audit every write in the same transaction as the write.** The data row
   and its `audit_log` row commit together or neither does. This is why the
   admin mutations are transactional RPCs rather than plain updates.
@@ -679,6 +692,38 @@ Two standing facts that are NOT snapshots and must survive:
   are the two exceptions so far: each applied attended on 2026-09-08 with
   the smoke check at a savepoint, ahead of the merge of the PR that carries
   it (#25, #28), on Anthony's instruction for that run.
+
+  **Nothing applies a migration automatically, and there is no database
+  credential in this repo.** A workflow used to: `.github/workflows/migrate.yml`
+  ran on every push to main touching `supabase/migrations` and applied the
+  pending batch through `scripts/db/migrate-prod.sh`, reading a repository
+  secret `SUPABASE_DB_URL`. **Both were removed on 2026-09-09, on Anthony's
+  instruction.** Applying a migration the moment a PR merges is unattended by
+  definition, which is this rule pointed backwards; and the secret was a
+  standing production credential in repository settings, the same shape as the
+  service-role key this project deliberately does not have. The attended
+  procedure is unchanged and is now the only one: the migration, `savepoint
+  smoke`, `scripts/db/smoke.sql`, `rollback to savepoint smoke`, the tracking
+  row, one commit. **Assemble it into a file and run `psql -X -v
+  ON_ERROR_STOP=1 -f batch.sql`, never paste it into an interactive psql** -
+  the flag exits only when psql is not interactive, so a pasted block keeps
+  running after the raise. And **if the smoke check raises, `rollback` the
+  whole transaction, never `rollback to savepoint`** - that step is for a
+  check that passed, and after a failure it clears the error while keeping the
+  migration, so the tracking row and the commit would apply a migration whose
+  smoke check failed. The deleted wrapper set the flag; a person typing the
+  steps has to. **The full attended steps are in `docs/MERGE_AUTOMATION.md`
+  section 2**, including the two details the deleted wrapper held: pending
+  files are decided by NAME rather than the recorded version, and the
+  tracking row carries the file's prefix, the name after it, and the body. **The smoke check stays** - `scripts/db/smoke.sql` and its
+  guard `tests/unit/smoke-sql.test.ts`, which holds it to printing no money
+  total, because a person reads that output and pastes it into a report.
+  **Removing the consumer does not remove the credential:** a repository
+  Actions secret outlives the workflow that read it, so if `SUPABASE_DB_URL`
+  was ever set it is still stored and still valid, and deleting it (and
+  rotating the database password) is Anthony's click - `docs/MERGE_AUTOMATION.md`
+  section 3c. The job's last run, 2026-09-09 00:01 UTC, failed because it was
+  unset, so there may be nothing to delete; check rather than assume.
 
 ## Gmail
 
