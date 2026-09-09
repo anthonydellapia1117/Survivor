@@ -45,3 +45,7 @@ next-env.d.ts
 
 # Supabase CLI scratch
 supabase/.temp/
+
+# Agent worktrees: tooling scratch, and each one is a full copy of this repo.
+# .claude/ itself stays tracked - skills live there.
+.claude/worktrees/
