@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const here = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
-const sql = () => unwrapDoBlocks(readFileSync(here("../../scripts/db/smoke.sql"), "utf8"));
+const raw = () => readFileSync(here("../../scripts/db/smoke.sql"), "utf8");
+const sql = () => unwrapDoBlocks(raw());
 
 // The whole PL/pgSQL body is itself a dollar-quoted string, `do $smoke$ ...
 // $smoke$`. Unwrap it so the statements inside are read as SQL; every
@@ -296,6 +297,37 @@ const PRINTABLE = new Set([
 // the time this runs - which is exactly why the totals are read into
 // variables and compared, never formatted into a message.
 
+// psql prints the result of EVERY statement it runs, not only what a raise
+// sends to the log. `select coalesce(sum(amount_due_cents), 0) from
+// v_owner_finance;` at the top level puts the total straight into the attended
+// output, and a scan that reads only raises says nothing about it. Confirmed
+// with psql: that shape prints 284000 under a `due` header, and a bare
+// `\echo 2840 dollars due` line prints as well.
+//
+// So the statements are allowlisted the same way the raise arguments are.
+// The file has exactly two shapes today and anything else fails until this
+// line changes. Literals are emptied and comments dropped first, which is what
+// makes `do $smoke$ ... $smoke$;` one statement rather than a dozen - the
+// semicolons inside it are inside a literal. A psql meta-command carries no
+// semicolon of its own, so it merges into the statement after it and stops
+// matching, which is the direction it should fail.
+const STATEMENTS = [
+  // The JWT claims line. It prints back the claims it just set: the admin
+  // address, which is already written in this file, and no money.
+  /^select set_config\('', '', true\)$/i,
+  // A do block. Nothing inside one reaches the log except through a raise, and
+  // every raise is checked above.
+  /^do ''$/i,
+];
+
+// Every statement psql would run from this file, in the order it runs them.
+function topLevelStatements(text: string): string[] {
+  return normalize(text)
+    .split(";")
+    .map((statement) => statement.replace(/\s+/g, " ").trim())
+    .filter((statement) => statement.length > 0);
+}
+
 // Split at commas that are not inside parentheses.
 function topLevelCommas(text: string): string[] {
   const out: string[] = [];
@@ -358,6 +390,16 @@ describe("smoke check", () => {
     expect(typed).toEqual([]);
   });
 
+  it("runs only the statements on the allowlist, so nothing else can print", () => {
+    // The two checks above cover what a raise sends to the log. psql also
+    // prints the result of every statement in the file, which is a second way
+    // a total reaches the same attended output.
+    const found = topLevelStatements(raw());
+    expect(found.length).toBeGreaterThan(0);
+    const unlisted = found.filter((statement) => !STATEMENTS.some((ok) => ok.test(statement)));
+    expect(unlisted).toEqual([]);
+  });
+
   it("reads every raise through to its arguments", () => {
     // Guards the guard. Both hazards above, and then the real file: if the
     // scan ever stops short again, the assertion above passes against the
@@ -365,5 +407,15 @@ describe("smoke check", () => {
     expect(raises("raise notice 'a; b', v_recruited;").join("")).toContain("v_recruited");
     expect(raises("-- the migration's note\nraise notice 'x', v_recruited;").join("")).toContain("v_recruited");
     expect(raises(sql()).some((r) => /\bv_recruited\b/.test(r))).toBe(true);
+    // And the statement split. A do block must come back as ONE statement, not
+    // as the several its inner semicolons would make if literals stopped being
+    // emptied first - a split that fine would hand the allowlist fragments to
+    // reject and read as coverage while checking nothing. Asserted on the
+    // mechanism rather than on the file's current contents, so that adding a
+    // legitimate second do block does not fail here.
+    expect(topLevelStatements("do $b$ begin raise notice 'a'; raise notice 'b'; end $b$;")).toEqual([
+      "do ''",
+    ]);
+    expect(topLevelStatements(raw()).filter((s) => /\braise\b/.test(s))).toEqual([]);
   });
 });
