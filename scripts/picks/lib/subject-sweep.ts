@@ -34,3 +34,27 @@ export function strangerMessages(
   const skip = new Set([...knownAddresses, ...excludeAddresses].map((a) => a.trim().toLowerCase()).filter(Boolean));
   return msgs.filter((m) => !skip.has(m.fromAddress.trim().toLowerCase()) && isSweptSubject(m.subject, terms));
 }
+
+/** What a stranger's unparseable message is staged as. */
+export const STRANGER_NOTHING_REASON = "unknown sender, subject matched, nothing recognised in the message";
+export const STRANGER_NOTHING_LINE = "(no pick found in the body)";
+
+/**
+ * The identity row a subject-swept stranger's message needs when parsing it
+ * produced no row at all, and null when it produced any.
+ *
+ * A stranger whose body is empty, a bare greeting, or anything unparsedReason
+ * calls noise yielded neither a pick nor a question: nothing was staged, so
+ * the message was never marked processed and every hourly sweep found it
+ * again, while the log line said it had been staged (issue #42). One identity
+ * row makes the log true and gets the message filed once.
+ *
+ * A stranger's mail must never become a pick. This only makes it a question.
+ */
+export function strangerIdentityRow(
+  stranger: boolean,
+  rowsProduced: number,
+): { kind: "identity"; reason: string; line: string } | null {
+  if (!stranger || rowsProduced > 0) return null;
+  return { kind: "identity", reason: STRANGER_NOTHING_REASON, line: STRANGER_NOTHING_LINE };
+}

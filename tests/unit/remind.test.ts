@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EntryRow, OwnerRow, WeekBoundsRow } from "../../scripts/lib/db";
 import { EXPECTED_ROSTER_ADDRESSES } from "../../scripts/lib/constants";
+import { readFileSync } from "node:fs";
 import { boundariesOf, boundaryKey, dueBoundary, findBoundary } from "../../scripts/remind/lib/due";
 import { countGate, reminderAddresses } from "../../scripts/remind/lib/recipients";
 import {
@@ -100,14 +101,33 @@ describe("which boundary is due", () => {
 
   it("is the boundary whose six-hour window holds now, and nothing outside it", () => {
     // Week 1 early is Wed 2 PM ET: due from 8 AM ET to 2 PM ET, not before, not after.
-    expect(dueBoundary(WEEKS, new Date("2026-09-09T11:59:59Z"))).toBeNull();
-    expect(dueBoundary(WEEKS, new Date("2026-09-09T12:00:00Z"))?.kind).toBe("early");
-    expect(dueBoundary(WEEKS, new Date("2026-09-09T17:59:59Z"))?.kind).toBe("early");
-    expect(dueBoundary(WEEKS, new Date("2026-09-09T18:00:00Z"))).toBeNull();
+    expect(dueBoundary(WEEKS, new Date("2026-09-09T11:59:59Z"), 6)).toBeNull();
+    expect(dueBoundary(WEEKS, new Date("2026-09-09T12:00:00Z"), 6)?.kind).toBe("early");
+    expect(dueBoundary(WEEKS, new Date("2026-09-09T17:59:59Z"), 6)?.kind).toBe("early");
+    expect(dueBoundary(WEEKS, new Date("2026-09-09T18:00:00Z"), 6)).toBeNull();
     // Friday 8 AM ET: the late one.
-    expect(dueBoundary(WEEKS, new Date("2026-09-11T12:30:00Z"))).toMatchObject({ week: 1, kind: "late" });
+    expect(dueBoundary(WEEKS, new Date("2026-09-11T12:30:00Z"), 6)).toMatchObject({ week: 1, kind: "late" });
     // Thursday: nothing, whatever the week.
-    expect(dueBoundary(WEEKS, new Date("2026-09-10T15:00:00Z"))).toBeNull();
+    expect(dueBoundary(WEEKS, new Date("2026-09-10T15:00:00Z"), 6)).toBeNull();
+  });
+
+  it("takes the lead from its caller and has no default of its own", () => {
+    // The lead lives in scripts/ops/config.json. A second copy in due.ts was a
+    // constant a reviewed change to the config would not have moved (#41), so
+    // the argument is required and the window actually follows it.
+    const eightHoursBefore = new Date("2026-09-09T10:00:00Z");
+    expect(dueBoundary(WEEKS, eightHoursBefore, 6)).toBeNull();
+    expect(dueBoundary(WEEKS, eightHoursBefore, 8)?.kind).toBe("early");
+    // No default: calling it without a lead is a type error, and a nonsense
+    // lead is refused rather than silently treated as six hours.
+    expect(() => dueBoundary(WEEKS, eightHoursBefore, 0)).toThrow(/positive number of hours/);
+    expect(() => dueBoundary(WEEKS, eightHoursBefore, Number.NaN)).toThrow(/positive number of hours/);
+    // The command reads the config and passes it; it holds no literal lead.
+    const cli = readFileSync("scripts/remind/cli.ts", "utf8");
+    expect(cli).toMatch(/loadOpsConfig\(\)\.reminderLeadHours/);
+    expect(cli).toMatch(/dueBoundary\(weeks, now, leadHours\)/);
+    expect(cli).not.toMatch(/REMINDER_LEAD_HOURS/);
+    expect(readFileSync("scripts/remind/lib/due.ts", "utf8")).not.toMatch(/REMINDER_LEAD_HOURS/);
   });
 
   it("finds a named boundary for a hand run and nothing for a week without one", () => {

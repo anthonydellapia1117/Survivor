@@ -68,3 +68,65 @@ export function dueInWindow(expr: string, now: Date, windowMinutes: number): boo
   }
   return false;
 }
+
+const MINUTES_PER_WEEK = 7 * 24 * 60;
+
+/** Every minute-of-week a `* *` day-of-month/month expression names. Throws when it restricts either. */
+function minutesOfWeek(expr: string, name: string): number[] {
+  const c = parseCron(expr);
+  if (c.dom.size !== 31 || c.month.size !== 12) {
+    throw new Error(`cron ${name}: day-of-month and month must both be * to compare schedules ("${expr}")`);
+  }
+  const out: number[] = [];
+  for (const d of c.dow) for (const h of c.hour) for (const m of c.minute) out.push(d * 1440 + h * 60 + m);
+  return out.sort((a, b) => a - b);
+}
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** A minute-of-week as "Wed 10:00 UTC", for naming a slot a tick never sees. */
+export function describeSlot(minuteOfWeek: number): string {
+  const d = Math.floor(minuteOfWeek / 1440);
+  const h = Math.floor((minuteOfWeek % 1440) / 60);
+  const m = minuteOfWeek % 60;
+  return `${DAYS[d]} ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} UTC`;
+}
+
+/**
+ * The slots of `jobExpr` that no run of `tickExpr` would observe, given that a
+ * tick looks back `windowMinutes` (itself included).
+ */
+export function unobservedSlots(jobExpr: string, tickExpr: string, windowMinutes: number): string[] {
+  if (!Number.isInteger(windowMinutes) || windowMinutes < 1) throw new Error("cron: windowMinutes must be a positive integer");
+  const ticks = minutesOfWeek(tickExpr, "tick");
+  if (ticks.length === 0) throw new Error(`cron tick: "${tickExpr}" names no minute`);
+  const covered = (slot: number): boolean =>
+    ticks.some((t) => (((t - slot) % MINUTES_PER_WEEK) + MINUTES_PER_WEEK) % MINUTES_PER_WEEK <= windowMinutes - 1);
+  return minutesOfWeek(jobExpr, "job").filter((s) => !covered(s)).map(describeSlot);
+}
+
+/** Whether every run of `tickExpr` finds `jobExpr` due: the job cannot lose a run however the ticks fall. */
+export function dueAtEveryTick(jobExpr: string, tickExpr: string, windowMinutes: number): boolean {
+  const job = new Set(minutesOfWeek(jobExpr, "job"));
+  return minutesOfWeek(tickExpr, "tick").every((t) => {
+    for (let k = 0; k < windowMinutes; k++) if (job.has((((t - k) % MINUTES_PER_WEEK) + MINUTES_PER_WEEK) % MINUTES_PER_WEEK)) return true;
+    return false;
+  });
+}
+
+/**
+ * The slots a job would lose to the tick, or none when it loses nothing.
+ *
+ * A schedule is only as good as the tick that observes it: a slot falling in
+ * the gap between two ticks never runs, which is how the pick-reminder's
+ * 10:00 UTC slot sat before the first tick of the day and the EDT early
+ * reminder would have gone four hours late (issue #41). Two shapes lose
+ * nothing, and a job has to be one of them: either every slot it names is
+ * observed, or it is due at every tick anyway. The sweep is the second - it
+ * names every hour on purpose, so the overnight hours the Routine sleeps
+ * through are not lost runs but hours nobody meant to sweep.
+ */
+export function missedSlots(jobExpr: string, tickExpr: string, windowMinutes: number): string[] {
+  if (dueAtEveryTick(jobExpr, tickExpr, windowMinutes)) return [];
+  return unobservedSlots(jobExpr, tickExpr, windowMinutes);
+}

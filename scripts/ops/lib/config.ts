@@ -5,6 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { missedSlots } from "./cron";
 
 export const JOB_NAMES = ["sweep", "pick-reminder", "lynne-import", "chase", "results", "distribute"] as const;
 export type JobName = (typeof JOB_NAMES)[number];
@@ -26,6 +27,13 @@ export interface JobConfig {
 export interface OpsConfig {
   timezone: string;
   tickWindowMinutes: number;
+  /**
+   * The cron the Routine that runs `npm run ops -- tick` fires on, UTC, the
+   * same expression docs/ROUTINES.md section 10 records. Checked in because a
+   * job schedule means nothing on its own: a slot between two ticks is never
+   * observed, and the validator below refuses a config where one is.
+   */
+  tickSchedule: string;
   expectedRosterAddresses: number;
   reminderLeadHours: number;
   sweepSubjectTerms: string[];
@@ -44,6 +52,7 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
   const c = raw as Record<string, unknown>;
   if (typeof c.timezone !== "string" || !c.timezone) fail("timezone missing");
   if (!Number.isInteger(c.tickWindowMinutes) || (c.tickWindowMinutes as number) < 1 || (c.tickWindowMinutes as number) > 1440) fail("tickWindowMinutes must be 1-1440");
+  if (typeof c.tickSchedule !== "string" || c.tickSchedule.trim().split(/\s+/).length !== 5) fail("tickSchedule must be 5 cron fields");
   if (!Number.isInteger(c.expectedRosterAddresses) || (c.expectedRosterAddresses as number) < 1) fail("expectedRosterAddresses must be a positive integer");
   if (!Number.isInteger(c.reminderLeadHours) || (c.reminderLeadHours as number) < 1) fail("reminderLeadHours must be a positive integer");
   if (!Array.isArray(c.sweepSubjectTerms) || c.sweepSubjectTerms.length === 0 || !c.sweepSubjectTerms.every((t) => typeof t === "string" && t.trim())) fail("sweepSubjectTerms must be a non-empty list of words");
@@ -65,6 +74,19 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
     if (j.sends && !SEND_JOBS.includes(name)) fail(`${name}: sends is true but only ${SEND_JOBS.join(" and ")} may send`);
     if (!j.sends && args.includes("--send")) fail(`${name}: --send on a job that does not send`);
     if (j.sends && typeof j.template !== "string") fail(`${name}: a sending job names its template`);
+  }
+  // No job may lose a run to the tick that observes it: either every slot it
+  // names falls inside a tick's look-back window, or it is due at every tick
+  // anyway (missedSlots decides which). The pick-reminder's 10:00 UTC slot
+  // sat in the gap before the first tick of the day, so the EDT early
+  // reminder would have gone four hours late (issue #41). Checked at load, so
+  // a schedule change that orphans a slot is refused and names it.
+  const tick = c.tickSchedule as string;
+  const window = c.tickWindowMinutes as number;
+  for (const name of JOB_NAMES) {
+    const j = jobs[name] as Record<string, unknown>;
+    const missed = missedSlots(j.schedule as string, tick, window);
+    if (missed.length) fail(`${name}: ${missed.join(", ")} falls outside every ${window}-minute tick window of "${tick}"`);
   }
   return raw as OpsConfig;
 }

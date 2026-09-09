@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { MessageMeta } from "../../scripts/lib/gmail";
 import { footballAttachment, isFootballXlsx, refuseUnverifiedLegacy, refuseWeekMismatch, selectFootballMessage } from "../../scripts/results/lib/select";
@@ -90,15 +91,27 @@ describe("selectFootballMessage", () => {
   });
 });
 
-import { refuseDuplicateImport } from "../../scripts/results/lib/select";
+import { duplicateImportLine } from "../../scripts/results/lib/select";
 
-describe("refuseDuplicateImport", () => {
-  it("refuses a sha256 seen before, naming the import, and lets a new file through", () => {
-    expect(refuseDuplicateImport({ id: "imp-1", week: 1, imported_at: "2026-09-16T14:00:00Z" })).toBe(
-      "Already imported 2026-09-16T14:00:00Z as import imp-1 (week 1): refusing to run twice on the same file.",
+describe("duplicateImportLine", () => {
+  it("names a sha256 seen before as nothing to do, and lets a new file through", () => {
+    expect(duplicateImportLine({ id: "imp-1", week: 1, imported_at: "2026-09-16T14:00:00Z" })).toBe(
+      "Already imported 2026-09-16T14:00:00Z as import imp-1 (week 1): seen before, nothing to do.",
     );
-    expect(refuseDuplicateImport({ id: "imp-2", week: null, imported_at: "x" })).toContain("week unknown");
-    expect(refuseDuplicateImport(null)).toBeNull();
+    expect(duplicateImportLine({ id: "imp-2", week: null, imported_at: "x" })).toContain("week unknown");
+    expect(duplicateImportLine(null)).toBeNull();
+  });
+
+  it("ends the run at exit 0 rather than throwing, so a tick with no new sheet reads as ok", () => {
+    // She sends one file a week and the schedule looks twice, so her newest
+    // sheet is usually one already on file. Throwing made every tick after the
+    // first count a failure until she sent a new file (#40).
+    const cli = readFileSync("scripts/results/cli.ts", "utf8");
+    expect(cli).toMatch(/const duplicate = duplicateImportLine\(await importExists\(client, sha256\)\);/);
+    // The block ends in a return, and carries no throw: the whole point.
+    expect(cli).toMatch(/if \(duplicate !== null\) \{[\s\S]{0,400}?\n    return;\n  \}/);
+    expect(/if \(duplicate !== null\) \{[\s\S]{0,400}?\n  \}/.exec(cli)?.[0]).not.toMatch(/throw/);
+    expect(cli).not.toMatch(/duplicate !== null\) throw/);
   });
 });
 

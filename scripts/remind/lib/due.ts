@@ -1,7 +1,12 @@
 // Which week reminder is due, from the weeks table and the clock and
 // nothing else. A week has two stored boundaries, early (the Wednesday
 // noon-ish tier) and late (the Friday lock); each gets one reminder, sent
-// REMINDER_LEAD_HOURS before it. Pure, so it is tested without a database.
+// `reminderLeadHours` before it.
+//
+// The lead is a REQUIRED argument, never a default here: it lives in
+// scripts/ops/config.json, and a second copy in this file is a constant a
+// reviewed change to the config would silently fail to move (issue #41).
+// Pure, so it is tested without a database.
 
 import type { WeekBoundsRow } from "../../lib/db";
 
@@ -12,9 +17,6 @@ export interface Boundary {
   kind: BoundaryKind;
   deadlineIso: string;
 }
-
-/** How long before a boundary its reminder goes. Set by Anthony on 2026-09-09. */
-export const REMINDER_LEAD_HOURS = 6;
 
 function at(iso: string): number {
   return new Date(iso).getTime();
@@ -40,8 +42,12 @@ export function boundaryKey(b: Pick<Boundary, "week" | "kind">): string {
  * deadline - lead <= now < deadline. Null when none is due, which is the
  * normal answer for most of the week; a scheduler can fire this on a coarse
  * clock and the audit log keeps it to one send per boundary.
+ *
+ * `leadHours` has no default on purpose: the caller reads it from the ops
+ * config, so changing the config changes the reminder.
  */
-export function dueBoundary(weeks: WeekBoundsRow[], now: Date, leadHours: number = REMINDER_LEAD_HOURS): Boundary | null {
+export function dueBoundary(weeks: WeekBoundsRow[], now: Date, leadHours: number): Boundary | null {
+  if (!Number.isFinite(leadHours) || leadHours <= 0) throw new Error("dueBoundary: leadHours must be a positive number of hours");
   const t = now.getTime();
   const lead = leadHours * 60 * 60 * 1000;
   for (const b of boundariesOf(weeks)) {

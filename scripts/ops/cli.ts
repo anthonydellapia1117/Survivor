@@ -51,14 +51,32 @@ function parseArgs(argv: string[]): Args {
 
 export interface JobOutcome {
   job: JobName;
-  /** "ran" with the command's exit code, "skipped" with the reason, or "planned" on a dry run. */
-  kind: "ran" | "skipped" | "planned";
+  /**
+   * "ran" with the command's exit code, "skipped" with the reason a due job
+   * was deliberately not started, "failed" when it could not be started at
+   * all, or "planned" on a dry run.
+   *
+   * "failed" is separate from "skipped" because they read opposite ways: a
+   * skip is the tick working (nothing to do, autosend off), a failure is a
+   * due job that never ran. Counting a sign-in or a Gmail outage as a skip
+   * exited 0 and reported "ops finished" (issue #40).
+   */
+  kind: "ran" | "skipped" | "failed" | "planned";
   detail: string;
   exitCode?: number;
 }
 
 /** The arguments a job runs with, beyond the config's: the week for the post-lock jobs, the file for the roster load. */
 async function extraArgs(job: JobName, dryRun: boolean): Promise<{ args: string[]; skip?: string }> {
+  // A dry run prints what would run and reaches nothing: no database sign-in,
+  // no Gmail. Deriving the real argument first meant --dry-run failed without
+  // credentials instead of printing, and "starts nothing" was true only of the
+  // child process (issue #40).
+  if (dryRun) {
+    if (job === "results" || job === "distribute") return { args: ["--week", "<latest locked week>"] };
+    if (job === "lynne-import") return { args: ["--file", "<her newest Football xlsx>", "--message-id", "<its message id>"] };
+    return { args: [] };
+  }
   if (job === "results" || job === "distribute") {
     const { client } = await adminClient();
     const week = latestLockedWeek(await loadWeeks(client), new Date());
@@ -76,10 +94,17 @@ async function extraArgs(job: JobName, dryRun: boolean): Promise<{ args: string[
     if (!selection) return { args: [], skip: `no message from the master pool's runner carries a Football .xlsx (${refs.length} checked)` };
     const attachment = footballAttachment(selection.message);
     if (!attachment) return { args: [], skip: "the newest message carries no Football .xlsx" };
-    if (dryRun) return { args: ["--file", `<${attachment.filename} from message ${selection.message.id}>`, "--message-id", selection.message.id] };
     const buf = await getAttachment(gmail, selection.message.id, attachment.attachmentId);
-    const file = path.join(os.tmpdir(), `survivor-roster-${selection.message.id}-${attachment.filename}`);
+    // The path is ours, never hers. Her filename is metadata on the message:
+    // a slash in it targets a directory that does not exist and "../" lands
+    // outside the temporary directory (issue #40). The message id, which
+    // Gmail gives as hex, is the name, and it is sanitised anyway; her
+    // filename travels only as the label on the log line below.
+    const safeId = selection.message.id.replace(/[^A-Za-z0-9_-]/g, "");
+    if (!safeId) return { args: [], skip: `message id ${JSON.stringify(selection.message.id)} is not a usable file name` };
+    const file = path.join(os.tmpdir(), `survivor-roster-${safeId}.xlsx`);
     fs.writeFileSync(file, buf);
+    console.log(`lynne-import: ${attachment.filename} (${buf.length} bytes) written to ${file}`);
     return { args: ["--file", file, "--message-id", selection.message.id] };
   }
   return { args: [] };
@@ -124,7 +149,7 @@ async function main(): Promise<void> {
       outcomes.push(await runJob(job, config.jobs[job], args.dryRun));
     } catch (e: unknown) {
       const why = e instanceof Error ? e.message : String(e);
-      outcomes.push({ job, kind: "skipped", detail: `failed before starting: ${why}` });
+      outcomes.push({ job, kind: "failed", detail: `failed before starting: ${why}` });
     }
   }
 
@@ -133,7 +158,7 @@ async function main(): Promise<void> {
   for (const o of outcomes) {
     const status = o.kind === "ran" ? (o.exitCode === 0 ? "ok" : `exit ${o.exitCode}`) : o.kind;
     console.log(`${o.job}: ${status} - ${o.detail}`);
-    if (o.kind === "ran" && o.exitCode !== 0) failed += 1;
+    if (o.kind === "failed" || (o.kind === "ran" && o.exitCode !== 0)) failed += 1;
   }
   const summary = outcomes.map((o) => `${o.job} ${o.kind === "ran" ? (o.exitCode === 0 ? "ok" : "failed") : o.kind}`).join(", ");
   if (failed > 0) {

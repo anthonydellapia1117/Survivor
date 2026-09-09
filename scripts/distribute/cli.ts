@@ -13,13 +13,14 @@
 
 import { groupSendList } from "@/lib/emails/group-send";
 import { EXPECTED_ROSTER_ADDRESSES, SITE_URL } from "../lib/constants";
-import { adminClient, loadLiveEntries, loadOwners, loadStandings, loadWeeks } from "../lib/db";
+import { adminClient, loadAuditByAction, loadLiveEntries, loadOwners, loadStandings, loadWeeks, recordAudit } from "../lib/db";
 import { createDraft, gmailClient, profileAddress } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { countGate } from "../remind/lib/recipients";
 import { confirm } from "../lib/prompt";
 import { confirmedOwners } from "../lib/roster";
 import { formatEt, type WeekBounds } from "../picks/lib/deadline";
+import { DRAFTED_ACTION, priorDraftFor } from "./lib/drafted";
 import { refusalBeforeLock } from "./lib/lock";
 import { distributeMessage } from "./lib/message";
 import { buildGroupSendOwners } from "./lib/recipients";
@@ -50,7 +51,7 @@ async function main(): Promise<void> {
   const { week, dryRun, yes } = parseArgs(process.argv.slice(2));
   // The token check is local and instant; do it before asking for a password.
   const gmail = gmailClient();
-  const { client } = await adminClient();
+  const { client, actor } = await adminClient();
 
   // ---- refuse before the lock
   const weeks = await loadWeeks(client);
@@ -65,6 +66,16 @@ async function main(): Promise<void> {
   if (refusal !== null) {
     console.log(refusal);
     process.exitCode = 1;
+    return;
+  }
+
+  // ---- already drafted for this week?
+  const priorDrafts = await loadAuditByAction(client, DRAFTED_ACTION);
+  const prior = priorDraftFor(priorDrafts, week);
+  if (prior) {
+    const line = `Already drafted for week ${week} at ${prior.at}; nothing to do.`;
+    console.log(line);
+    await notify(finishedLine("distribute", `week ${week}: already drafted, skipped`));
     return;
   }
 
@@ -144,6 +155,18 @@ async function main(): Promise<void> {
     body: msg.body,
   });
   console.log(`draft ${draftId} created, BCC ${k} addresses. Not sent: open Gmail, check it, send it yourself.`);
+  // Recorded straight after the draft, so the next run finds it. A crash
+  // between the two leaves a draft with no row and the next run drafts again;
+  // that is one admin running one command twice in one hour, and CLAUDE.md
+  // says a case this pool cannot produce is documented, not built for.
+  await recordAudit(client, {
+    actor,
+    action: DRAFTED_ACTION,
+    targetTable: "gmail",
+    targetId: draftId,
+    after: { week, draft_id: draftId, recipient_count: k, subject: msg.subject },
+    note: `distribute draft for week ${week} to ${k} addresses on Bcc`,
+  });
   await notify(finishedLine("distribute", `week ${week}: draft ${draftId}, ${k} addresses`));
 }
 

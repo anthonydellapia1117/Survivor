@@ -17,12 +17,13 @@
 
 import { adminClient, loadGames, loadLiveEntries, loadOwners, loadWeeks } from "../lib/db";
 import { ADMIN_MAILBOX, EXPECTED_ROSTER_ADDRESSES } from "../lib/constants";
+import { loadOpsConfig } from "../ops/lib/config";
 import { createDraft, gmailClient } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
 import { autosendEnabled, sendWeekReminder } from "../lib/send";
 import { formatEt, type GameLite, type WeekBounds } from "../picks/lib/deadline";
-import { boundaryKey, dueBoundary, findBoundary, REMINDER_LEAD_HOURS, type Boundary, type BoundaryKind } from "./lib/due";
+import { boundaryKey, dueBoundary, findBoundary, type Boundary, type BoundaryKind } from "./lib/due";
 import { reminderBody, reminderSubject } from "./lib/message";
 import { countGate, reminderAddresses } from "./lib/recipients";
 
@@ -66,6 +67,10 @@ async function main(): Promise<void> {
     throw new Error("REMINDER_AUTOSEND is not true: drafts only.");
   }
 
+  // The lead comes from the ops config and nowhere else, so a reviewed
+  // change there moves the reminder (issue #41).
+  const leadHours = loadOpsConfig().reminderLeadHours;
+
   const { client, actor } = await adminClient();
   const [owners, entries, weeks] = await Promise.all([loadOwners(client), loadLiveEntries(client), loadWeeks(client)]);
   const now = new Date();
@@ -79,9 +84,9 @@ async function main(): Promise<void> {
       throw new Error(`Week ${args.week} ${args.boundary} deadline ${formatEt(b.deadlineIso)} has passed. Nothing to remind about.`);
     }
   } else {
-    b = dueBoundary(weeks, now);
+    b = dueBoundary(weeks, now, leadHours);
     if (!b) {
-      console.log(`Nothing due: no deadline is within the next ${REMINDER_LEAD_HOURS} hours.`);
+      console.log(`Nothing due: no deadline is within the next ${leadHours} hours.`);
       await notify(summary("nothing due"));
       return;
     }

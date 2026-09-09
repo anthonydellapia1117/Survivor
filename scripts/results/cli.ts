@@ -34,7 +34,7 @@ import {
   varianceTable,
 } from "./lib/format";
 import { buildResultsPlan, sha256Of } from "./lib/plan";
-import { footballAttachment, refuseDuplicateImport, refuseUnverifiedLegacy, refuseWeekMismatch, selectFootballMessage, type FootballSelection } from "./lib/select";
+import { duplicateImportLine, footballAttachment, refuseUnverifiedLegacy, refuseWeekMismatch, selectFootballMessage, type FootballSelection } from "./lib/select";
 
 interface Args {
   week: number;
@@ -101,8 +101,17 @@ async function main(): Promise<void> {
   const buf = await getAttachment(gmail, message.id, attachment.attachmentId);
   const sha256 = sha256Of(buf);
   console.log(`  sha256:     ${sha256}`);
-  const duplicate = refuseDuplicateImport(await importExists(client, sha256));
-  if (duplicate !== null) throw new Error(duplicate);
+  // Her newest sheet is usually one already on file: she sends one file a
+  // week and the schedule looks twice. That is the once-per-sha256 rule
+  // holding, not a failure, so the run ends here at exit 0 and the tick reads
+  // it as ok (issue #40). Nothing is applied twice either way - lynne_imports
+  // enforces the sha256 in the database.
+  const duplicate = duplicateImportLine(await importExists(client, sha256));
+  if (duplicate !== null) {
+    console.log(duplicate);
+    await notify(finishedLine("results", `week ${week}: ${duplicate}`));
+    return;
+  }
 
   // ---- parse and plan, the way /admin/import does
   const [entries, standings, localPicks] = await Promise.all([

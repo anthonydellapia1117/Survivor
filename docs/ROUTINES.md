@@ -443,8 +443,8 @@ one line to ntfy when `NTFY_TOPIC` is set, and prints it otherwise.
 ## 10. Ops Tick
 
 Name: **Survivor Ops Tick**
-Cron (America/New_York): `43 7-22 * * *` (every hour at :43, 7 AM to 10 PM)
-Cron stored (UTC): `43 11-23,0-2 * * *`
+Cron (America/New_York): `43 5-22 * * *` (every hour at :43, 5 AM to 10 PM)
+Cron stored (UTC): `43 9-23,0-2 * * *`
 Trigger ID: `trig_01W9BrBAoWKBQm9AjJ9FVVKK` (created 2026-09-09 as the Week
 Reminder, renamed and repointed the same day; **paused** until its
 environment carries the variables below - enabling it is Anthony's click,
@@ -458,6 +458,19 @@ every job whose cron fell inside the last hour and nothing else; the jobs'
 own once-only guards (audit rows per boundary and per recipient per lock
 day, a sha256 per sheet, read marks and the Done label on mail) keep a
 second tick in the same hour from acting twice.
+
+The tick's own cron is checked in too, as `tickSchedule` in
+`scripts/ops/config.json`, and the loader refuses a config where any job would
+lose a run to it: either every slot a job names falls inside a tick's 60-minute
+look-back, or the job is due at every tick anyway (the sweep, which names every
+hour on purpose). **It started at 11:43 UTC and the pick-reminder's 10:00 slot
+fell in the gap before the first tick of the day** - so in EDT, where a noon-ET
+deadline is 16:00 UTC and six hours before it is exactly 10:00, the early
+reminder would have gone at 11:43, four hours and seventeen minutes before the
+deadline instead of six (issue #41). Starting at 09:43 UTC keeps the six-hour
+rule in both EDT and EST. The two crons above and `tickSchedule` have to agree;
+`tests/unit/ops.test.ts` holds the config to the schedule and names any slot
+that would be lost.
 
 The six jobs, their UTC crons and what each runs (the config is the source;
 this table is a copy for reading):
@@ -481,7 +494,10 @@ now:
   rule. A stranger's mail is staged for Anthony as an identity question, never
   written as a pick.
 - The week reminder goes six hours before each of a week's two stored
-  boundaries, from the weeks table (`reminderLeadHours`).
+  boundaries, from the weeks table. The lead is `reminderLeadHours` in the
+  config and nowhere else: `npm run remind` reads it and passes it in, and
+  `dueBoundary` has no default of its own, so a reviewed change to the config
+  moves the reminder instead of silently doing nothing (issue #41).
 - Only `pick-reminder` and `chase` may send, and only through
   `scripts/lib/send.ts` with `REMINDER_AUTOSEND=true`; the loader refuses a
   config that marks any other job as sending or hands it `--send`. Every
@@ -493,7 +509,11 @@ Environment the tick needs to do anything but report: `ADMIN_EMAIL`,
 `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_TOKEN_JSON`, and
 `REMINDER_AUTOSEND=true` for the two sending jobs; optionally `NTFY_TOPIC`.
 Without them a sending job is not started ("REMINDER_AUTOSEND is not true:
-drafts only, nothing started") and the others fail at sign-in and say so.
+drafts only, nothing started") and the others fail at sign-in and say so - as
+`failed`, counted with the nonzero exits, never as `skipped`: a due job that
+never ran is not the tick working (issue #40). `npm run ops -- tick --dry-run`
+reaches nothing at all and prints a placeholder for each derived argument, so
+it runs without credentials.
 Nothing in this repo holds or requests a secret; the Routine's session config
 also came back with no repository source, so confirming the repo and the
 environment in the claude.ai Routines UI is Anthony's step before enabling.

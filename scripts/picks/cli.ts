@@ -38,7 +38,7 @@ import { gmailClient, listUnreadFrom, markProcessed, type InboundMessage, listUn
 import { takeValue, weekArg } from "../lib/args";
 import { ADMIN_MAILBOX, LYNNE_EMAIL } from "../lib/constants";
 import { loadOpsConfig } from "../ops/lib/config";
-import { strangerMessages, subjectSweepQuery } from "./lib/subject-sweep";
+import { strangerIdentityRow, strangerMessages, subjectSweepQuery } from "./lib/subject-sweep";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { aliveEntries, confirmedOwners, intakeAddresses } from "../lib/roster";
 import { resolveFromArg } from "./lib/from";
@@ -113,6 +113,14 @@ interface Item {
   week: number;
   /** Gmail receipt time; null for pasted or filed text. */
   receivedAt: string | null;
+  /**
+   * The sender is on no roster row and the message came in on the subject
+   * rule. Carried through parsing because a stranger whose body parses to
+   * nothing produced no row at all: it was never staged and never marked, so
+   * every hourly sweep found it again while the log said it had been staged
+   * (issue #42).
+   */
+  stranger: boolean;
 }
 
 interface Proposal {
@@ -258,6 +266,7 @@ async function main(): Promise<void> {
       // to --week, never to a week named in the quoted history under it.
       week: weekFor(weekOfMessage("", text)),
       receivedAt: null,
+      stranger: false,
     });
   } else {
     if (args.source !== null) {
@@ -273,6 +282,7 @@ async function main(): Promise<void> {
     const terms = loadOpsConfig().sweepSubjectTerms;
     const strangers = strangerMessages(await listUnreadMatching(gmail, subjectSweepQuery(terms)), addresses, [ADMIN_MAILBOX, LYNNE_EMAIL], terms);
     const msgs: InboundMessage[] = [...known, ...strangers];
+    const strangerIds = new Set(strangers.map((m) => m.id));
     if (strangers.length) console.log(`${strangers.length} unread message(s) from unknown senders with "${terms.join('" or "')}" in the subject; staged for Anthony, never written.`);
     for (const m of msgs) {
       items.push({
@@ -285,6 +295,7 @@ async function main(): Promise<void> {
         messageId: m.id,
         week: weekFor(weekOfMessage(m.subject, m.body)),
         receivedAt: m.receivedAt,
+        stranger: strangerIds.has(m.id),
       });
     }
     if (!msgs.length) console.log("No unread mail from any known player address.");
@@ -298,6 +309,7 @@ async function main(): Promise<void> {
   // Keyed by the item's identity (the Gmail message id), never its label.
   const keyFor = (itemId: string, week: number, entryId: string) => `${itemId}|${week}|${entryId}`;
   for (const item of items) {
+    const rowsBefore = unresolved.length + proposals.length;
     const ctx = await contextFor(item.week);
     const madeAt = effectiveSubmitTime(item.receivedAt, now);
     const scopeEntries = scopeEntriesFor(item, roster, entriesFor);
@@ -396,6 +408,14 @@ async function main(): Promise<void> {
         });
       }
     }
+    // A stranger's mail that parsed to nothing at all - an empty body, a bare
+    // greeting, anything unparsedReason calls noise - would leave this loop
+    // having produced no row, so it was neither staged nor marked and came
+    // back on every sweep (issue #42). It becomes one identity question, which
+    // is what the log line above already claimed. A stranger never becomes a
+    // pick; this only makes sure they become a question.
+    const nothingHeard = strangerIdentityRow(item.stranger, unresolved.length + proposals.length - rowsBefore);
+    if (nothingHeard) unresolved.push({ ...nothingHeard, candidates: [], item });
   }
 
   // ---- one entry, one team, per message: two teams for one entry are staged,

@@ -34,11 +34,11 @@ export function selectFootballMessage(messages: MessageMeta[]): FootballSelectio
 }
 
 /** The refusal for a file already imported, null when it is new. The sha256 is the identity. */
-export function refuseDuplicateImport(
+export function duplicateImportLine(
   prior: { id: string; week: number | null; imported_at: string } | null,
 ): string | null {
   if (!prior) return null;
-  return `Already imported ${prior.imported_at} as import ${prior.id} (week ${prior.week ?? "unknown"}): refusing to run twice on the same file.`;
+  return `Already imported ${prior.imported_at} as import ${prior.id} (week ${prior.week ?? "unknown"}): seen before, nothing to do.`;
 }
 
 /**
