@@ -317,12 +317,19 @@ describe("the tick's report", () => {
     expect(code("scripts/distribute/lib/drafted.ts")).toMatch(/const DRAFTED_ACTION = "distribute_drafted";/);
     const src = code("scripts/distribute/cli.ts");
     expect(src).toMatch(/loadAuditByAction\(client, DRAFTED_ACTION\)/);
-    expect(src).toMatch(/priorDraftFor\(priorDrafts, week\)/);
     expect(src).toMatch(/Already drafted for week \$\{week\}/);
     expect(src).toMatch(/action: DRAFTED_ACTION/);
-    // The check comes before the draft, and the row after it.
-    expect(src.indexOf("loadAuditByAction(client, DRAFTED_ACTION)")).toBeLessThan(src.indexOf("createDraft("));
+    // The week is CLAIMED before the Gmail call and recorded after it, the
+    // way scripts/lib/send.ts claims a send. Recording only afterwards left a
+    // draft with no row whenever the insert failed - a transient database
+    // error, not only a crash - and the next run drafted the roster again.
+    expect(code("scripts/distribute/lib/drafted.ts")).toMatch(/const DRAFT_CLAIM_ACTION = "distribute_draft_claim";/);
+    expect(src).toMatch(/loadAuditByAction\(client, DRAFT_CLAIM_ACTION\)/);
+    expect(src.indexOf("loadAuditByAction(client, DRAFT_CLAIM_ACTION)")).toBeLessThan(src.indexOf("createDraft("));
+    expect(src.indexOf("action: DRAFT_CLAIM_ACTION")).toBeLessThan(src.indexOf("createDraft("));
     expect(src.indexOf("createDraft(")).toBeLessThan(src.indexOf("action: DRAFTED_ACTION"));
+    // A claim on its own counts, so an unknown outcome never drafts twice.
+    expect(src).toMatch(/priorDraftFor\(\[\.\.\.drafted, \.\.\.claims\], week\)/);
   });
 
   it("does not block the preview or a deliberate redraft: --dry-run creates nothing and --again is the escape hatch", () => {
@@ -348,6 +355,9 @@ describe("the week a distribute draft was recorded for", () => {
     expect(draftedWeekOf({ after: null })).toBeNull();
     const rows = [{ after: { week: 1 } }, { after: { week: 2 } }, { after: null }];
     expect(priorDraftFor(rows, 2)).toBe(rows[1]);
+    // A claim row alone matches: an attempted draft whose outcome is unknown
+    // must still stop the next run, exactly as a completed one does.
+    expect(priorDraftFor([{ after: { week: 5, recipient_count: 39 } }], 5)).not.toBeNull();
     expect(priorDraftFor(rows, 3)).toBeNull();
     expect(priorDraftFor([], 1)).toBeNull();
   });

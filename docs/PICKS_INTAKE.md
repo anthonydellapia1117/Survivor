@@ -261,8 +261,11 @@ the one-sentence standings line the dashboard shows, read from the same
 view the dashboard reads. Nothing about money.
 You should see `draft <id> created, BCC <k> addresses. Not sent`.
 
-**One draft per week.** The draft is recorded in `audit_log` under
-`distribute_drafted`, and a later run for a week that already has one prints
+**One draft per week.** The week is claimed in `audit_log` under
+`distribute_draft_claim` before the Gmail call and recorded under
+`distribute_drafted` after it, the way `scripts/lib/send.ts` claims a send; a
+claim on its own counts, so a draft whose outcome is unknown never becomes
+two. A later run for a week that already has one prints
 `Already drafted for week N at <time>; nothing to do.` and stops, so a second
 tick in the same hour - or a hand run beside a scheduled one - cannot leave
 two whole-roster drafts in Gmail. Two things are deliberately not blocked:

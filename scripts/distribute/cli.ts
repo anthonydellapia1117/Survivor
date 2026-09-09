@@ -21,7 +21,7 @@ import { countGate } from "../remind/lib/recipients";
 import { confirm } from "../lib/prompt";
 import { confirmedOwners } from "../lib/roster";
 import { formatEt, type WeekBounds } from "../picks/lib/deadline";
-import { DRAFTED_ACTION, priorDraftFor } from "./lib/drafted";
+import { DRAFTED_ACTION, DRAFT_CLAIM_ACTION, priorDraftFor } from "./lib/drafted";
 import { refusalBeforeLock } from "./lib/lock";
 import { distributeMessage } from "./lib/message";
 import { buildGroupSendOwners } from "./lib/recipients";
@@ -81,8 +81,13 @@ async function main(): Promise<void> {
   // deliberately draft again after deleting the first. A dry run creates
   // nothing, so it is never blocked; --again is the deliberate redraft, and it
   // records its own row like any other.
-  const priorDrafts = await loadAuditByAction(client, DRAFTED_ACTION);
-  const prior = priorDraftFor(priorDrafts, week);
+  const [claims, drafted] = await Promise.all([
+    loadAuditByAction(client, DRAFT_CLAIM_ACTION),
+    loadAuditByAction(client, DRAFTED_ACTION),
+  ]);
+  // Drafted first, so a completed draft is found before the claim that
+  // preceded it; a claim with no drafted row still counts on its own.
+  const prior = priorDraftFor([...drafted, ...claims], week);
   if (prior && !dryRun && !again) {
     console.log(`Already drafted for week ${week} at ${prior.at}; nothing to do. Pass --again to draft it again.`);
     await notify(finishedLine("distribute", `week ${week}: already drafted, skipped`));
@@ -159,6 +164,17 @@ async function main(): Promise<void> {
   }
 
   // ---- exactly one draft, never a send
+  // Claim first. If the process dies, or the audit insert fails, between here
+  // and the drafted row, the claim alone stops every later run from drafting
+  // this week again.
+  await recordAudit(client, {
+    actor,
+    action: DRAFT_CLAIM_ACTION,
+    targetTable: "gmail",
+    targetId: `week:${week}`,
+    after: { week, recipient_count: k, subject: msg.subject },
+    note: `distribute draft claim for week ${week}; a drafted row follows on success`,
+  });
   const { draftId } = await createDraft(gmail, {
     to: [await profileAddress(gmail)],
     bcc: list.addresses,
@@ -166,10 +182,6 @@ async function main(): Promise<void> {
     body: msg.body,
   });
   console.log(`draft ${draftId} created, BCC ${k} addresses. Not sent: open Gmail, check it, send it yourself.`);
-  // Recorded straight after the draft, so the next run finds it. A crash
-  // between the two leaves a draft with no row and the next run drafts again;
-  // that is one admin running one command twice in one hour, and CLAUDE.md
-  // says a case this pool cannot produce is documented, not built for.
   await recordAudit(client, {
     actor,
     action: DRAFTED_ACTION,
