@@ -197,7 +197,10 @@ as drafts waiting on a check that nothing required.
     (`expectedHeadSha`), and say in the report what merged and at which
     commit.
 
-4e. Do not watch pull requests (set 2026-09-09). Never subscribe to
-    pull-request events, never arm a check-in timer for one, and never
-    report a gate re-run, a Vercel preview, or Codex progress. Open the PR,
-    merge it when `ci` is green under 4b, and say nothing in between.
+4e. Do not watch pull requests, and never print a waiting line (set
+    2026-09-09, restated the same day). Never subscribe to pull-request
+    events, never arm a check-in timer for one, and never report a gate
+    re-run, a Vercel preview, Codex progress, or CI progress. A line whose
+    whole content is that you are still waiting is never worth printing.
+    Open the PR, merge it under 4b, and say nothing in between. If
+    something genuinely blocks, say so once and stop.

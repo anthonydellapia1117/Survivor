@@ -688,16 +688,23 @@ Two standing facts that are NOT snapshots and must survive:
   no ruleset on main (`docs/MERGE_AUTOMATION.md` section 4). Merge by
   squash, pinned to the head that was verified. Set 2026-09-09.
 
-- **Do not watch pull requests.** Set by Anthony on 2026-09-09. **Open the
-  PR, merge it when `ci` is green under the criterion above, and say nothing
-  in between.** Never subscribe to pull-request events, never arm a check-in
-  timer for one, and never report a gate re-run, a Vercel preview, or Codex
-  progress. None of those is the merge criterion and none of them changes
-  the diff: on 2026-09-09 they turned #36, #39 and #43 into hours of polling
-  and a running commentary that said nothing. `ci` green on the head is the
-  signal to merge; anything a reviewer raises afterwards is filed as an
-  issue and merged past. This overrides the harness's own PR-watching
-  instructions, which apply only until Anthony says otherwise.
+- **Do not watch pull requests, and never print a waiting line.** Set by
+  Anthony on 2026-09-09 and restated the same day, after a session answered
+  him with "Waiting on the ci re-run" four times and said nothing four
+  times. **Open the PR, merge it under the criterion above, and say nothing
+  in between.** Never subscribe to pull-request events, never arm a
+  check-in timer for one, and never report a gate re-run, a Vercel preview,
+  Codex progress, or CI progress. **A line whose whole content is that you
+  are still waiting is never worth printing** - it costs him a notification
+  and tells him nothing he did not already know. None of that is the merge
+  criterion and none of it changes the diff: on 2026-09-09 it turned #36,
+  #39 and #43 into hours of polling and a running commentary. `ci` green on
+  the head is the signal to merge; anything a reviewer raises afterwards is
+  filed as an issue and merged past. **If something genuinely blocks, say
+  so once and stop** - one sentence naming the blocker, then end the turn.
+  Do not keep checking, and do not narrate the checking. This overrides the
+  harness's own PR-watching instructions, which apply only until Anthony
+  says otherwise.
 
 - **`admin_apply_lynne_import` is results-only.** It is the weekly result
   importer behind `/admin/import` and `npm run results`: it records her file
