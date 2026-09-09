@@ -196,6 +196,22 @@ describe("the tick that observes the schedules", () => {
     expect(() => validateOpsConfig({ ...raw(), tickSchedule: "43 11-23,0-2 * * *" })).toThrow(/pick-reminder: Wed 10:00 UTC, Fri 10:00 UTC falls outside/);
   });
 
+  it("attributes a bad cron to the file it came from, like every other breach", () => {
+    // loadOpsConfig() runs at module scope in scripts/lib/constants.ts, so
+    // this message is what a person sees when any command refuses to start.
+    // A cron that is five fields but not readable used to escape the wrapper.
+    expect(() => validateOpsConfig(withJob("sweep", { schedule: "43 9-23,0-2 * * ?" }))).toThrow(
+      /^scripts\/ops\/config\.json: sweep: schedule: cron day-of-week/,
+    );
+    expect(() => validateOpsConfig({ ...raw(), tickSchedule: "43 9-23,0-2 * * ?" })).toThrow(
+      /^scripts\/ops\/config\.json: tickSchedule: cron day-of-week/,
+    );
+    // The slot comparison's own refusals are attributed too.
+    expect(() => validateOpsConfig(withJob("chase", { schedule: "5 13 1 * *" }))).toThrow(
+      /^scripts\/ops\/config\.json: chase: schedule: cron job: day-of-month and month/,
+    );
+  });
+
   it("refuses to compare schedules that restrict day-of-month or month, rather than guessing", () => {
     expect(() => missedSlots("0 12 1 * *", TICK, 60)).toThrow(/day-of-month and month must both be \*/);
     expect(() => unobservedSlots("0 12 * * 1", "0 12 * 6 *", 60)).toThrow(/day-of-month and month must both be \*/);

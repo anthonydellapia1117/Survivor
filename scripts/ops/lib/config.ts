@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { missedSlots } from "./cron";
+import { missedSlots, parseCron } from "./cron";
 
 export const JOB_NAMES = ["sweep", "pick-reminder", "lynne-import", "chase", "results", "distribute"] as const;
 export type JobName = (typeof JOB_NAMES)[number];
@@ -46,6 +46,20 @@ function fail(msg: string): never {
   throw new Error(`scripts/ops/config.json: ${msg}`);
 }
 
+/**
+ * Runs a cron check and reports its message through fail(), so a bad
+ * expression is attributed to the file it came from like every other breach
+ * here. `loadOpsConfig` is called at module scope by scripts/lib/constants.ts,
+ * so this message is what a person sees when any command refuses to start.
+ */
+function checkCron<T>(what: string, f: () => T): T {
+  try {
+    return f();
+  } catch (e: unknown) {
+    fail(`${what}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 /** Checks the shape and the rules a config must keep; throws on the first breach. */
 export function validateOpsConfig(raw: unknown): OpsConfig {
   if (typeof raw !== "object" || raw === null) fail("not an object");
@@ -53,6 +67,7 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
   if (typeof c.timezone !== "string" || !c.timezone) fail("timezone missing");
   if (!Number.isInteger(c.tickWindowMinutes) || (c.tickWindowMinutes as number) < 1 || (c.tickWindowMinutes as number) > 1440) fail("tickWindowMinutes must be 1-1440");
   if (typeof c.tickSchedule !== "string" || c.tickSchedule.trim().split(/\s+/).length !== 5) fail("tickSchedule must be 5 cron fields");
+  checkCron("tickSchedule", () => parseCron(c.tickSchedule as string));
   if (!Number.isInteger(c.expectedRosterAddresses) || (c.expectedRosterAddresses as number) < 1) fail("expectedRosterAddresses must be a positive integer");
   if (!Number.isInteger(c.reminderLeadHours) || (c.reminderLeadHours as number) < 1) fail("reminderLeadHours must be a positive integer");
   if (!Array.isArray(c.sweepSubjectTerms) || c.sweepSubjectTerms.length === 0 || !c.sweepSubjectTerms.every((t) => typeof t === "string" && t.trim())) fail("sweepSubjectTerms must be a non-empty list of words");
@@ -63,6 +78,7 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
   for (const name of JOB_NAMES) {
     const j = jobs[name] as Record<string, unknown>;
     if (typeof j.schedule !== "string" || j.schedule.trim().split(/\s+/).length !== 5) fail(`${name}: schedule must be 5 cron fields`);
+    checkCron(`${name}: schedule`, () => parseCron(j.schedule as string));
     if (typeof j.command !== "string" || !j.command) fail(`${name}: command missing`);
     if (!Array.isArray(j.args) || !j.args.every((a) => typeof a === "string")) fail(`${name}: args must be strings`);
     if (typeof j.sends !== "boolean") fail(`${name}: sends must be true or false`);
@@ -85,7 +101,7 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
   const window = c.tickWindowMinutes as number;
   for (const name of JOB_NAMES) {
     const j = jobs[name] as Record<string, unknown>;
-    const missed = missedSlots(j.schedule as string, tick, window);
+    const missed = checkCron(`${name}: schedule`, () => missedSlots(j.schedule as string, tick, window));
     if (missed.length) fail(`${name}: ${missed.join(", ")} falls outside every ${window}-minute tick window of "${tick}"`);
   }
   return raw as OpsConfig;
