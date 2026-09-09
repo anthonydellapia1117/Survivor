@@ -82,10 +82,21 @@ function messageText(text: string): string[] {
   return out;
 }
 
-// A figure that reads as money: a currency mark on a number, four or more
-// digits run together or grouped with commas (284000, 2,840), or a decimal
-// with two places. A week number or a count of entries is none of those.
-const MONEY_SHAPED = /[$\u00a3\u20ac]\s*\d|\d[\d,]{3,}|\b\d+\.\d{2}\b/;
+// A figure that reads as money. Shape alone is not enough: `due 200 cents`
+// is a total and 200 is three digits, so context counts too - a number
+// standing near a money word fails whatever its size. A bare week number or
+// an entry count has neither the shape nor the company.
+const MONEY_WORD = "(?:cents?|dollars?|due|paid|owed|balance|money|amount|totals?|remit\\w*)";
+const MONEY_SHAPED = new RegExp(
+  [
+    "[$\\u00a3\\u20ac]\\s*\\d", // $2840
+    "\\d[\\d,]{3,}", // 284000, 2,840
+    "\\b\\d+\\.\\d{2}\\b", // 28.40
+    `\\d[^.]{0,24}?${MONEY_WORD}`, // 200 cents
+    `${MONEY_WORD}[^.]{0,24}?\\d`, // due is 200
+  ].join("|"),
+  "i",
+);
 
 function normalize(text: string): string {
   let out = "";

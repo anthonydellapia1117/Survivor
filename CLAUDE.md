@@ -710,7 +710,10 @@ Two standing facts that are NOT snapshots and must survive:
   check that passed, and after a failure it clears the error while keeping the
   migration, so the tracking row and the commit would apply a migration whose
   smoke check failed. The deleted wrapper set the flag; a person typing the
-  steps has to. **The smoke check stays** - `scripts/db/smoke.sql` and its
+  steps has to. **The full attended steps are in `docs/MERGE_AUTOMATION.md`
+  section 2**, including the two details the deleted wrapper held: pending
+  files are decided by NAME rather than the recorded version, and the
+  tracking row carries the file's prefix, the name after it, and the body. **The smoke check stays** - `scripts/db/smoke.sql` and its
   guard `tests/unit/smoke-sql.test.ts`, which holds it to printing no money
   total, because a person reads that output and pastes it into a report.
   **Removing the consumer does not remove the credential:** a repository

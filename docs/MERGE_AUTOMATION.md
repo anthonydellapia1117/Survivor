@@ -49,6 +49,51 @@ but the flag. The deleted wrapper set it; a person typing the steps has to.
 Not `rollback to savepoint`. Read the raise, fix the migration, start over
 from the top. Nothing is applied, which is the point.
 
+### The steps, in full
+
+The deleted wrapper held two details that are easy to get wrong and are
+written down here so they are not lost with it.
+
+**Which files are pending is decided by NAME, not by the version.** Supabase
+records a migration under the timestamp it was APPLIED at, so the recorded
+`version` does not match the file's prefix and comparing on it re-applies
+everything. Compare the part of the filename after the first underscore:
+
+```sql
+select name from supabase_migrations.schema_migrations order by version;
+```
+
+A file in `supabase/migrations/` whose name after the prefix is not in that
+list is pending. Apply pending files **in filename order**, all of them in
+**one** transaction, and commit once at the end.
+
+For each pending file, in order, with `20260908224500_master_list.sql` as the
+example:
+
+```sql
+-- 1. the migration itself, pasted whole
+-- 2.
+savepoint smoke;
+-- 3. scripts/db/smoke.sql, pasted whole
+-- 4.
+rollback to savepoint smoke;
+-- 5. the tracking row: the file's prefix, the name after it, the file body
+insert into supabase_migrations.schema_migrations (version, name, statements)
+values ('20260908224500', 'master_list', array[$migration_body$
+-- the migration file's contents again, verbatim
+$migration_body$]);
+```
+
+Then `commit;` once, after the last file. A raise anywhere stops the run
+(that is what ON_ERROR_STOP is for) and the whole batch is rolled back, so
+production carries every pending file or none of them, never the first few.
+
+The `statements` array is what the Supabase tooling reads back as the
+migration's text. Writing a pointer there instead of the body is a
+deliberate choice, not an accident, and the 2026-09-08 rows do exactly that;
+if you shorten it, say so in the row rather than leaving a body that is not
+the file.
+
 Because the output is read by a person and often pasted into a report, the
 smoke check prints **no money total** - it compares them and raises only
 whether they moved. `tests/unit/smoke-sql.test.ts` holds it to that.
