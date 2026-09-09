@@ -34,7 +34,7 @@ import {
   varianceTable,
 } from "./lib/format";
 import { buildResultsPlan, sha256Of } from "./lib/plan";
-import { duplicateImportLine, footballAttachment, refuseUnverifiedLegacy, refuseWeekMismatch, selectFootballMessage, type FootballSelection } from "./lib/select";
+import { duplicateImport, footballAttachment, refuseUnverifiedLegacy, refuseWeekMismatch, selectFootballMessage, type FootballSelection } from "./lib/select";
 
 interface Args {
   week: number;
@@ -101,17 +101,20 @@ async function main(): Promise<void> {
   const buf = await getAttachment(gmail, message.id, attachment.attachmentId);
   const sha256 = sha256Of(buf);
   console.log(`  sha256:     ${sha256}`);
-  // Her newest sheet is usually one already on file: she sends one file a
-  // week and the schedule looks twice. That is the once-per-sha256 rule
-  // holding, not a failure, so the run ends here at exit 0 and the tick reads
-  // it as ok (issue #40). Nothing is applied twice either way - lynne_imports
-  // enforces the sha256 in the database.
-  const duplicate = duplicateImportLine(await importExists(client, sha256));
-  if (duplicate !== null) {
-    console.log(duplicate);
-    await notify(finishedLine("results", `week ${week}: ${duplicate}`));
+  // Her newest sheet is usually the one already on file for this week: she
+  // sends one file a week and the schedule looks twice. That is the
+  // once-per-sha256 rule holding, not a failure, so the run ends at exit 0 and
+  // the tick reads it as ok (issue #40). A duplicate recorded against ANOTHER
+  // week is not that: her sheet for this week has not arrived, and exiting 0
+  // would leave this week's standings stale with the tick saying finished.
+  // Nothing is applied twice either way - lynne_imports enforces the sha256.
+  const duplicate = duplicateImport(await importExists(client, sha256), week);
+  if (duplicate.kind === "same_week") {
+    console.log(duplicate.line);
+    await notify(finishedLine("results", `week ${week}: ${duplicate.line}`));
     return;
   }
+  if (duplicate.kind === "other_week") throw new Error(duplicate.line);
 
   // ---- parse and plan, the way /admin/import does
   const [entries, standings, localPicks] = await Promise.all([

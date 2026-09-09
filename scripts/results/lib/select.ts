@@ -34,11 +34,39 @@ export function selectFootballMessage(messages: MessageMeta[]): FootballSelectio
 }
 
 /** The refusal for a file already imported, null when it is new. The sha256 is the identity. */
-export function duplicateImportLine(
+export type DuplicateImport =
+  | { kind: "none" }
+  /** Her sheet for THIS week is already on file: the schedule looking twice, nothing to do. */
+  | { kind: "same_week"; line: string }
+  /** The newest file is already imported AGAINST ANOTHER WEEK: her sheet for this week has not arrived. */
+  | { kind: "other_week"; line: string };
+
+/**
+ * What an already-imported sha256 means for the week being asked for.
+ *
+ * She sends one file a week and the schedule looks twice, so the newest
+ * attachment is usually the one already on file for the week being imported.
+ * That is the once-per-sha256 rule holding, not a failure, and the run should
+ * end at exit 0 (issue #40).
+ *
+ * It is NOT a no-op when the prior import was recorded against a different
+ * week. Then the newest file is an older week's sheet and hers for this week
+ * has not arrived: reporting that as finished would leave this week's
+ * standings stale while the tick said ok, which is the silent-failure shape
+ * the same issue exists to remove. A prior import with no week on it counts
+ * the same way - nothing confirms it was this week's.
+ */
+export function duplicateImport(
   prior: { id: string; week: number | null; imported_at: string } | null,
-): string | null {
-  if (!prior) return null;
-  return `Already imported ${prior.imported_at} as import ${prior.id} (week ${prior.week ?? "unknown"}): seen before, nothing to do.`;
+  week: number,
+): DuplicateImport {
+  if (!prior) return { kind: "none" };
+  const where = `${prior.imported_at} as import ${prior.id} (week ${prior.week ?? "unknown"})`;
+  if (prior.week === week) return { kind: "same_week", line: `Already imported ${where}: seen before, nothing to do.` };
+  return {
+    kind: "other_week",
+    line: `Already imported ${where}, not week ${week}: her week ${week} sheet has not arrived, so the newest file is an older week's. Nothing imported for week ${week}.`,
+  };
 }
 
 /**
