@@ -11,6 +11,9 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { buildPickRequests } from "@/lib/emails/pick-request";
+import type { GameRow, WeekRow } from "@/lib/data/types";
+import { bccBody, recipientBody } from "../../scripts/chase/lib/message";
 
 const here = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(here(rel), "utf8");
@@ -77,6 +80,50 @@ const SENDS_THEM_TO_THE_APP = [
   /\bpick\s+(your|a)\s+team\s+(at|on)\b/i,
 ];
 
+// Week 1 as seeded: early Wed noon ET, late Fri noon ET.
+const WEEK1: WeekRow = {
+  week: 1,
+  windowLabel: "thu_fri",
+  deadlineAt: "2026-09-11T16:00:00+00:00",
+  earlyDeadlineAt: "2026-09-09T16:00:00+00:00",
+  lateDeadlineAt: "2026-09-11T16:00:00+00:00",
+  resultsFinal: false,
+  confirmed: true,
+};
+const GAMES: Pick<GameRow, "week" | "dayOfWeek">[] = [
+  { week: 1, dayOfWeek: "Wednesday" },
+  { week: 1, dayOfWeek: "Sunday" },
+];
+
+const chaseBcc = { week: 1, tiers: [], lateDeadlineIso: WEEK1.lateDeadlineAt };
+const chaseInput = (entryNames: string[]) => ({
+  week: 1,
+  greetingName: "Tom",
+  entryNames,
+  tiers: [],
+  lateDeadlineIso: WEEK1.lateDeadlineAt,
+});
+
+const pickRequest = (entryNames: string[]) =>
+  buildPickRequests(
+    [
+      {
+        id: "o1",
+        greetingName: "Caroline",
+        fullName: "Caroline Reichenback",
+        email: "owner@example.com",
+        entries: entryNames.map((entryName) => ({
+          id: `e-${entryName}`,
+          entryName,
+          isGifted: false,
+          playerEmail: null,
+        })),
+      },
+    ],
+    WEEK1,
+    GAMES,
+  ).built[0];
+
 describe("player-facing copy", () => {
   it("never tells a player to submit a pick in the app", () => {
     for (const file of [PICK_REQUEST, CHASE, DISTRIBUTE]) {
@@ -110,19 +157,37 @@ describe("player-facing copy", () => {
     }
   });
 
-  it("names both real paths wherever it asks for a pick", () => {
+  it("names both real paths in every message that asks for a pick", () => {
     // Reply and text are the two ways a pick can be sent, and both are
     // recorded (picks.source is 'email' or 'text'). A message that asks for a
     // pick and names only one tells the player the other does not count.
-    // DISTRIBUTE is not on this list: it goes out AFTER the lock, when there
-    // is no pick left to ask for.
-    for (const file of [PICK_REQUEST, CHASE]) {
-      const copy = literals(read(file));
+    //
+    // These are the RENDERED messages, not the file's literals. Both modules
+    // branch on singular and plural, and a file-wide scan stays green when
+    // only one branch loses a path: the other branch still carries both words
+    // somewhere in the file. Every branch a recipient can actually receive is
+    // built here and checked on its own.
+    //
+    // The post-lock message is not among them, deliberately: by then there is
+    // nothing left to ask for, and requiring a submission line in a results
+    // email would be the opposite of the rule.
+    const asks: { what: string; body: string }[] = [
+      { what: "chase, one entry", body: recipientBody(chaseInput(["Solo"])) },
+      { what: "chase, several entries", body: recipientBody(chaseInput(["A #1", "A #2"])) },
+      { what: "chase bcc, all singular", body: bccBody({ ...chaseBcc, entryCounts: [1, 1] }) },
+      { what: "chase bcc, someone plural", body: bccBody({ ...chaseBcc, entryCounts: [1, 3] }) },
+    ];
+    for (const names of [["Pumpy321"], ["Caroline #1", "Caroline #2"]]) {
+      const built = pickRequest(names);
+      asks.push({ what: `pick request, ${names.length} entry`, body: built.text });
+      asks.push({ what: `pick request html, ${names.length} entry`, body: built.html });
+    }
+    for (const { what, body } of asks) {
       expect({
-        file,
-        reply: /reply to this/i.test(copy),
-        text: /\btext\b/i.test(copy),
-      }).toEqual({ file, reply: true, text: true });
+        what,
+        reply: /reply to this/i.test(body),
+        text: /\btext\b/i.test(body),
+      }).toEqual({ what, reply: true, text: true });
     }
   });
 
