@@ -124,6 +124,24 @@ const pickRequest = (entryNames: string[]) =>
     GAMES,
   ).built[0];
 
+// Every message a recipient can actually receive that ASKS for a pick, each
+// branch built on its own. The post-lock message is not one of them: by then
+// there is nothing to ask for, and it carries the /grid link by design.
+function pickAsks(): { what: string; body: string }[] {
+  const asks: { what: string; body: string }[] = [
+    { what: "chase, one entry", body: recipientBody(chaseInput(["Solo"])) },
+    { what: "chase, several entries", body: recipientBody(chaseInput(["A #1", "A #2"])) },
+    { what: "chase bcc, all singular", body: bccBody({ ...chaseBcc, entryCounts: [1, 1] }) },
+    { what: "chase bcc, someone plural", body: bccBody({ ...chaseBcc, entryCounts: [1, 3] }) },
+  ];
+  for (const names of [["Pumpy321"], ["Caroline #1", "Caroline #2"]]) {
+    const built = pickRequest(names);
+    asks.push({ what: `pick request text, ${names.length} entry`, body: built.text });
+    asks.push({ what: `pick request html, ${names.length} entry`, body: built.html });
+  }
+  return asks;
+}
+
 describe("player-facing copy", () => {
   it("never tells a player to submit a pick in the app", () => {
     for (const file of [PICK_REQUEST, CHASE, DISTRIBUTE]) {
@@ -171,23 +189,30 @@ describe("player-facing copy", () => {
     // The post-lock message is not among them, deliberately: by then there is
     // nothing left to ask for, and requiring a submission line in a results
     // email would be the opposite of the rule.
-    const asks: { what: string; body: string }[] = [
-      { what: "chase, one entry", body: recipientBody(chaseInput(["Solo"])) },
-      { what: "chase, several entries", body: recipientBody(chaseInput(["A #1", "A #2"])) },
-      { what: "chase bcc, all singular", body: bccBody({ ...chaseBcc, entryCounts: [1, 1] }) },
-      { what: "chase bcc, someone plural", body: bccBody({ ...chaseBcc, entryCounts: [1, 3] }) },
-    ];
-    for (const names of [["Pumpy321"], ["Caroline #1", "Caroline #2"]]) {
-      const built = pickRequest(names);
-      asks.push({ what: `pick request, ${names.length} entry`, body: built.text });
-      asks.push({ what: `pick request html, ${names.length} entry`, body: built.html });
-    }
+    const asks = pickAsks();
     for (const { what, body } of asks) {
       expect({
         what,
         reply: /reply to this/i.test(body),
         text: /\btext\b/i.test(body),
       }).toEqual({ what, reply: true, text: true });
+    }
+  });
+
+  it("puts no link in any message that asks for a pick", () => {
+    // The literal scan above cannot see a URL that arrives indirectly - a
+    // template importing GRID_URL from the post-lock module, say, and
+    // interpolating it. The rendered bodies can: whatever a template imports,
+    // the link is in the text by the time it reaches a player.
+    //
+    // mailto: and tel: are how the message says "reply" and "text", so they
+    // are the two schemes that belong here. Anything web-shaped does not.
+    for (const { what, body } of pickAsks()) {
+      expect({ what, links: body.match(/https?:\/\/[^\s"'<>]+/gi) ?? [] }).toEqual({
+        what,
+        links: [],
+      });
+      expect({ what, app: APP_DOMAIN.test(body) }).toEqual({ what, app: false });
     }
   });
 
