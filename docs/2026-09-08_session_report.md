@@ -69,6 +69,12 @@ documented per CLAUDE.md's one-admin rule.
   `codex-gate` with conversation resolution, and the secret
   `SUPABASE_DB_URL` for the migrate job. Clicks in docs/MERGE_AUTOMATION.md
   section 3. Until then a session merges once the same conditions hold.
+  **Superseded on 2026-09-09 as to the secret only:** the migrate job and
+  `scripts/db/migrate-prod.sh` were removed, so `SUPABASE_DB_URL` has no
+  consumer and must not be set. **Do not act on that line.** The other two
+  settings still stand. This report is a dated record, so the line above is
+  left as it read; see CLAUDE.md and docs/MERGE_AUTOMATION.md for the rule
+  as it stands.
 - Local setup for the commands: `.env.local` and `npm run gmail:auth`
   (docs/PICKS_INTAKE.md section 1).
 - The Marc Massimino draft and the Tuesday lock draft: send from Gmail.
