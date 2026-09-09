@@ -406,3 +406,62 @@ export function countVariance(publishedTotal: number | null, sheetRows: number):
   if (publishedTotal === null || publishedTotal === sheetRows) return null;
   return `Her published total is ${publishedTotal.toLocaleString("en-US")}; this sheet carries ${sheetRows.toLocaleString("en-US")} rows. Both are shown as they stand.`;
 }
+
+/**
+ * The week's picks as the one line Lynne sends by email: "7 picked Seattle
+ * Seahawks, 1 picked LA Rams", biggest first. Derived from whatever cells
+ * are in scope, so the Grid's toggle changes it rather than anyone typing a
+ * tally in. Placeholder teams are not picks and are left out; null when the
+ * week has no real pick yet.
+ */
+export function tallySentence(
+  cells: Pick<GridCell, "week" | "team">[],
+  week: number,
+  teamName: (abbr: string) => string,
+): string | null {
+  const counts = new Map<string, number>();
+  for (const c of cells) {
+    if (c.week !== week) continue;
+    if (c.team === SKIP_WEEK || c.team === LOCKED_TEAM || c.team === "MISSED") continue;
+    counts.set(c.team, (counts.get(c.team) ?? 0) + 1);
+  }
+  if (counts.size === 0) return null;
+  return [...counts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([team, n]) => `${n} picked ${teamName(team)}`)
+    .join(", ");
+}
+
+/**
+ * The Grid's standing filters. "Alive" is No Losses plus 1 Loss/Bye: "who is
+ * still in" and "who is still clean" are different questions and both get
+ * asked week to week, so both are their own chip.
+ */
+export type StandingFilter = "all" | "alive" | PoolBucket;
+
+export const STANDING_FILTERS: StandingFilter[] = ["all", "alive", "No Losses", "1 Loss/Bye", "Out"];
+
+export function matchesStanding(bucket: PoolBucket, filter: StandingFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "alive") return bucket !== "Out";
+  return bucket === filter;
+}
+
+/** How many entries each chip would show, so its count moves with the scope. */
+export function standingCounts(
+  entries: Pick<EntrySummary, "status" | "losses" | "byeUsed">[],
+): Record<StandingFilter, number> {
+  const out: Record<StandingFilter, number> = {
+    all: entries.length,
+    alive: 0,
+    "No Losses": 0,
+    "1 Loss/Bye": 0,
+    Out: 0,
+  };
+  for (const e of entries) {
+    const bucket = bucketOfEntry(e);
+    out[bucket] += 1;
+    if (bucket !== "Out") out.alive += 1;
+  }
+  return out;
+}
