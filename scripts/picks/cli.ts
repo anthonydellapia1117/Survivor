@@ -423,7 +423,12 @@ async function main(): Promise<void> {
         // Reaching the write with it killed the run: what was written before
         // it stayed, the rest was not written, and the remaining mail stayed
         // unread until the next sweep (issue #22).
-        if (p.team === SKIP_WEEK) {
+        // An entry whose current pick for THIS week is already the bye reads
+        // as bye_used, so re-sending the same bye would be refused as "bye
+        // already used" and staged as a question where the ordinary
+        // already-recorded no-op belongs. The rules engine has the same
+        // exemption in effect: it is not a second bye.
+        if (p.team === SKIP_WEEK && !(existing && existing.team === SKIP_WEEK)) {
           const why = byeRefusal(item.week, standingByEntry.get(t.entry.id) ?? null, doubleElimThroughWeek);
           if (why !== null) {
             fail(`${t.entry.entryName} -> bye: ${why}`, p.line);
@@ -431,13 +436,24 @@ async function main(): Promise<void> {
           }
         }
         sawTeam(t.entry.id, p.team);
-        itemPicks.set(t.entry.id, {
-          entry_id: t.entry.id,
-          team: p.team,
-          late: isLate(deadline, madeAt),
-          submitted_at: madeAt.toISOString(),
-          result: null,
-        });
+        // Only a pick that will actually be WRITTEN moves the snapshot on.
+        // A message naming the team already on file writes nothing, so the
+        // row on file is still the truth - and replacing its submitted_at
+        // with this message's would make a later, still-older message look
+        // newer than the pick in the database and overwrite it. A Tuesday PHI
+        // on file, then an older Monday PHI and a later Monday KC in one run,
+        // is enough: line 401 lets the same-team message through even when
+        // overrideDecision refuses it, so the snapshot took Monday and KC
+        // then passed the stale-message guard.
+        if (!(existing && existing.team === p.team)) {
+          itemPicks.set(t.entry.id, {
+            entry_id: t.entry.id,
+            team: p.team,
+            late: isLate(deadline, madeAt),
+            submitted_at: madeAt.toISOString(),
+            result: null,
+          });
+        }
         proposals.push({
           entry: t.entry,
           week: item.week,

@@ -378,7 +378,7 @@ describe("stagedDetail", () => {
 });
 
 import { readFileSync } from "node:fs";
-import { picksToCarryForward } from "../../scripts/picks/lib/resolve";
+import { overrideDecision as overrideDecisionForSnapshot, picksToCarryForward } from "../../scripts/picks/lib/resolve";
 
 describe("two messages for one entry in one run", () => {
   const LATE_DEADLINE = "2026-09-11T18:00:00Z";
@@ -404,6 +404,41 @@ describe("two messages for one entry in one run", () => {
     const decision = overrideDecision(snapshot.get("e1") ?? null, afterLock, LATE_DEADLINE);
     expect(decision.ok).toBe(false);
     expect(decision.ok === false && decision.reason).toMatch(/after the lock with PHI already on file/);
+  });
+
+  it("does not let a message naming the team already on file move the snapshot's time", () => {
+    // A Tuesday PHI on file, then an older Monday PHI and a later Monday KC
+    // in one run. The same-team message is let through the override guard
+    // (it is not a change of team), so recording it against madeAt replaced
+    // Tuesday with Monday - and KC, still older than the real pick, then
+    // passed the stale-message guard and overwrote it. A wrong write.
+    const onFile = { entry_id: "e1", team: "PHI", late: false, submitted_at: "2026-09-08T12:00:00Z", result: null };
+    const monA = new Date("2026-09-07T10:00:00Z");
+    const monB = new Date("2026-09-07T11:00:00Z");
+
+    // The same-team no-op records nothing, so the snapshot keeps the real row.
+    const snapshot = new Map<string, typeof onFile>([["e1", onFile]]);
+    const existing = snapshot.get("e1") ?? null;
+    const itemPicks = new Map<string, typeof onFile>();
+    if (!(existing && existing.team === "PHI")) {
+      itemPicks.set("e1", { entry_id: "e1", team: "PHI", late: false, submitted_at: monA.toISOString(), result: null });
+    }
+    for (const [id, row] of picksToCarryForward(itemPicks, new Map([["e1", new Set(["PHI"])]]))) snapshot.set(id, row);
+    expect(snapshot.get("e1")?.submitted_at).toBe("2026-09-08T12:00:00Z");
+
+    // So the later, still-older KC is refused rather than written.
+    const d = overrideDecisionForSnapshot(snapshot.get("e1") ?? null, monB, "2026-09-11T18:00:00Z");
+    expect(d.ok).toBe(false);
+    expect(d.ok === false && d.reason).toMatch(/older than the current pick/);
+  });
+
+  it("keeps that condition in the sweep, and lets a bye already on file stay an ordinary no-op", () => {
+    const src = readFileSync("scripts/picks/cli.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    // Only a pick that will be written moves the snapshot on.
+    expect(src).toMatch(/if \(!\(existing && existing\.team === p\.team\)\) \{\n\s*itemPicks\.set\(t\.entry\.id, \{/);
+    // An entry whose current pick for this week is already the bye reads as
+    // bye_used, so re-sending it must not be refused as a second bye.
+    expect(src).toMatch(/if \(p\.team === SKIP_WEEK && !\(existing && existing\.team === SKIP_WEEK\)\) \{/);
   });
 
   it("carries forward only an entry the message gave exactly one team", () => {
@@ -445,7 +480,7 @@ describe("a bye the database would refuse", () => {
     // it left the proposals before it written, the rest not written, and the
     // remaining mail unread until the next sweep (issue #22).
     const src = readFileSync("scripts/picks/cli.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-    expect(src).toMatch(/if \(p\.team === SKIP_WEEK\) \{/);
+    expect(src).toMatch(/if \(p\.team === SKIP_WEEK && !\(existing && existing\.team === SKIP_WEEK\)\) \{/);
     expect(src).toMatch(/byeRefusal\(item\.week, standingByEntry\.get\(t\.entry\.id\) \?\? null, doubleElimThroughWeek\)/);
     // Staging is not enough: the proposal has to be ABANDONED. With the
     // continue dropped the bye is staged and still proposed, so it still
