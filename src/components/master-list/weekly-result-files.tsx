@@ -1,13 +1,15 @@
-import type { Metadata } from "next";
-import { getData } from "@/lib/data";
+// The weekly result files from the master pool (lynne_imports): the variance
+// panel, the unmatched rows and the table as received, carried over from the
+// old results page. The uploaded filename is admin-only: it is whatever the
+// master pool's runner named the file, so it never renders on a public
+// route. Week, time and counts identify the import.
+
+import type { LynneImportRow } from "@/lib/data/types";
 import { EmptyState } from "@/components/empty-state";
 import { formatEtDateTime } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MASTER_POOL } from "@/lib/site-copy";
-
-export const metadata: Metadata = { title: MASTER_POOL.title };
-export const dynamic = "force-dynamic";
 
 interface VarianceShape {
   type?: string;
@@ -22,26 +24,24 @@ interface RowShape {
   result?: string | null;
 }
 
-export default async function LynnePage() {
-  const imports = await getData().getLynneImports();
+export function WeeklyResultFiles({ imports }: { imports: LynneImportRow[] }) {
   const latest = imports[0];
-
   return (
-    <div className="space-y-6">
+    <section className="space-y-4">
       <div>
-        <h1 className="text-2xl">{MASTER_POOL.title}</h1>
+        <h2 className="text-lg">Weekly result files</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           The master pool&apos;s published results are authoritative on wins,
-          losses, and eliminations. This app is authoritative on what was
-          submitted and when. Disagreements are listed below - reported, never
+          losses and eliminations. This app is authoritative on what was
+          submitted and when. Disagreements are listed here - reported, never
           auto-resolved.
         </p>
       </div>
 
       {!latest ? (
         <EmptyState
-          title="No imports yet"
-          detail="Weekly result files from the master pool will be listed here with match counts and any variances against local state."
+          title="No weekly result file yet"
+          detail="Each week's result file from the master pool will be listed here with match counts and any variances against this app's record."
         />
       ) : (
         <>
@@ -49,9 +49,6 @@ export default async function LynnePage() {
             <span className="font-medium">
               {latest.week ? `Week ${latest.week}` : "Latest import"}
             </span>
-            {/* The uploaded filename is admin-only: it is whatever the
-                master pool's runner named the file, so it never renders on a
-                public route. Week, time and counts identify the import. */}
             <span className="text-muted-foreground" suppressHydrationWarning>
               imported {formatEtDateTime(latest.importedAt)} ET
             </span>
@@ -68,7 +65,7 @@ export default async function LynnePage() {
             <Card className="border-tie/40 bg-surface">
               <CardHeader>
                 <CardTitle className="text-base text-tie">
-                  Variance panel - official vs. this app
+                  Variance panel - published vs. this app
                 </CardTitle>
               </CardHeader>
               <CardContent className="overflow-x-auto">
@@ -77,7 +74,7 @@ export default async function LynnePage() {
                     <tr className="text-left text-xs text-muted-foreground">
                       <th className="py-1.5 pr-3">Entry</th>
                       <th className="py-1.5 pr-3">Type</th>
-                      <th className="py-1.5 pr-3">Official</th>
+                      <th className="py-1.5 pr-3">Published</th>
                       <th className="py-1.5">Local record</th>
                     </tr>
                   </thead>
@@ -106,8 +103,8 @@ export default async function LynnePage() {
             </Card>
           ) : (
             <p className="text-sm text-win">
-              No open variances - {MASTER_POOL.possessive} latest file agrees with
-              this app&apos;s record.
+              No open variances - {MASTER_POOL.possessive} latest file agrees
+              with this app&apos;s record.
             </p>
           )}
 
@@ -123,7 +120,7 @@ export default async function LynnePage() {
                   {(latest.unmatched as RowShape[]).map((r, i) => (
                     <li key={i}>
                       {r.entry}
-                      {r.team ? ` → ${r.team}` : ""}
+                      {r.team ? ` - ${r.team}` : ""}
                     </li>
                   ))}
                 </ul>
@@ -133,9 +130,7 @@ export default async function LynnePage() {
 
           <Card className="bg-surface">
             <CardHeader>
-              <CardTitle className="text-base">
-                Official table, as received
-              </CardTitle>
+              <CardTitle className="text-base">Table as received</CardTitle>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -160,8 +155,8 @@ export default async function LynnePage() {
           </Card>
 
           {imports.length > 1 ? (
-            <section>
-              <h2 className="text-lg">Earlier imports</h2>
+            <div>
+              <h3 className="text-base">Earlier files</h3>
               <ul className="mt-2 divide-y divide-border/60 text-sm">
                 {imports.slice(1).map((im) => (
                   <li key={im.id} className="flex items-center gap-3 py-2">
@@ -179,10 +174,10 @@ export default async function LynnePage() {
                   </li>
                 ))}
               </ul>
-            </section>
+            </div>
           ) : null}
         </>
       )}
-    </div>
+    </section>
   );
 }

@@ -10,7 +10,8 @@ describe("site header, signed out", () => {
   it("never names the master pool's runner", () => {
     const html = renderToStaticMarkup(React.createElement(SiteHeader));
     expect(html).not.toMatch(/lynne/i);
-    expect(html).toContain("Official Results");
-    expect(html).toContain('href="/official"');
+    expect(html).toContain("Master List");
+    expect(html).toContain('href="/master-list"');
+    expect(html).not.toContain("Official Results");
   });
 });

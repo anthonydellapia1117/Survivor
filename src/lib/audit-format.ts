@@ -82,6 +82,8 @@ const KEY_LABEL: Record<string, string> = {
   corrects: "Corrects payment",
   source_ref: "Source ref",
   pool_entry_count: "Pool entries",
+  pool_free_count: "Pool free entries (hers)",
+  pool_paid_count: "Pool paid entries (hers)",
   pool_pot_cents: "Pool pot",
   result_source: "Result source",
 };

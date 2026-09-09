@@ -15,6 +15,7 @@ import { NFL_TEAMS, RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
 import { eliminationWeekOf } from "@/lib/alive";
 import { TEAM_PALETTE } from "@/lib/team-colors";
 import { lynneBucket } from "@/lib/lynne/names";
+import { poolDistribution, poolWeekFilled } from "@/lib/master-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   PickDistributionLazy,
@@ -38,12 +39,13 @@ const RESULT_TEXT: Record<string, string> = {
 
 export default async function DashboardPage() {
   const data = getData();
-  const [entries, weeks, cells, pot, games] = await Promise.all([
+  const [entries, weeks, cells, pot, games, master] = await Promise.all([
     data.getEntries(),
     data.getWeeks(),
     data.getGridCells(),
     data.getPot(),
     data.getSchedule(),
+    data.getMasterList(),
   ]);
 
   if (entries.length === 0) {
@@ -64,6 +66,12 @@ export default async function DashboardPage() {
   const curve = survivalCurve(entries, cells);
   const dist = pickDistribution(weeks, cells, now);
   const playWeek = currentPlayWeek(weeks, now);
+  // The whole pool's picks for the week, from the published sheet, is the
+  // default view; our group's own picks stand in until she publishes.
+  const poolDist =
+    playWeek && poolWeekFilled(master.rows, playWeek.week)
+      ? poolDistribution(master.rows, playWeek.week)
+      : null;
   const deadline = nextLockBoundary(weeks, games, now);
   const activity = recentActivity(entries, cells, 10);
 
@@ -167,6 +175,9 @@ export default async function DashboardPage() {
                   {pot.poolEntryCount !== null
                     ? `across ${pot.poolEntryCount.toLocaleString()} pool entries`
                     : "across the full pool"}
+                  {pot.poolPaidCount !== null && pot.poolFreeCount !== null
+                    ? ` (${pot.poolPaidCount.toLocaleString()} paying, ${pot.poolFreeCount.toLocaleString()} free)`
+                    : ""}
                 </p>
               </>
             ) : (
@@ -275,11 +286,34 @@ export default async function DashboardPage() {
           <CardHeader>
             <CardTitle className="text-base">
               Week {dist?.week ?? "-"} pick distribution
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {poolDist ? "Master List" : "our group"}
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {dist?.revealed && dist.rows.length > 0 ? (
-              <PickDistributionLazy rows={dist.rows} />
+            {poolDist && poolDist.rows.length > 0 ? (
+              <>
+                <PickDistributionLazy rows={poolDist.rows} />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Every entry in the master pool, from the published sheet
+                  {poolDist.other > 0
+                    ? `; ${poolDist.other} cells are not a team (OUT or a note)`
+                    : ""}
+                  .{" "}
+                  <Link href="/master-list" className="text-primary underline-offset-2 hover:underline">
+                    Master List
+                  </Link>
+                </p>
+              </>
+            ) : dist?.revealed && dist.rows.length > 0 ? (
+              <>
+                <PickDistributionLazy rows={dist.rows} />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Our group. The master pool&apos;s Week {dist.week} picks are
+                  not published yet.
+                </p>
+              </>
             ) : dist && !dist.revealed ? (
               <div className="flex flex-col items-center gap-2 py-10 text-center">
                 <LockClosedIcon className="size-5 text-muted-foreground" />

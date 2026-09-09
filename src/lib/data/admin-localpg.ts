@@ -234,8 +234,10 @@ export const adminLocalPgBackend: AdminBackend = {
   },
 
   async setPoolPot(a) {
-    await db().query("select admin_set_pool_pot($1,$2,$3)", [
+    await db().query("select admin_set_pool_pot($1,$2,$3,$4,$5)", [
       a.entryCount,
+      a.freeCount,
+      a.paidCount,
       a.potCents,
       a.actor,
     ]);

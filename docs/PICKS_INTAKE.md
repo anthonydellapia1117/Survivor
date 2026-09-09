@@ -209,7 +209,7 @@ plan is computed; and the variance table is printed with both values on
 every line. Nothing is resolved. After `y` it commits through
 `admin_apply_lynne_import`, the results-only importer, and prints the import
 id. You should see the variance table and `import <id>`; review it on
-/admin/import and /official.
+/admin/import and /master-list.
 
 5a. What is applied. Her grid carries teams and OUT status, not per-week
 results, so on that format the importer records the file, the rows and the

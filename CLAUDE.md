@@ -265,6 +265,53 @@ the public views, not merely hidden in the UI).
 The **pool-wide prize pot** from Lynne's whole pool is the one dollar figure
 that is public by design.
 
+### The Master List is the public default
+
+Set by Anthony on 2026-09-08. **His group is interested in every entry in
+her pool, not in his 121.** The 121 are what he manages: picked, complete,
+sent to her, updated. What the group wants when he sends the link is the
+whole pool, so the public site defaults to it.
+
+- **`/master-list`** (the tab reads "Master List") shows her newest sheet
+  from `lynne_roster` through the public view `v_master_list`: every NO.
+  and NAMES verbatim, her week cells as she publishes them, our rows
+  marked, and where we hold a revealed pick for one of ours it sits beside
+  her cell - a pick she has not published reads "ours XXX", a pick that
+  differs from hers is highlighted and reported, never changed. The weekly
+  result files (`lynne_imports`) sit below it. `/official` and `/lynne`
+  redirect there.
+- **Public stats default to the whole pool.** The dashboard's pick
+  distribution and Team Availability read her sheet's week cells for every
+  entry when she has published them, with "Our group" as the other setting;
+  until she publishes a week, our group stands in and says so.
+- **Her four figures are public as she publishes them:** Total in Pool,
+  Free, Total (paying) and Total Pay Out, entered on `/admin` and stored as
+  given (`config.pool_entry_count`, `pool_free_count`, `pool_paid_count`,
+  `pool_pot_cents`). `admin_set_pool_pot` refuses a triple that does not
+  add up rather than deriving one. **The per-entry rate behind her pot is
+  never printed on a public route** - the admin form's implied-rate line is
+  the only place it appears. Her pool-wide Free line is her figure, not this
+  group's recruited-vs-free split, which stays admin-only as above.
+- `v_master_list` exposes exactly five columns: `row_no`, `names`, `cells`,
+  `sheet_loaded_at`, `entry_id`. No file name, Gmail id or loader reaches
+  the public. The table itself stays admin-only under RLS.
+- **Her week cells obey the grid's reveal rule, in the view.** A cell that
+  names one of her teams is served once `pick_is_public` says that team's
+  game has kicked off (the same function `v_grid_cells` uses, override
+  included); a cell that is not a team name (OUT, a note, a typo) only once
+  every game of that week has kicked off; a column that is not a week never
+  leaves the table. So a sheet of hers loaded on Saturday cannot show one of
+  our 121's picks that `/grid` still masks. Her vocabulary is copied into
+  the view lower-cased and `tests/unit/lynne-team-names-sql.test.ts` holds
+  the two copies together.
+- **Her own row is on the list.** NO. 1 of her sheet is her own entry,
+  named as she named it. It is her data as published and the app never
+  rewrites her rows, so that name appears on `/master-list` and in the
+  Teams picker; it is the one place the runner's name reaches a public
+  route, by this decision of 2026-09-08. Copy, file names and Gmail ids
+  still never do. Reversing this means excluding the row by an explicit
+  admin-recorded rule, never by matching a name.
+
 ## Names
 
 Entry names are stored **verbatim** — never normalized, cased, or trimmed by
@@ -433,7 +480,14 @@ names and `name_is_default` did not move. The mapping is
 `docs/2026-09-08_survivor_lynne_numbers.csv` (972-1087 from `Football
 2026-2.xlsx`) is superseded by it. Her whole sheet, 1319 rows, is in
 `lynne_roster` under that sha256, duplicate names (Ian Lubin 1 and 2 at
-674-675 and again at 1319-1320) kept as separate rows. Money: $2,840 due,
+674-675 and again at 1319-1320) kept as separate rows; her sheet's row for
+NO. 1311 reads `1311 Andrew Yukanis` in the NO. cell and `Amy  3` in NAMES,
+so the loader skipped it (no integer NO.) and nothing was invented - hers
+to fix. **The Master List is live** at `/master-list` (migration
+`20260908224500`, 67 migrations) and her four figures are set as she
+published them on 2026-09-08 (audit 628): Total in Pool 1,318, Free 46,
+Total 1,272, Total Pay Out $28,620; 1,318 is her 1,320 NO.s less the two
+duplicate Ian Lubin rows. Money: $2,840 due,
 $1,830 collected, $1,010 outstanding, **$2,750 owed to Lynne** (110 x $25).
 Her buckets are clear (+0 / 0 / -0): the 2026-09-04 batch below went to her
 at 15:44 UTC that day, she replied "Got it.", and the marks were backdated
@@ -614,9 +668,10 @@ Two standing facts that are NOT snapshots and must survive:
   unapplied and had sorted below the applied `20260908171220`
   (`pick_source_text_email`, the file `20260908000063`). Supabase records a
   migration under the timestamp it was applied at, not the file name.
-  `20260908214000_lynne_roster.sql` is the one exception so far: applied
-  attended on 2026-09-08 with the smoke check at a savepoint, ahead of the
-  merge of the PR that carries it, on Anthony's instruction for that run.
+  `20260908214000_lynne_roster.sql` and `20260908224500_master_list.sql`
+  are the two exceptions so far: each applied attended on 2026-09-08 with
+  the smoke check at a savepoint, ahead of the merge of the PR that carries
+  it (#25, #28), on Anthony's instruction for that run.
 
 ## Gmail
 
@@ -751,5 +806,6 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |
 | Her master sheet, read-only         | `lynne_roster` table, `scripts/lynne/roster.ts` |
+| The Master List, public             | `src/app/master-list/`, `src/lib/master-list.ts`, `v_master_list` |
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |

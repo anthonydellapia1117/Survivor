@@ -7,6 +7,7 @@ import { matchesShowMode, showCounts } from "@/lib/alive";
 import { ShowToggle, useShowMode } from "@/components/show-toggle";
 import { StatusDot } from "@/components/status-dot";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -39,6 +40,17 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
   const [entryId, setEntryId] = useState<string>(sorted[0]?.id ?? "");
   const [openTeam, setOpenTeam] = useState<string | null>(null);
   const selected = sorted.find((e) => e.id === entryId) ?? sorted[0];
+
+  // The master pool is over a thousand entries: the picker takes a search
+  // and lists at most 200 matches, the selected entry always among them.
+  const LONG_LIST = 100;
+  const [find, setFind] = useState("");
+  const listed = useMemo(() => {
+    const q = find.trim().toLowerCase();
+    const base = (q ? sorted.filter((e) => e.entryName.toLowerCase().includes(q)) : sorted).slice(0, 200);
+    if (selected && !base.some((e) => e.id === selected.id)) base.unshift(selected);
+    return base;
+  }, [sorted, find, selected]);
 
   // team -> week it was used by each entry (first current pick of that team)
   const usedByEntry = useMemo(() => {
@@ -87,12 +99,21 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg">Availability</h2>
           <ShowToggle mode={mode} counts={counts} onChange={setMode} />
+          {entries.length > LONG_LIST ? (
+            <Input
+              value={find}
+              onChange={(e) => setFind(e.target.value)}
+              placeholder="Find an entry"
+              aria-label="Find an entry"
+              className="w-44"
+            />
+          ) : null}
           <Select value={selected?.id ?? ""} onValueChange={setEntryId}>
             <SelectTrigger size="sm" className="w-56" aria-label="Choose entry">
               <SelectValue placeholder="Pick an entry" />
             </SelectTrigger>
             <SelectContent>
-              {sorted.map((e) => (
+              {listed.map((e) => (
                 <SelectItem key={e.id} value={e.id}>
                   <span className="flex items-center gap-2">
                     <StatusDot status={e.status} />

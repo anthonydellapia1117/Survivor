@@ -500,6 +500,13 @@ export default async function AdminOverviewPage() {
                       {pot.poolEntryCount.toLocaleString()}
                     </span>{" "}
                     pool entries
+                    {pot.poolPaidCount !== null && pot.poolFreeCount !== null ? (
+                      <>
+                        {" "}
+                        (<span className="tabular-nums">{pot.poolPaidCount.toLocaleString()}</span> paying,{" "}
+                        <span className="tabular-nums">{pot.poolFreeCount.toLocaleString()}</span> free)
+                      </>
+                    ) : null}
                   </>
                 ) : null}
                 .
@@ -508,6 +515,8 @@ export default async function AdminOverviewPage() {
           </p>
           <PoolPotForm
             entryCount={pot.poolEntryCount}
+            freeCount={pot.poolFreeCount}
+            paidCount={pot.poolPaidCount}
             potCents={pot.poolPotCents}
           />
         </CardContent>
