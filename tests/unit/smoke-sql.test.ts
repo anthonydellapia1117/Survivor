@@ -270,6 +270,20 @@ const PRINTABLE = new Set([
   "''",
 ]);
 
+// Why this file does not chase every remaining lexical form. A quoted
+// identifier can carry an apostrophe too - `declare "it's" int` is valid, and
+// this walker does not treat `"` as a quote - but the allowlist makes that
+// fail closed rather than open: a mis-parse shifts the quotes and the
+// arguments come out as junk, and junk is not on the list. Three shapes were
+// run against postgres 16 to check that rather than assume it - one such
+// identifier before a leaking raise, two of them (restoring quote parity, so
+// the shift cancels), and one before a quote-free `raise using message =
+// v_due::text` - and the guard failed on all three, reporting the leaked
+// argument or the junk. So the forms handled above are handled because a
+// mis-parse there can leave NO raise matchable at all, which is the one mode
+// that passes silently; a shift that leaves the statement matchable catches
+// itself.
+
 // WHOLE arguments, not the identifiers inside them. Pulling out names that
 // start with v_ finds nothing at all in `raise notice 'money %', 284000;` or
 // in `raise notice 'money %', total_owed();`, so the allowlist passes over a
