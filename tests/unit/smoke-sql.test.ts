@@ -216,6 +216,76 @@ function messageText(text: string): string[] {
   return out;
 }
 
+// The raw text of each statement, split on the semicolons that actually end
+// one. Same boundary walk normalize() does, but it keeps the text so the
+// literals inside a statement can still be read together.
+function rawStatements(text: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (text.startsWith("--", i)) {
+      const nl = text.indexOf("\n", i);
+      i = nl < 0 ? text.length : nl;
+      continue;
+    }
+    const block = blockComment(text, i);
+    if (block !== null) {
+      i = block;
+      continue;
+    }
+    const ident = quotedIdentifier(text, i);
+    if (ident !== null) {
+      i = ident;
+      continue;
+    }
+    const dollar = text[i] === "$" ? dollarQuote(text, i) : null;
+    if (dollar) {
+      i = dollar.next;
+      continue;
+    }
+    const quoted = stringAt(text, i);
+    if (quoted) {
+      i = quoted.next;
+      continue;
+    }
+    if (text[i] === ";") {
+      out.push(text.slice(start, i));
+      i += 1;
+      start = i;
+      continue;
+    }
+    i += 1;
+  }
+  out.push(text.slice(start));
+  return out;
+}
+
+// The line psql actually prints for one raise: the format string with each %
+// replaced by the next argument. `raise notice 'due: %', '200';` emits
+// "due: 200", and NEITHER literal is money-shaped alone - the format carries
+// no digit and the argument is three digits with no money word beside it. The
+// pieces pass and the line leaks, so the composed line is what has to be read.
+//
+// Only literal arguments can be substituted here; a variable is left as its %.
+// That makes the composition approximate when a statement mixes the two, since
+// the literals fill the slots in order - but a variable argument has to be on
+// the allowlist regardless, so the approximation only touches statements that
+// are already constrained. %% is a literal percent and consumes no argument.
+function composedMessages(text: string): string[] {
+  return rawStatements(text)
+    .filter((statement) => /\braise\b/i.test(normalize(statement)))
+    .map((statement) => {
+      const literals = messageText(statement);
+      const format = literals[0];
+      if (format === undefined) return "";
+      const args = literals.slice(1);
+      let next = 0;
+      return format.replace(/%%|%/g, (slot) => (slot === "%%" ? "%" : (args[next++] ?? "%")));
+    })
+    .filter((line) => line.length > 0);
+}
+
 // A figure that reads as money. Shape alone is not enough: `due 200 cents`
 // is a total and 200 is three digits, so context counts too - a number
 // standing near a money word fails whatever its size. A bare week number or
@@ -433,6 +503,11 @@ describe("smoke check", () => {
     // would hide it.
     const typed = messageText(sql()).filter((t) => MONEY_SHAPED.test(t));
     expect(typed).toEqual([]);
+    // And the same test on what each raise actually PRINTS. A format string
+    // and its literal arguments become one line through % substitution, so
+    // `raise notice 'due: %', '200';` leaks a total that neither half carries.
+    const printedLines = composedMessages(sql()).filter((line) => MONEY_SHAPED.test(line));
+    expect(printedLines).toEqual([]);
   });
 
   it("runs only the statements on the allowlist, so nothing else can print", () => {
