@@ -308,9 +308,10 @@ whole pool, so the public site defaults to it.
   named as she named it. It is her data as published and the app never
   rewrites her rows, so that name appears on `/master-list` and in the
   Teams picker; it is the one place the runner's name reaches a public
-  route, by this decision of 2026-09-08. Copy, file names and Gmail ids
-  still never do. Reversing this means excluding the row by an explicit
-  admin-recorded rule, never by matching a name.
+  route, confirmed by Anthony on 2026-09-08 (the "never her name" rule was
+  about app copy naming the commissioner, not her own roster row). Copy,
+  file names and Gmail ids still never do. Reversing this means excluding
+  the row by an explicit admin-recorded rule, never by matching a name.
 
 ## Names
 
@@ -482,8 +483,13 @@ names and `name_is_default` did not move. The mapping is
 `lynne_roster` under that sha256, duplicate names (Ian Lubin 1 and 2 at
 674-675 and again at 1319-1320) kept as separate rows; her sheet's row for
 NO. 1311 reads `1311 Andrew Yukanis` in the NO. cell and `Amy  3` in NAMES,
-so the loader skipped it (no integer NO.) and nothing was invented - hers
-to fix. **The Master List is live** at `/master-list` (migration
+so the loader skipped it (no integer NO.) and nothing was invented. It is
+her `Amy 3`: `Amy 1` and `Amy 2` sit at 1309-1310 and `Amy 4` at 1312, and
+"Andrew Yukanis" was typed into the number cell. Her 1,318 already counts
+it, so our copy carries 1,319 rows until her next sheet, which the loader
+diffs. A one-line note pointing at 1311 and the duplicate Ian Lubin rows
+was drafted in her "Sheet" thread on 2026-09-09; a draft is never a send,
+and it is Anthony's to send. **The Master List is live** at `/master-list` (migration
 `20260908224500`, 67 migrations) and her four figures are set as she
 published them on 2026-09-08 (audit 628): Total in Pool 1,318, Free 46,
 Total 1,272, Total Pay Out $28,620; 1,318 is her 1,320 NO.s less the two
