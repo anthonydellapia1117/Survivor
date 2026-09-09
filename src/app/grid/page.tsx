@@ -49,8 +49,9 @@ export default async function GridPage() {
         <a
           href="/api/export/picks.xlsx"
           className="text-sm font-medium text-primary hover:underline"
+          title="The workbook carries this group's entries and picks; the master pool is read from its published sheet on the Master List page"
         >
-          Export Excel
+          Export Excel (our group)
         </a>
       </div>
       {entries.length === 0 && pool.entries.length === 0 ? (

@@ -430,6 +430,12 @@ describe("Grid, signed out", () => {
     expect(html).not.toContain('href="/entry/pool-');
   });
 
+  it("says the Excel export is our group's, since the Everyone scope is not what it downloads", async () => {
+    const html = renderToStaticMarkup(await GridPage());
+    expect(html).toMatch(/Export Excel \(our group\)/);
+    expect(html).not.toMatch(/>\s*Export Excel\s*</);
+  });
+
   it("reports her published total against the rows on the sheet", async () => {
     const html = renderToStaticMarkup(await GridPage());
     expect(html).toMatch(/this sheet carries 7 rows/);

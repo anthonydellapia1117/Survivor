@@ -18,6 +18,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 // played, to show a part-played week is not "scored through" even when every
 // revealed pick on the sheet has a result.
 const sheet = vi.hoisted(() => ({
+  // Switchable to an empty roster: her sheet must still open the page.
+  noEntries: false,
   extraGames: [] as Record<string, unknown>[],
   // The Week 1 game's reveal override: false holds the week back whatever
   // the clock says, true lets it out. Pinned so no test depends on today.
@@ -26,7 +28,10 @@ const sheet = vi.hoisted(() => ({
 
 vi.mock("../../src/lib/data", () => ({
   getData: () => ({
-    getEntries: async () => [
+    getEntries: async () =>
+      sheet.noEntries
+        ? []
+        : [
       {
         id: "e-983",
         entryName: "Adriana Flacco ",
@@ -196,6 +201,21 @@ describe("Dashboard, signed out", () => {
       expect(out).not.toContain("scored through Week 1");
     } finally {
       sheet.reveal = null;
+    }
+  });
+
+  it("still opens on the master pool when our roster is empty but her sheet is loaded", async () => {
+    // The two sources are independent. The empty state is for neither
+    // having anything, not for the roster alone.
+    sheet.noEntries = true;
+    try {
+      const out = await html();
+      expect(out).not.toContain("Season not seeded yet");
+      expect(out).toContain("Total in Pool");
+      expect(out).toContain("No Losses");
+      expect(out).toMatch(/Across all 4 rows of her sheet/);
+    } finally {
+      sheet.noEntries = false;
     }
   });
 

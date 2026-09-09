@@ -54,7 +54,10 @@ export default async function DashboardPage() {
     data.getMasterList(),
   ]);
 
-  if (entries.length === 0) {
+  // Her sheet and our roster are independent sources. The empty state is
+  // for when NEITHER has anything; a loaded sheet with no roster yet still
+  // opens on the master pool, as the Grid does.
+  if (entries.length === 0 && master.rows.length === 0) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl">2026 NFL Survivor Pool</h1>
