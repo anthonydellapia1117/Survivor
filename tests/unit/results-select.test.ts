@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { MessageMeta } from "../../scripts/lib/gmail";
 import { footballAttachment, isFootballXlsx, refuseUnverifiedLegacy, refuseWeekMismatch, selectFootballMessage } from "../../scripts/results/lib/select";
@@ -90,15 +91,45 @@ describe("selectFootballMessage", () => {
   });
 });
 
-import { refuseDuplicateImport } from "../../scripts/results/lib/select";
+import { duplicateImport } from "../../scripts/results/lib/select";
 
-describe("refuseDuplicateImport", () => {
-  it("refuses a sha256 seen before, naming the import, and lets a new file through", () => {
-    expect(refuseDuplicateImport({ id: "imp-1", week: 1, imported_at: "2026-09-16T14:00:00Z" })).toBe(
-      "Already imported 2026-09-16T14:00:00Z as import imp-1 (week 1): refusing to run twice on the same file.",
+describe("duplicateImport", () => {
+  const prior = (week: number | null) => ({ id: "imp-1", week, imported_at: "2026-09-16T14:00:00Z" });
+
+  it("is a no-op only when the prior import is this same week", () => {
+    // She sends one file a week and the schedule looks twice, so the newest
+    // attachment is usually the one already on file for the week being asked
+    // for. Throwing counted a failure on every tick until she sent a new file.
+    const d = duplicateImport(prior(2), 2);
+    expect(d.kind).toBe("same_week");
+    expect(d.kind === "same_week" && d.line).toBe(
+      "Already imported 2026-09-16T14:00:00Z as import imp-1 (week 2): seen before, nothing to do.",
     );
-    expect(refuseDuplicateImport({ id: "imp-2", week: null, imported_at: "x" })).toContain("week unknown");
-    expect(refuseDuplicateImport(null)).toBeNull();
+    expect(duplicateImport(null, 2)).toEqual({ kind: "none" });
+  });
+
+  it("is NOT a no-op when the prior import was another week, or no week at all", () => {
+    // The schedule runs with --week <latest locked>. If her sheet for that
+    // week has not arrived, the newest attachment is the PREVIOUS week's,
+    // already imported. Exiting 0 there would report the week as finished
+    // with its standings stale and the tick saying ok - the silent failure
+    // the rest of this change exists to remove.
+    const d = duplicateImport(prior(1), 2);
+    expect(d.kind).toBe("other_week");
+    expect(d.kind === "other_week" && d.line).toContain("not week 2");
+    expect(d.kind === "other_week" && d.line).toContain("has not arrived");
+    // A prior import carrying no week confirms nothing; it is not this week's.
+    expect(duplicateImport(prior(null), 2).kind).toBe("other_week");
+    expect(duplicateImport(prior(3), 2).kind).toBe("other_week");
+  });
+
+  it("ends the run at exit 0 on the same week and throws on another, so a stale week is never reported ok", () => {
+    const cli = readFileSync("scripts/results/cli.ts", "utf8");
+    expect(cli).toMatch(/const duplicate = duplicateImport\(await importExists\(client, sha256\), week\);/);
+    expect(cli).toMatch(/if \(duplicate\.kind === "same_week"\) \{[\s\S]{0,400}?\n    return;\n  \}/);
+    expect(cli).toMatch(/if \(duplicate\.kind === "other_week"\) throw new Error\(duplicate\.line\);/);
+    // The same-week branch must not throw, and the cross-week one must not return.
+    expect(/if \(duplicate\.kind === "same_week"\) \{[\s\S]{0,400}?\n  \}/.exec(cli)?.[0]).not.toMatch(/throw/);
   });
 });
 

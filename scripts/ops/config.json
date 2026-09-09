@@ -2,6 +2,7 @@
   "$comment": "Operations for the Survivor sub-pool, checked in so a schedule or a parameter is a reviewed change. Read by scripts/ops (npm run ops). Crons are UTC, 5 fields. Only pick-reminder and chase may send, and only when the environment has REMINDER_AUTOSEND=true; every other job drafts or writes rows and never mails.",
   "timezone": "America/New_York",
   "tickWindowMinutes": 60,
+  "tickSchedule": "43 9-23,0-2 * * *",
   "expectedRosterAddresses": 39,
   "reminderLeadHours": 6,
   "sweepSubjectTerms": ["survivor", "picks"],

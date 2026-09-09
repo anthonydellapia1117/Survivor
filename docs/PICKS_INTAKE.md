@@ -261,6 +261,18 @@ the one-sentence standings line the dashboard shows, read from the same
 view the dashboard reads. Nothing about money.
 You should see `draft <id> created, BCC <k> addresses. Not sent`.
 
+**One draft per week.** The week is claimed in `audit_log` under
+`distribute_draft_claim` before the Gmail call and recorded under
+`distribute_drafted` after it, the way `scripts/lib/send.ts` claims a send; a
+claim on its own counts, so a draft whose outcome is unknown never becomes
+two. A later run for a week that already has one prints
+`Already drafted for week N at <time>; nothing to do.` and stops, so a second
+tick in the same hour - or a hand run beside a scheduled one - cannot leave
+two whole-roster drafts in Gmail. Two things are deliberately not blocked:
+`--dry-run`, which creates nothing and still prints the message and the count,
+and `--again`, which drafts it again on purpose after you have deleted the
+first. A redraft records its own row.
+
 ## 7. Notifications
 
 ```
@@ -363,10 +375,24 @@ start them and prints `REMINDER_AUTOSEND is not true: drafts only, nothing
 started`.
 
 10c. `lynne-import` fetches her newest Football xlsx from Gmail to a temp
-file and runs `lynne:roster` on it (a sha256 loads once). `results` and
-`distribute` run for the most recent week whose late deadline has passed and
-say `no week has locked yet` before Week 1 locks.
+file and runs `lynne:roster` on it (a sha256 loads once; her filename is kept
+as the temp file's basename, sanitised, because that is what `lynne_roster`
+records as `source_file`). `results` and `distribute` run for the most recent
+week whose late deadline has passed and say `no week has locked yet` before
+Week 1 locks. `results` ends at exit 0 with `seen before, nothing to do` when
+her newest sheet is the one already imported **for that week**, and fails when
+it is one imported for another week - then her sheet for this week has not
+arrived, and reporting the run as finished would leave the week's standings
+stale.
 
 10d. `expectedRosterAddresses` (39) is the exact count every whole-roster
 message gates on - the reminder and the distribute draft both stop on any
-other number and print the list.
+other number and print the list. A distribute run that stops earlier, because
+the week is already drafted, does not reach that gate; `--dry-run` does.
+
+10e. A tick refuses to run at all if any job would lose a run to it - a slot
+falling in the gap between two ticks. `npm run ops -- tick` names the job and
+the slot. The schedules and the tick's own cron are in
+`scripts/ops/config.json`; the loader every command imports checks only the
+shape of that file, so a schedule that is wrong against the tick stops the
+tick and not the picks intake.

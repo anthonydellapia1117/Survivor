@@ -10,16 +10,18 @@
 //   --week N      required
 //   --dry-run     print the message and the count, create no draft
 //   --yes         skip the confirmation prompt
+//   --again       draft this week again, after one has already been drafted
 
 import { groupSendList } from "@/lib/emails/group-send";
 import { EXPECTED_ROSTER_ADDRESSES, SITE_URL } from "../lib/constants";
-import { adminClient, loadLiveEntries, loadOwners, loadStandings, loadWeeks } from "../lib/db";
+import { adminClient, loadAuditByAction, loadLiveEntries, loadOwners, loadStandings, loadWeeks, recordAudit } from "../lib/db";
 import { createDraft, gmailClient, profileAddress } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { countGate } from "../remind/lib/recipients";
 import { confirm } from "../lib/prompt";
 import { confirmedOwners } from "../lib/roster";
 import { formatEt, type WeekBounds } from "../picks/lib/deadline";
+import { DRAFTED_ACTION, DRAFT_CLAIM_ACTION, priorDraftFor } from "./lib/drafted";
 import { refusalBeforeLock } from "./lib/lock";
 import { distributeMessage } from "./lib/message";
 import { buildGroupSendOwners } from "./lib/recipients";
@@ -29,28 +31,32 @@ interface Args {
   week: number;
   dryRun: boolean;
   yes: boolean;
+  /** Draft again for a week that already has one: Anthony deleting a draft and redoing it. */
+  again: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
   let week: number | null = null;
   let dryRun = false;
   let yes = false;
+  let again = false;
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--week") week = Number(argv[++i]);
     else if (x === "--dry-run") dryRun = true;
     else if (x === "--yes") yes = true;
+    else if (x === "--again") again = true;
     else throw new Error(`Unknown argument ${x}`);
   }
   if (week === null || !Number.isInteger(week)) throw new Error("--week N is required");
-  return { week, dryRun, yes };
+  return { week, dryRun, yes, again };
 }
 
 async function main(): Promise<void> {
-  const { week, dryRun, yes } = parseArgs(process.argv.slice(2));
+  const { week, dryRun, yes, again } = parseArgs(process.argv.slice(2));
   // The token check is local and instant; do it before asking for a password.
   const gmail = gmailClient();
-  const { client } = await adminClient();
+  const { client, actor } = await adminClient();
 
   // ---- refuse before the lock
   const weeks = await loadWeeks(client);
@@ -67,6 +73,27 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
+  // ---- already drafted for this week?
+  // The guard exists to stop a second tick, or a hand run beside a scheduled
+  // one, leaving two whole-roster Bcc drafts in Gmail (issue #40). It must not
+  // stop the two things a person legitimately does: read the preview, and
+  // deliberately draft again after deleting the first. A dry run creates
+  // nothing, so it is never blocked; --again is the deliberate redraft, and it
+  // records its own row like any other.
+  const [claims, drafted] = await Promise.all([
+    loadAuditByAction(client, DRAFT_CLAIM_ACTION),
+    loadAuditByAction(client, DRAFTED_ACTION),
+  ]);
+  // Drafted first, so a completed draft is found before the claim that
+  // preceded it; a claim with no drafted row still counts on its own.
+  const prior = priorDraftFor([...drafted, ...claims], week);
+  if (prior && !dryRun && !again) {
+    console.log(`Already drafted for week ${week} at ${prior.at}; nothing to do. Pass --again to draft it again.`);
+    await notify(finishedLine("distribute", `week ${week}: already drafted, skipped`));
+    return;
+  }
+  if (prior) console.log(`Note: week ${week} was already drafted at ${prior.at}.${dryRun ? "" : " Drafting again (--again)."}`);
 
   const [owners, entries, standings] = await Promise.all([
     loadOwners(client),
@@ -137,6 +164,17 @@ async function main(): Promise<void> {
   }
 
   // ---- exactly one draft, never a send
+  // Claim first. If the process dies, or the audit insert fails, between here
+  // and the drafted row, the claim alone stops every later run from drafting
+  // this week again.
+  await recordAudit(client, {
+    actor,
+    action: DRAFT_CLAIM_ACTION,
+    targetTable: "gmail",
+    targetId: `week:${week}`,
+    after: { week, recipient_count: k, subject: msg.subject },
+    note: `distribute draft claim for week ${week}; a drafted row follows on success`,
+  });
   const { draftId } = await createDraft(gmail, {
     to: [await profileAddress(gmail)],
     bcc: list.addresses,
@@ -144,6 +182,14 @@ async function main(): Promise<void> {
     body: msg.body,
   });
   console.log(`draft ${draftId} created, BCC ${k} addresses. Not sent: open Gmail, check it, send it yourself.`);
+  await recordAudit(client, {
+    actor,
+    action: DRAFTED_ACTION,
+    targetTable: "gmail",
+    targetId: draftId,
+    after: { week, draft_id: draftId, recipient_count: k, subject: msg.subject },
+    note: `distribute draft for week ${week} to ${k} addresses on Bcc`,
+  });
   await notify(finishedLine("distribute", `week ${week}: draft ${draftId}, ${k} addresses`));
 }
 

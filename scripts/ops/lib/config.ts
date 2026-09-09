@@ -5,6 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { missedSlots, parseCron } from "./cron";
 
 export const JOB_NAMES = ["sweep", "pick-reminder", "lynne-import", "chase", "results", "distribute"] as const;
 export type JobName = (typeof JOB_NAMES)[number];
@@ -26,6 +27,13 @@ export interface JobConfig {
 export interface OpsConfig {
   timezone: string;
   tickWindowMinutes: number;
+  /**
+   * The cron the Routine that runs `npm run ops -- tick` fires on, UTC, the
+   * same expression docs/ROUTINES.md section 10 records. Checked in because a
+   * job schedule means nothing on its own: a slot between two ticks is never
+   * observed, and the validator below refuses a config where one is.
+   */
+  tickSchedule: string;
   expectedRosterAddresses: number;
   reminderLeadHours: number;
   sweepSubjectTerms: string[];
@@ -38,12 +46,28 @@ function fail(msg: string): never {
   throw new Error(`scripts/ops/config.json: ${msg}`);
 }
 
+/**
+ * Runs a cron check and reports its message through fail(), so a bad
+ * expression is attributed to the file it came from like every other breach
+ * here. `loadOpsConfig` is called at module scope by scripts/lib/constants.ts,
+ * so this message is what a person sees when any command refuses to start.
+ */
+function checkCron<T>(what: string, f: () => T): T {
+  try {
+    return f();
+  } catch (e: unknown) {
+    fail(`${what}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 /** Checks the shape and the rules a config must keep; throws on the first breach. */
 export function validateOpsConfig(raw: unknown): OpsConfig {
   if (typeof raw !== "object" || raw === null) fail("not an object");
   const c = raw as Record<string, unknown>;
   if (typeof c.timezone !== "string" || !c.timezone) fail("timezone missing");
   if (!Number.isInteger(c.tickWindowMinutes) || (c.tickWindowMinutes as number) < 1 || (c.tickWindowMinutes as number) > 1440) fail("tickWindowMinutes must be 1-1440");
+  if (typeof c.tickSchedule !== "string" || c.tickSchedule.trim().split(/\s+/).length !== 5) fail("tickSchedule must be 5 cron fields");
+  checkCron("tickSchedule", () => parseCron(c.tickSchedule as string));
   if (!Number.isInteger(c.expectedRosterAddresses) || (c.expectedRosterAddresses as number) < 1) fail("expectedRosterAddresses must be a positive integer");
   if (!Number.isInteger(c.reminderLeadHours) || (c.reminderLeadHours as number) < 1) fail("reminderLeadHours must be a positive integer");
   if (!Array.isArray(c.sweepSubjectTerms) || c.sweepSubjectTerms.length === 0 || !c.sweepSubjectTerms.every((t) => typeof t === "string" && t.trim())) fail("sweepSubjectTerms must be a non-empty list of words");
@@ -54,6 +78,7 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
   for (const name of JOB_NAMES) {
     const j = jobs[name] as Record<string, unknown>;
     if (typeof j.schedule !== "string" || j.schedule.trim().split(/\s+/).length !== 5) fail(`${name}: schedule must be 5 cron fields`);
+    checkCron(`${name}: schedule`, () => parseCron(j.schedule as string));
     if (typeof j.command !== "string" || !j.command) fail(`${name}: command missing`);
     if (!Array.isArray(j.args) || !j.args.every((a) => typeof a === "string")) fail(`${name}: args must be strings`);
     if (typeof j.sends !== "boolean") fail(`${name}: sends must be true or false`);
@@ -67,6 +92,30 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
     if (j.sends && typeof j.template !== "string") fail(`${name}: a sending job names its template`);
   }
   return raw as OpsConfig;
+}
+
+/**
+ * The jobs that would lose a run to the tick that observes them, named, or an
+ * empty list when none would: either every slot a job names falls inside a
+ * tick's look-back window, or it is due at every tick anyway (missedSlots
+ * decides which). The pick-reminder's 10:00 UTC slot sat in the gap before
+ * the first tick of the day, so the EDT early reminder would have gone four
+ * hours late (issue #41).
+ *
+ * This is deliberately NOT part of validateOpsConfig. scripts/lib/constants.ts
+ * calls loadOpsConfig() at module scope for EXPECTED_ROSTER_ADDRESSES, so
+ * every command - the Week 1 picks intake included - dies at import on
+ * anything the loader refuses. The shape of the file has to hold for all of
+ * them; how a schedule lines up against the tick only matters to the tick, so
+ * `npm run ops` is where it is checked and where it refuses.
+ */
+export function slotBreaches(c: OpsConfig): string[] {
+  const out: string[] = [];
+  for (const name of JOB_NAMES) {
+    const missed = checkCron(`${name}: schedule`, () => missedSlots(c.jobs[name].schedule, c.tickSchedule, c.tickWindowMinutes));
+    if (missed.length) out.push(`${name}: ${missed.join(", ")} falls outside every ${c.tickWindowMinutes}-minute tick window of "${c.tickSchedule}"`);
+  }
+  return out;
 }
 
 let cached: OpsConfig | null = null;
