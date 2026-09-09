@@ -51,8 +51,11 @@ function normalize(text: string): string {
   return out;
 }
 
-const raises = (text: string) =>
-  normalize(text).match(/raise\s+(?:notice|exception)[^;]*;/gi) ?? [];
+// EVERY raise, not the two severities this file happens to use today.
+// WARNING, INFO, LOG and DEBUG all reach the log, and a bare `raise` defaults
+// to EXCEPTION, so the statement is matched by its keyword and not by a list
+// of levels that would silently exclude the rest.
+const raises = (text: string) => normalize(text).match(/\braise\b[^;]*;/gi) ?? [];
 
 // An allowlist, not a blocklist. Naming a few money-ish variables to forbid
 // only holds while the money keeps those names: a total parked in
@@ -64,6 +67,7 @@ const raises = (text: string) =>
 const PRINTABLE = new Set([
   "v_entries",
   "v_entries_after",
+  "v_entries + 1",
   "v_recruited",
   "v_entry.entry_name",
   "v_team",
@@ -72,15 +76,38 @@ const PRINTABLE = new Set([
   "v_paid_moved",
 ]);
 
-// The arguments of a raise are everything after its format string, which
-// normalize() has already emptied to ''.
+// WHOLE arguments, not the identifiers inside them. Pulling out names that
+// start with v_ finds nothing at all in `raise notice 'money %', 284000;` or
+// in `raise notice 'money %', total_owed();`, so the allowlist passes over a
+// printed total by matching nothing. Each complete argument has to BE on the
+// list: a literal, a function call and an unfamiliar variable all fail alike.
 function printed(raise: string): string[] {
-  const args = raise.slice(raise.indexOf("''") + 2);
-  return (args.match(/\bv_[a-z0-9_]*(?:\.[a-z0-9_]+)?/gi) ?? []).map((n) => n.toLowerCase());
+  const at = raise.indexOf("''");
+  // No format string means no arguments: a bare `raise;` re-raises the
+  // current error and prints nothing new.
+  if (at < 0) return [];
+  const args = raise.slice(at + 2).replace(/;\s*$/, "");
+  const out: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of args) {
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    if (ch === "," && depth === 0) {
+      out.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  out.push(current);
+  return out
+    .map((a) => a.trim().replace(/\s+/g, " ").toLowerCase())
+    .filter((a) => a !== "");
 }
 
 describe("smoke check", () => {
-  it("prints only the values on the allowlist, so no money total can reach the log", () => {
+  it("prints only the arguments on the allowlist, so no money total can reach the log", () => {
     const found = raises(sql());
     expect(found.length).toBeGreaterThan(0);
     const unlisted = found.flatMap(printed).filter((name) => !PRINTABLE.has(name));
