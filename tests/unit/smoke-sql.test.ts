@@ -46,7 +46,14 @@ function blockComment(text: string, i: number): number | null {
 }
 
 // Where a dollar-quoted literal starts here, and where its content ends.
+// A `$` can also sit INSIDE an unquoted identifier - `v$tag$` is one valid
+// name, not a variable followed by a delimiter - so a tag only opens a literal
+// at a token boundary. Without that check a body declaring `v$tag$` and using
+// it again later reads as one huge literal spanning everything between, which
+// swallows any raise in between. Confirmed against postgres 16: that body runs
+// and prints, and the guard stayed green before this check.
 function dollarQuote(text: string, i: number): { content: string; next: number } | null {
+  if (i > 0 && IDENT.test(text[i - 1] ?? "")) return null;
   // The tag grammar is a letter or underscore then letters, digits and
   // underscores, or nothing at all: $$, $msg$ and $msg1$ are all valid, and
   // a pattern that stops at letters misses the third.
