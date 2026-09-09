@@ -68,7 +68,13 @@ describe("a stranger whose message parses to nothing", () => {
   });
 
   it("is wired into the sweep, counting only the rows this message produced, and never as a pick", () => {
-    const src = readFileSync("scripts/picks/cli.ts", "utf8");
+    // Comments stripped first: a source assertion that matches the comment
+    // explaining a rule instead of the code keeping it is the 2026-09-04 trap.
+    const src = readFileSync("scripts/picks/cli.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    // The row is STAGED, not merely computed. Without this line the whole fix
+    // reverts with the suite green: the value is unused, which eslint reports
+    // as a warning (CI passes warnings) and tsc does not check at all.
+    expect(src).toMatch(/if \(nothingHeard\) unresolved\.push\(\{ \.\.\.nothingHeard, candidates: \[\], item \}\);/);
     // The count is this item's own, not the run's total: a stranger after a
     // player who picked would otherwise look like it had produced rows.
     expect(src).toMatch(/const rowsBefore = unresolved\.length \+ proposals\.length;/);
