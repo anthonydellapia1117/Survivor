@@ -298,14 +298,15 @@ export function poolAsEntries(
       // sorts, colours and reads like the same row of ours: an eliminated row
       // has no lives whatever its loss count (her OUT and a repeated team
       // eliminate without one), one loss is at_risk, and a clean row is bye
-      // eligible once it has been scored into the single-elimination weeks.
+      // eligible once its last scored week reaches the view's boundary
+      // (last_scored_week >= 7, inclusive, as v_entry_standing has it).
       livesRemaining: bucket === "Out" ? 0 : Math.max(0, 2 - losses),
       status:
         bucket === "Out"
           ? "eliminated"
           : losses === 1
             ? "at_risk"
-            : lastScoredWeek !== null && lastScoredWeek > doubleElimThrough && losses === 0 && !herBye(r)
+            : lastScoredWeek !== null && lastScoredWeek >= doubleElimThrough && losses === 0 && !herBye(r)
               ? "bye_eligible"
               : "active",
       byeUsed: herBye(r),
@@ -395,8 +396,8 @@ export interface PoolStandings {
   /** Rows counted: every row of her newest sheet. */
   total: number;
   /**
-   * The highest week every GAME of which is final, with every week before it
-   * final too. Null until a whole week is in. "Scored through" has to mean
+   * The highest week every GAME of which is final and public, with every
+   * week before it the same. Null until a whole week is in. "Scored through" has to mean
    * the buckets will not move for that week, and that is decided from the
    * schedule, never from the cells: the public view omits each team cell
    * until its game kicks off, so "every revealed pick is scored" is true on
@@ -440,8 +441,9 @@ export function poolBucketOf(
 /** The three bucket counts across her whole sheet. */
 export function poolStandings(
   list: Pick<MasterList, "rows">,
-  games: Parameters<typeof teamResults>[0],
+  games: (Parameters<typeof teamResults>[0][number] & Pick<GameRow, "revealOverride" | "kickoffAt">)[],
   doubleElimThrough = 7,
+  now: Date = new Date(),
 ): PoolStandings {
   const columns = weekColumns(list.rows);
   const results = teamResults(games);
@@ -458,6 +460,9 @@ export function poolStandings(
   // a week that is final on the schedule but absent from her newest sheet
   // has put nothing into the buckets above, so it is neither scored through
   // nor in progress here, and it stops the marker like an open week would.
+  // A game counts as in only when it is final AND public: the view hides a
+  // game's cells while its reveal is held (pick_is_public), so a final game
+  // an admin is holding back has contributed nothing either.
   // Week order, and contiguous: once a week is found open (or unpublished),
   // no later week advances the marker however complete it is - "through
   // Week 3" with Week 2 still open would be a lie.
@@ -466,7 +471,7 @@ export function poolStandings(
   for (const g of games) {
     const w = byWeek.get(g.week) ?? { total: 0, final: 0 };
     w.total += 1;
-    if (g.status === "final" && g.homeScore !== null && g.awayScore !== null) w.final += 1;
+    if (g.status === "final" && g.homeScore !== null && g.awayScore !== null && gameIsRevealed(g, now)) w.final += 1;
     byWeek.set(g.week, w);
   }
   let scoredThrough: number | null = null;

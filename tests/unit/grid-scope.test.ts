@@ -22,11 +22,14 @@ import type { EntrySummary, GameRow } from "../../src/lib/data/types";
 // that decide what it shows are pure and tested here; the render below covers
 // only what a static pass can see, since this repo has no DOM in tests.
 
-const GAMES: Pick<GameRow, "week" | "homeTeam" | "awayTeam" | "homeScore" | "awayScore" | "status">[] = [
-  { week: 1, homeTeam: "PHI", awayTeam: "DAL", homeScore: 24, awayScore: 17, status: "final" },
+// Every fixture game kicked off in the past and is not held back, so a
+// final one is also public; the reveal-hold case gets its own fixture below.
+const PLAYED = { kickoffAt: "2026-09-06T17:00:00Z", revealOverride: null as boolean | null };
+const GAMES: Pick<GameRow, "week" | "homeTeam" | "awayTeam" | "homeScore" | "awayScore" | "status" | "kickoffAt" | "revealOverride">[] = [
+  { week: 1, homeTeam: "PHI", awayTeam: "DAL", homeScore: 24, awayScore: 17, status: "final", ...PLAYED },
   // Scheduled, so neither team is scored: an unplayed week must not read as a loss.
-  { week: 2, homeTeam: "BUF", awayTeam: "NYJ", homeScore: null, awayScore: null, status: "scheduled" },
-  { week: 3, homeTeam: "CHI", awayTeam: "GB", homeScore: 20, awayScore: 20, status: "final" },
+  { week: 2, homeTeam: "BUF", awayTeam: "NYJ", homeScore: null, awayScore: null, status: "scheduled", ...PLAYED },
+  { week: 3, homeTeam: "CHI", awayTeam: "GB", homeScore: 20, awayScore: 20, status: "final", ...PLAYED },
 ];
 
 const ROWS: MasterRow[] = [
@@ -87,15 +90,25 @@ describe("the pool as grid rows", () => {
   it("marks a clean row bye eligible once it is scored into the single-elimination weeks, as the view does", () => {
     // v_entry_standing: last_scored_week >= 7 (past the double-elimination
     // window), no losses, bye unused. A row scored only in Week 1 is active.
-    const games = [...GAMES, { week: 8, homeTeam: "DEN", awayTeam: "LV", homeScore: 27, awayScore: 10, status: "final" as const }];
+    // The view's boundary is inclusive: a Week 7 final already makes a
+    // clean row bye eligible, exactly as it does for our own rows.
+    const games = [
+      ...GAMES,
+      { week: 7, homeTeam: "SEA", awayTeam: "ARI", homeScore: 31, awayScore: 14, status: "final" as const, ...PLAYED },
+      { week: 8, homeTeam: "DEN", awayTeam: "LV", homeScore: 27, awayScore: 10, status: "final" as const, ...PLAYED },
+    ];
     const rows: MasterRow[] = [
       { no: 20, names: "Deep Row", cells: { "Week 1": "Philadelphia", "Week 8": "Denver" }, entryId: null },
       { no: 21, names: "Deep Bye Row", cells: { "Week 1": "BYE", "Week 8": "Denver" }, entryId: null },
+      { no: 22, names: "Week 7 Row", cells: { "Week 1": "Philadelphia", "Week 7": "Seattle" }, entryId: null },
+      { no: 23, names: "Week 6 Row", cells: { "Week 1": "Philadelphia" }, entryId: null },
     ];
     const { entries } = poolAsEntries({ loadedAt: LIST.loadedAt, rows }, games);
-    expect(entries.find((e) => e.id === "pool-20")!.status).toBe("bye_eligible");
-    expect(entries.find((e) => e.id === "pool-21")!.status).toBe("active");
-    expect(poolAsEntries(LIST, GAMES).entries.find((e) => e.id === "pool-1")!.status).toBe("active");
+    const status = (id: string) => entries.find((e) => e.id === id)!.status;
+    expect(status("pool-20")).toBe("bye_eligible");
+    expect(status("pool-21")).toBe("active");
+    expect(status("pool-22")).toBe("bye_eligible");
+    expect(status("pool-23")).toBe("active");
   });
 
   it("stamps every cell of hers as the sheet's, so its time reads as the sheet's and not as a submission", () => {
@@ -171,7 +184,7 @@ describe("scored through", () => {
     // Week 1 has a game still scheduled: the hidden picks are for that game.
     const games = [
       ...GAMES,
-      { week: 1, homeTeam: "BUF", awayTeam: "MIA", homeScore: null, awayScore: null, status: "scheduled" as const },
+      { week: 1, homeTeam: "BUF", awayTeam: "MIA", homeScore: null, awayScore: null, status: "scheduled" as const, ...PLAYED },
     ];
     const s = poolStandings(LIST, games);
     expect(s.scoredThrough).toBeNull();
@@ -187,9 +200,9 @@ describe("scored through, bounded to her sheet", () => {
     // not exist.
     const rows: MasterRow[] = [{ no: 30, names: "Only Week 1", cells: { "Week 1": "Philadelphia" }, entryId: null }];
     const games = [
-      { week: 1, homeTeam: "PHI", awayTeam: "DAL", homeScore: 24, awayScore: 17, status: "final" as const },
-      { week: 2, homeTeam: "BUF", awayTeam: "NYJ", homeScore: 30, awayScore: 3, status: "final" as const },
-      { week: 3, homeTeam: "CHI", awayTeam: "GB", homeScore: 20, awayScore: 20, status: "final" as const },
+      { week: 1, homeTeam: "PHI", awayTeam: "DAL", homeScore: 24, awayScore: 17, status: "final" as const, ...PLAYED },
+      { week: 2, homeTeam: "BUF", awayTeam: "NYJ", homeScore: 30, awayScore: 3, status: "final" as const, ...PLAYED },
+      { week: 3, homeTeam: "CHI", awayTeam: "GB", homeScore: 20, awayScore: 20, status: "final" as const, ...PLAYED },
     ];
     const s = poolStandings({ rows }, games);
     expect(s.scoredThrough).toBe(1);
@@ -198,10 +211,30 @@ describe("scored through, bounded to her sheet", () => {
     // either: its picks are in no count on this page.
     const partial = [
       games[0],
-      { week: 2, homeTeam: "BUF", awayTeam: "NYJ", homeScore: 30, awayScore: 3, status: "final" as const },
-      { week: 2, homeTeam: "KC", awayTeam: "LAC", homeScore: null, awayScore: null, status: "scheduled" as const },
+      { week: 2, homeTeam: "BUF", awayTeam: "NYJ", homeScore: 30, awayScore: 3, status: "final" as const, ...PLAYED },
+      { week: 2, homeTeam: "KC", awayTeam: "LAC", homeScore: null, awayScore: null, status: "scheduled" as const, ...PLAYED },
     ];
     expect(poolStandings({ rows }, partial)).toMatchObject({ scoredThrough: 1, inProgressWeek: null });
+  });
+
+  it("does not count a final game the view is still holding back", () => {
+    // reveal_override = false keeps a game's cells out of v_master_list
+    // whatever the score, so its picks are in no bucket: the week is not
+    // scored through until the hold is lifted. With one held game beside
+    // one public final, the week is in progress.
+    const rows: MasterRow[] = [{ no: 31, names: "Held Row", cells: { "Week 1": "Philadelphia" }, entryId: null }];
+    const held = [
+      { week: 1, homeTeam: "PHI", awayTeam: "DAL", homeScore: 24, awayScore: 17, status: "final" as const, kickoffAt: "2026-09-06T17:00:00Z", revealOverride: false },
+    ];
+    expect(poolStandings({ rows }, held)).toMatchObject({ scoredThrough: null, inProgressWeek: null });
+    const mixed = [
+      ...held,
+      { week: 1, homeTeam: "KC", awayTeam: "LAC", homeScore: 20, awayScore: 10, status: "final" as const, ...PLAYED },
+    ];
+    expect(poolStandings({ rows }, mixed)).toMatchObject({ scoredThrough: null, inProgressWeek: 1 });
+    // Lifting the hold, or the kickoff having passed with no override, counts it.
+    const lifted = [{ ...held[0], revealOverride: true }];
+    expect(poolStandings({ rows }, lifted).scoredThrough).toBe(1);
   });
 });
 

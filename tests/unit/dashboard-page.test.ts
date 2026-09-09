@@ -21,7 +21,7 @@ const sheet = vi.hoisted(() => ({
   extraGames: [] as Record<string, unknown>[],
   // The Week 1 game's reveal override: false holds the week back whatever
   // the clock says, true lets it out. Pinned so no test depends on today.
-  reveal: false as boolean | null,
+  reveal: null as boolean | null,
 }));
 
 vi.mock("../../src/lib/data", () => ({
@@ -73,7 +73,8 @@ vi.mock("../../src/lib/data", () => ({
       {
         id: "g-1",
         week: 1,
-        kickoffAt: "2026-09-13T17:00:00Z",
+        // Kicked off in the past, so with no override it is public.
+        kickoffAt: "2026-09-06T17:00:00Z",
         dayOfWeek: "Sunday",
         awayTeam: "DAL",
         homeTeam: "PHI",
@@ -180,19 +181,21 @@ describe("Dashboard, signed out", () => {
   });
 
   it("qualifies the master-pool distribution until every game of the week has kicked off", async () => {
-    // Held back: the chart is whatever cells the view has revealed, and the
-    // caption must not call that the whole pool.
+    // Every game public (kicked off, no hold): the whole pool, said plainly.
     let out = await html();
-    expect(out).toContain("Revealed picks so far in the master pool");
-    expect(out).not.toContain("Every entry in the master pool");
-    // Every game revealed: the whole pool, said plainly.
-    sheet.reveal = true;
+    expect(out).toContain("Every entry in the master pool");
+    expect(out).not.toContain("Revealed picks so far");
+    // Held back: the chart is whatever cells the view has revealed, and the
+    // caption must not call that the whole pool. The same hold keeps the
+    // week from reading as scored through.
+    sheet.reveal = false;
     try {
       out = await html();
-      expect(out).toContain("Every entry in the master pool");
-      expect(out).not.toContain("Revealed picks so far");
+      expect(out).toContain("Revealed picks so far in the master pool");
+      expect(out).not.toContain("Every entry in the master pool");
+      expect(out).not.toContain("scored through Week 1");
     } finally {
-      sheet.reveal = false;
+      sheet.reveal = null;
     }
   });
 
