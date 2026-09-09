@@ -7,6 +7,7 @@ import {
   poolAsEntries,
   standingCounts,
   tallySentence,
+  tallyWeekOf,
   type MasterRow,
 } from "../../src/lib/master-list";
 import type { EntrySummary, GameRow } from "../../src/lib/data/types";
@@ -150,6 +151,23 @@ describe("the week's tally", () => {
       { week: 1, team: "MISSED" },
     ];
     expect(tallySentence(cells, 1, (t) => t)).toBeNull();
+  });
+
+  it("describes the latest week with a countable pick, not the latest week with any cell", () => {
+    // A future-week pick the public view still masks is a LOCKED cell on
+    // that week. Taking the highest week with any cell landed the tally on
+    // it, and every cell there is a placeholder, so the sentence vanished
+    // while Week 1 still had picks to summarise.
+    const cells = [
+      { week: 1, team: "SEA" },
+      { week: 1, team: "LAR" },
+      { week: 2, team: "LOCKED" },
+      { week: 3, team: "SKIP_WEEK" },
+    ];
+    expect(tallyWeekOf(cells)).toBe(1);
+    expect(tallySentence(cells, tallyWeekOf(cells)!, (t) => t)).toBe("1 picked LAR, 1 picked SEA");
+    // Nothing countable anywhere: no week, rather than a week with nothing in it.
+    expect(tallyWeekOf([{ week: 2, team: "LOCKED" }])).toBeNull();
   });
 });
 

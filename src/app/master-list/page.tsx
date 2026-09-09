@@ -49,7 +49,10 @@ export default async function MasterListPage() {
         {master.loadedAt ? (
           <span suppressHydrationWarning>Sheet as of {formatEtDate(master.loadedAt)}. </span>
         ) : null}
-        {variance ?? "Her published total matches the rows on this sheet."}
+        {/* No variance means either the two counts agree or she has not
+            published a total yet. Only the first is a match. */}
+        {variance ??
+          (pot.poolEntryCount !== null ? "Her published total matches the rows on this sheet." : null)}
       </p>
 
       {master.rows.length === 0 ? (

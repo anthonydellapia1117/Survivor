@@ -6,6 +6,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 // her figures as published. It must never name the runner, never show an
 // uploaded filename, never print a per-entry rate, and never reveal a pick
 // the public view still masks.
+// Her published total is switchable so the match sentence can be exercised
+// in both directions: null is a supported state (a sheet loaded before her
+// figures are entered) and must not read as a match.
+const potState = vi.hoisted(() => ({ poolEntryCount: 1318 as number | null }));
+
 vi.mock("../../src/lib/data", () => ({
   getData: () => ({
     getMasterList: async () => ({
@@ -19,7 +24,7 @@ vi.mock("../../src/lib/data", () => ({
     }),
     getPot: async () => ({
       entryCount: 121,
-      poolEntryCount: 1318,
+      poolEntryCount: potState.poolEntryCount,
       poolFreeCount: 46,
       poolPaidCount: 1272,
       poolPotCents: 2862000,
@@ -88,6 +93,23 @@ describe("Master List, signed out", () => {
     const html = renderToStaticMarkup(await MasterListPage());
     expect(html).toContain("1,318");
     expect(html).toMatch(/this sheet carries 4 rows/);
+    expect(html).not.toContain("matches the rows on this sheet");
+  });
+
+  it("says her total matches the sheet only when she has published one and it does", async () => {
+    try {
+      // No published total: nothing to compare, so no match and no variance.
+      potState.poolEntryCount = null;
+      let html = renderToStaticMarkup(await MasterListPage());
+      expect(html).not.toContain("matches the rows on this sheet");
+      expect(html).not.toContain("this sheet carries");
+      // Published and equal to the 4 mocked rows: now it is a match.
+      potState.poolEntryCount = 4;
+      html = renderToStaticMarkup(await MasterListPage());
+      expect(html).toContain("matches the rows on this sheet");
+    } finally {
+      potState.poolEntryCount = 1318;
+    }
   });
 
   it("never shows the uploaded filename or the runner's name, and keeps the weekly files", async () => {

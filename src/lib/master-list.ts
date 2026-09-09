@@ -193,7 +193,14 @@ export function poolStats(pot: Pick<PotSummary, "poolEntryCount" | "poolFreeCoun
   return out;
 }
 
-/** Marks a row she has struck out: her cell reads OUT (any case). */
+/**
+ * Marks a row she has struck out: a week cell that reads OUT (any case).
+ *
+ * This is the only elimination marker the roster copy carries. Her other one,
+ * the red fill on the NAMES cell, is not persisted by the master-sheet loader
+ * (lynne_roster stores text only), so a row she has eliminated by fill alone
+ * is scored here like any other row - a known undercount, tracked in #37.
+ */
 export function herOut(row: Pick<MasterRow, "cells">): boolean {
   return Object.values(row.cells).some((v) => /^\s*out\s*$/i.test(v));
 }
@@ -378,9 +385,8 @@ export interface PoolStandings {
 }
 
 /**
- * One row's bucket. A tie is not a loss (her pool plays ties as survival);
- * only a scored loss counts, so an unplayed or unpublished week leaves the
- * row where it was rather than moving it.
+ * One row's bucket. Only a scored loss or tie counts, so an unplayed or
+ * unpublished week leaves the row where it was rather than moving it.
  */
 export function poolBucketOf(
   row: Pick<MasterRow, "cells">,
@@ -466,8 +472,7 @@ export function tallySentence(
 ): string | null {
   const counts = new Map<string, number>();
   for (const c of cells) {
-    if (c.week !== week) continue;
-    if (c.team === SKIP_WEEK || c.team === LOCKED_TEAM || c.team === "MISSED") continue;
+    if (c.week !== week || !countsInTally(c.team)) continue;
     counts.set(c.team, (counts.get(c.team) ?? 0) + 1);
   }
   if (counts.size === 0) return null;
@@ -475,6 +480,27 @@ export function tallySentence(
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([team, n]) => `${n} picked ${teamName(team)}`)
     .join(", ");
+}
+
+/** A cell that names a team. A bye, a miss and a pick the public view still masks are not picks to count. */
+function countsInTally(team: string): boolean {
+  return team !== SKIP_WEEK && team !== LOCKED_TEAM && team !== "MISSED";
+}
+
+/**
+ * The week the tally describes: the latest week holding a pick that counts,
+ * which is the latest week tallySentence() has anything to say about. A
+ * future-week pick the public view still masks arrives as a LOCKED cell, so
+ * "the highest week with any cell" would land on that week and the tally
+ * would read as empty while the revealed week before it still had picks.
+ */
+export function tallyWeekOf(cells: Pick<GridCell, "week" | "team">[]): number | null {
+  let latest: number | null = null;
+  for (const c of cells) {
+    if (!countsInTally(c.team)) continue;
+    if (latest === null || c.week > latest) latest = c.week;
+  }
+  return latest;
 }
 
 /**

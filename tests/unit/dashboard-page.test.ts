@@ -138,6 +138,11 @@ describe("Dashboard, signed out", () => {
     // "out on this sheet" is a substring of "struck out on this sheet" and
     // the positive check alone would pass on the wrong wording.
     expect(out).not.toContain("struck out on this sheet");
+    // The caption names the one marker of hers this copy of the sheet can
+    // see - a week cell that reads OUT. Her red fill is not persisted, so
+    // "a row she has struck out" would promise more than is delivered.
+    expect(out).toMatch(/a row her sheet writes OUT on is out whatever we compute/);
+    expect(out).not.toMatch(/a row she has struck out/);
   });
 
   it("says which week the pool count is scored through", async () => {

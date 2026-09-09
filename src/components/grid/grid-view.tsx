@@ -10,7 +10,6 @@ import type {
 } from "@/lib/data/types";
 import {
   RESULT_LABEL,
-  STATUS_LABEL,
   STATUS_ORDER,
   SKIP_WEEK,
   TEAM_NAME,
@@ -23,6 +22,7 @@ import {
   standingCounts,
   STANDING_FILTERS,
   tallySentence,
+  tallyWeekOf,
   type PoolBucket,
   type StandingFilter,
 } from "@/lib/master-list";
@@ -194,11 +194,10 @@ export function GridView({
 
   // The week's picks as a sentence, from whatever is in scope: the same
   // tally she sends by email, derived rather than typed.
-  const tallyWeek = useMemo(() => {
-    let latest: number | null = null;
-    for (const c of activeCells) if (latest === null || c.week > latest) latest = c.week;
-    return latest;
-  }, [activeCells]);
+  // The latest week with a countable pick, not the latest week with any
+  // cell: a masked future pick arrives as LOCKED and would otherwise pull
+  // the tally onto a week that then reads as empty.
+  const tallyWeek = useMemo(() => tallyWeekOf(activeCells), [activeCells]);
   const tally = tallyWeek === null ? null : tallySentence(activeCells, tallyWeek, (t) => TEAM_NAME[t] ?? t);
 
   const visibleWeeks = weeks.filter(

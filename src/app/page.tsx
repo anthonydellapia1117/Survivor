@@ -259,10 +259,10 @@ export default async function DashboardPage() {
             {poolStand.scoredThrough !== null
               ? `, scored through Week ${poolStand.scoredThrough}`
               : ", before any week has been scored"}
-            . Our own count from her published picks; a row she has struck out
-            is out whatever we compute. She removes eliminated entries as the
-            season goes, so these describe the rows on her newest sheet rather
-            than a running total for the season.
+            . Our own count from her published picks; a row her sheet writes
+            OUT on is out whatever we compute. She removes eliminated entries
+            as the season goes, so these describe the rows on her newest sheet
+            rather than a running total for the season.
           </p>
         </div>
       ) : null}
