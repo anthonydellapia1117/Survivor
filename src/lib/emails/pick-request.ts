@@ -139,7 +139,11 @@ function recipientFooter(recipient: Recipient, n: number): string {
   // "nowhere else" told a player their text would not count, which is the
   // opposite of the rule in CLAUDE.md. What "nowhere else" rules out is the
   // app: there is no pick entry on the site.
-  const REPLY = "Reply to this address, or text the number below; picks are not accepted anywhere else.";
+  //
+  // No "below" or "above": this footer renders AFTER the signoff block that
+  // carries the number, so "the number below" pointed at nothing, and any
+  // direction word here breaks again the next time a block moves.
+  const REPLY = "Reply to this address, or text me; picks are not accepted anywhere else.";
   const buyers = recipient.buyers.map((b) => b.name);
   const named =
     buyers.length <= 1

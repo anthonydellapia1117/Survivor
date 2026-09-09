@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildPickRequests } from "@/lib/emails/pick-request";
+import { buildPickRequests, CONTACT_PHONE } from "@/lib/emails/pick-request";
 import type { GameRow, WeekRow } from "@/lib/data/types";
 import { bccBody, recipientBody } from "../../scripts/chase/lib/message";
 
@@ -196,6 +196,17 @@ describe("player-facing copy", () => {
         reply: /reply to this/i.test(body),
         text: /\btext\b/i.test(body),
       }).toEqual({ what, reply: true, text: true });
+    }
+  });
+
+  it("offers the text path without pointing at where the number is", () => {
+    // "text the number below" was wrong: the footer renders after the block
+    // that carries the number. Rather than fix the direction, drop it - the
+    // number is in the message either way, and a positional word breaks again
+    // the next time a block moves.
+    for (const { what, body } of pickAsks()) {
+      expect({ what, points: /\b(?:above|below)\b/i.test(body) }).toEqual({ what, points: false });
+      expect({ what, hasNumber: body.includes(CONTACT_PHONE) }).toEqual({ what, hasNumber: true });
     }
   });
 
