@@ -1,8 +1,11 @@
-# One check, "codex-gate", on the pull request's head commit that passes only
-# when the Codex review has concluded on that exact commit and every review
-# thread is resolved. Codex itself posts no check, only a summary comment it
-# edits as it works, so this job reads that comment and the review threads
-# and writes the check the main ruleset requires (docs/MERGE_AUTOMATION.md).
+# One check, "codex-gate", on the pull request's head commit. It reports
+# SUCCESS when the Codex review has concluded on that exact commit and every
+# review thread is resolved, and NEUTRAL otherwise. It never reports failure:
+# nothing requires this check (there is no ruleset on main), so a red mark
+# here only painted merge boxes red and stalled sessions that waited on it.
+# It is informational; `ci` is the objective gate (docs/MERGE_AUTOMATION.md).
+# Codex itself posts no check, only a summary comment it edits as it works,
+# so this job reads that comment and the review threads.
 #
 # It re-runs on the events that can change the answer: a push to the PR,
 # Codex editing its summary, a review. GitHub offers no workflow event for a
@@ -37,7 +40,7 @@ jobs:
     # The job's own check run must NOT carry the name of the check the script
     # writes: both would be "codex-gate" from the same app, the job's green
     # (it ran to completion) would land a second later than the check the
-    # script wrote, and a ruleset requiring "codex-gate" would read the newer
+    # script wrote, and anything reading "codex-gate" would see the newer
     # one. So the job is "gate" and only the written check is "codex-gate".
     name: gate
     if: github.event_name != 'issue_comment' || github.event.issue.pull_request
@@ -91,11 +94,15 @@ jobs:
               after = threads.pageInfo.endCursor;
             }
 
+            // Success or neutral, never a red mark: this check is read by people
+            // and sessions, required by nothing, and a red mark here has only
+            // ever stalled a merge that the criterion allowed.
             const ok = concluded && unresolved === 0;
+            const conclusion = ok ? "success" : "neutral";
             const summaryText = `${codex}. Unresolved review threads: ${unresolved}.`;
             await github.rest.checks.create({
               owner, repo, name: "codex-gate", head_sha: head, status: "completed",
-              conclusion: ok ? "success" : "failure",
-              output: { title: ok ? "Codex concluded, every thread resolved" : "Not ready to merge", summary: summaryText },
+              conclusion,
+              output: { title: ok ? "Codex concluded, every thread resolved" : "Codex not concluded, or threads open", summary: summaryText },
             });
-            core.info(`codex-gate on ${short}: ${ok ? "success" : "failure"} (${summaryText})`);
+            core.info(`codex-gate on ${short}: ${conclusion} (${summaryText})`);

@@ -1,25 +1,30 @@
 # Merge automation
 
-TLDR: two workflows in `.github/workflows` do the checking; a ruleset on
-main does the gating; auto-merge does the merging. The workflows are in the
-repo. The ruleset and the repository merge settings are repository settings
-that only the owner can set; the exact clicks are in section 3. **Nothing
-here reads a secret any more, and one that was set has to be deleted by
-hand** - sections 2 and 3c.
+TLDR: two workflows in `.github/workflows` do the checking. `ci` is the
+objective gate; `codex-gate` is informational and reports success or
+neutral, never failure. There is no ruleset on main and nothing requires
+either check: a session merges a pull request itself, by squash, the moment
+the merge criterion in section 4 is met. Pull requests open ready for
+review, never as drafts. The repository merge settings are the owner's; the
+clicks are in section 3. **Nothing here reads a secret any more, and one
+that was set has to be deleted by hand** - sections 2 and 3c.
 
 ## 1. Workflows
 
 | File | Name | What it does |
 | --- | --- | --- |
 | `ci.yml` | `ci` | Lint, typecheck, unit tests, production build, SQL suites on a fresh database built from `supabase/migrations`. On every pull request and every push to main. |
-| `codex-gate.yml` | `codex-gate` | Writes one check on the PR head that passes only when Codex has concluded on that exact commit and every review thread is resolved. Re-runs when the PR moves, when Codex edits its summary, and on a review. GitHub has no workflow event for a thread being resolved, so after resolving threads re-run it by hand: Actions > codex-gate > Run workflow > the PR number. Comment and review events run the copy on main, so they reach a PR only once the workflow is merged. |
+| `codex-gate.yml` | `codex-gate` | Writes one check on the PR head: success when Codex has concluded on that exact commit and every review thread is resolved, neutral otherwise, never failure. Informational only; nothing requires it. Re-runs when the PR moves, when Codex edits its summary, and on a review. GitHub has no workflow event for a thread being resolved, so after resolving threads re-run it by hand: Actions > codex-gate > Run workflow > the PR number. Comment and review events run the copy on main, so they reach a PR only once the workflow is merged. |
 
 Codex posts no check of its own, only a summary comment it edits as it
-works; `codex-gate` turns that into a check the ruleset can require. The
-workflow's job is named `gate`, not `codex-gate`: the job's own check run and
-the check the script writes come from the same app, and if both carried the
-name the job's success, completed a second later, would be the one the
-ruleset read.
+works; `codex-gate` turns that into a check a person or a session can read
+at a glance. It used to report failure while Codex was running or a thread
+was open; with no ruleset requiring it, that only painted merge boxes red
+and stalled sessions that waited on it, so since 2026-09-09 it reports
+neutral instead. The workflow's job is named `gate`, not `codex-gate`: the
+job's own check run and the check the script writes come from the same app,
+and if both carried the name the job's success, completed a second later,
+would be the one anything reading that name saw.
 
 ## 2. Migrations are attended, and there is no job
 
@@ -156,15 +161,6 @@ settings writes), and none is code.
     tick Allow squash merging only (untick merge commits and rebase), tick
     Allow auto-merge, tick Automatically delete head branches.
 
-3b. The ruleset. Settings > Rules > Rulesets > New ruleset > New branch
-    ruleset. Name: main. Enforcement: Active. Target branches: add target >
-    Include default branch. Rules: Restrict deletions; Block force pushes;
-    Require a pull request before merging with Required approvals 0, Require
-    conversation resolution before merging ticked, Allowed merge methods
-    Squash only; Require status checks to pass with Require branches to be up
-    to date before merging ticked and the two checks `ci` and `codex-gate`
-    added. Save. You should see the ruleset listed as Active.
-
 3c. Delete the secret, if it was ever set. Settings > Secrets and variables
     > Actions. If `SUPABASE_DB_URL` is listed under Repository secrets,
     click its bin icon and confirm; nothing reads it now, and a stored
@@ -174,10 +170,29 @@ settings writes), and none is code.
     because the value it held remains valid until you do. If it is not
     listed, there is nothing to do.
 
-3d. Auto-merge on a pull request: once 3a is on, open the PR, click Enable
-    auto-merge (squash). From a session, the `enable_pr_auto_merge` tool does
-    the same. The PR merges itself the moment `ci` and `codex-gate` are green
-    and every thread is resolved.
+3d. Auto-merge is not used. With no ruleset there is nothing for it to wait
+    on, and a session merges by squash itself when the criterion in section
+    4 is met, pinned to the head it verified.
 
-Until 3a and 3b are set, a session merges a PR itself once those same
-conditions hold, and says so in its report.
+## 4. Pull requests: open ready, merge on the criterion
+
+Set by Anthony on 2026-09-09, after #36, #39 and #43 each stalled for hours
+as drafts waiting on a check that nothing required.
+
+4a. Open pull requests ready for review, never as drafts. A draft blocks its
+    own merge. Draft only when Anthony explicitly asks to look first, and
+    say so in the PR body.
+
+4b. Merge when the criterion is met. Blocking is data loss, a wrong database
+    write, a send without approval, a credential or address leak, or a
+    failing test. Everything else is filed as an issue and merged past.
+    Never fix a finding whose only effect is to re-trigger the review.
+
+4c. A review that is running on the current head is waited for. A review
+    that cannot run - Codex unable to fetch the branch, an outage - is an
+    infrastructure failure, not a finding, and is not waited on. `ci` green
+    on the head is the one check that has to hold.
+
+4d. Merge by squash, pinned to the head that was verified
+    (`expectedHeadSha`), and say in the report what merged and at which
+    commit.
