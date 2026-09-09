@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { deadlineTier, TIER_LABEL } from "@/lib/deadlines";
+import { gameWindow, WINDOW_CELL_CLASS, WINDOW_TEXT_CLASS } from "@/lib/game-window";
 
 interface SlimEntry {
   id: string;
@@ -214,13 +215,16 @@ export function ScheduleGrid({
                     }
                     const tag = DAY_TAG[g.day] ?? g.day.slice(0, 2);
                     const tier = deadlineTier(g.day);
-                    const early = tier !== "late";
+                    // The cell's colour is its game window: TNF amber, SNF,
+                    // MNF, Wed/Fri/Sat; a Sunday daytime game stays plain.
+                    const win = gameWindow({ dayOfWeek: g.day, kickoffAt: g.kickoffAt });
                     return (
                       <td
                         key={w}
                         className={cn(
                           "h-11 min-w-11 border-b border-border/40 px-1 text-center text-xs tabular-nums",
-                          w === currentWeek && "bg-primary/[0.07]",
+                          win !== null && WINDOW_CELL_CLASS[win],
+                          w === currentWeek && win === null && "bg-primary/[0.07]",
                           burned && "line-through",
                         )}
                         title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} - ${kickoffLabel(g.kickoffAt)} ET · picks close ${TIER_LABEL[tier]} noon ET`}
@@ -232,11 +236,7 @@ export function ScheduleGrid({
                         <span
                           className={cn(
                             "ml-0.5 align-super text-[9px]",
-                            // Early-window days carry the tighter deadline, so
-                            // they stay visually louder than the Sat-Mon days.
-                            early
-                              ? "font-semibold text-tie"
-                              : "text-muted-foreground/70",
+                            win !== null ? cn("font-semibold", WINDOW_TEXT_CLASS[win]) : "text-muted-foreground/70",
                           )}
                         >
                           {tag}
@@ -252,12 +252,11 @@ export function ScheduleGrid({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Every game carries its day (We/Th/Fr/Sa/Su/Mo), and the deadline
-        follows the day the team plays - in every week, Week 1 included.{" "}
-        <span className="font-semibold text-tie">Amber</span> days close a day
-        apart: We by Tuesday noon ET, Th by Wednesday, Fr by Thursday. Grey
-        days - Sa/Su/Mo - share one cutoff, Friday noon ET. Hover a cell for
-        kickoff time and which deadline applies.
+        Every game carries its day (We/Th/Fr/Sa/Su/Mo) and is coloured by its
+        window - TNF, SNF, MNF, Wed/Fri/Sat; Sunday daytime stays plain. The
+        deadline follows the day the team plays, in every week, Week 1
+        included: We, Th and Fr close a day apart, Sa/Su/Mo share the Friday
+        cutoff. Hover a cell for kickoff time and which deadline applies.
       </p>
     </div>
   );

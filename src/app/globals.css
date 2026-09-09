@@ -48,6 +48,11 @@
   --color-tie: var(--tie);
   --color-bye: var(--bye);
   --color-pending: var(--pending);
+  /* Game windows on the season grid (2026-09-09): TNF keeps --tie's amber;
+     the other three are derived from existing tokens, see the two blocks below. */
+  --color-snf: var(--snf);
+  --color-mnf: var(--mnf);
+  --color-wfs: var(--wfs);
 
   /* Type scale: 12 / 13 / 14 / 16 / 20 / 28 / 40 */
   --text-xs: 0.75rem;
@@ -102,6 +107,13 @@
   --tie: #f59e0b;
   --bye: #64748b;
   --pending: #3f4650;
+  /* Season-grid game windows, from existing tokens only: SNF is the primary
+     blue, MNF a primary/loss mix (violet), Wed/Fri/Sat a primary/win mix
+     (teal). tests/unit/game-window.test.ts proves none collides with win,
+     loss, bye or tie in either theme. */
+  --snf: var(--primary);
+  --mnf: color-mix(in srgb, var(--primary) 45%, var(--loss) 55%);
+  --wfs: color-mix(in srgb, var(--primary) 55%, var(--win) 45%);
 
   --chart-1: #4f7cff;
   --chart-2: #10b981;
@@ -149,6 +161,13 @@
   --tie: #d97706;
   --bye: #64748b;
   --pending: #c4cad2;
+  /* Season-grid game windows, from existing tokens only: SNF is the primary
+     blue, MNF a primary/loss mix (violet), Wed/Fri/Sat a primary/win mix
+     (teal). tests/unit/game-window.test.ts proves none collides with win,
+     loss, bye or tie in either theme. */
+  --snf: var(--primary);
+  --mnf: color-mix(in srgb, var(--primary) 45%, var(--loss) 55%);
+  --wfs: color-mix(in srgb, var(--primary) 55%, var(--win) 45%);
 
   --chart-1: #3b63d9;
   --chart-2: #0a9d6c;

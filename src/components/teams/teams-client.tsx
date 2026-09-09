@@ -6,6 +6,7 @@ import { NFL_TEAMS, SKIP_WEEK, STATUS_ORDER } from "@/lib/standing";
 import { matchesShowMode, showCounts } from "@/lib/alive";
 import { ShowToggle, useShowMode } from "@/components/show-toggle";
 import { StatusDot } from "@/components/status-dot";
+import { TeamLabel } from "@/components/team-label";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
@@ -154,7 +155,7 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
                   openTeam === t.abbr && !isUsed && "border-primary",
                 )}
               >
-                {t.abbr}
+                <TeamLabel abbr={t.abbr} className="justify-center" />
                 {isUsed ? (
                   <span className="block text-[9px] font-normal no-underline">WK {usedWeek}</span>
                 ) : null}
@@ -206,7 +207,7 @@ export function TeamsClient({ entries, cells, weekCount, games }: Props) {
               {NFL_TEAMS.map((t) => (
                 <tr key={t.abbr}>
                   <td className="sticky left-0 z-10 border-b border-r border-border/60 bg-surface px-2 py-1 font-medium">
-                    {t.abbr}
+                    <TeamLabel abbr={t.abbr} />
                   </td>
                   {weeks.map((w) => {
                     const n = heat.m.get(t.abbr)?.get(w) ?? 0;

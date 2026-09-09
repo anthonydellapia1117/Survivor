@@ -4,6 +4,7 @@ import { getData } from "@/lib/data";
 import { currentPlayWeek } from "@/lib/dashboard";
 import { GameBoard } from "@/components/schedule/game-board";
 import { ScheduleGrid } from "@/components/schedule/schedule-grid";
+import { WindowLegend } from "@/components/schedule/window-legend";
 
 export const metadata: Metadata = { title: "Schedule" };
 export const dynamic = "force-dynamic";
@@ -59,6 +60,8 @@ export default async function SchedulePage(props: {
           </Link>
         </div>
       </div>
+
+      <WindowLegend />
 
       {season ? (
         <ScheduleGrid
