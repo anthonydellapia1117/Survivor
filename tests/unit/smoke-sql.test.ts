@@ -9,7 +9,26 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const here = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
-const sql = () => readFileSync(here("../../scripts/db/smoke.sql"), "utf8");
+const sql = () => unwrapDoBlocks(readFileSync(here("../../scripts/db/smoke.sql"), "utf8"));
+
+// The whole PL/pgSQL body is itself a dollar-quoted string, `do $smoke$ ...
+// $smoke$`. Unwrap it so the statements inside are read as SQL; every
+// dollar-quoted run that remains is a literal, and PostgreSQL accepts one
+// wherever a single-quoted one goes - `raise notice $msg$money 284000$msg$;`
+// is a valid message with no quote in sight.
+function unwrapDoBlocks(text: string): string {
+  return text.replace(/\bdo\s+\$([a-z_]*)\$([\s\S]*?)\$\1\$/gi, (_all, _tag, body) => body);
+}
+
+// Where a dollar-quoted literal starts here, and where its content ends.
+function dollarQuote(text: string, i: number): { content: string; next: number } | null {
+  const open = /^\$([a-z_]*)\$/i.exec(text.slice(i));
+  if (!open) return null;
+  const close = text.indexOf(open[0], i + open[0].length);
+  const from = i + open[0].length;
+  if (close < 0) return { content: text.slice(from), next: text.length };
+  return { content: text.slice(from, close), next: close + open[0].length };
+}
 
 // A raise ends at a semicolon, but two things put semicolons and quotes where
 // a naive scan trips on them: a message string can CONTAIN a semicolon
@@ -30,6 +49,12 @@ function messageText(text: string): string[] {
     if (text.startsWith("--", i)) {
       const nl = text.indexOf("\n", i);
       i = nl < 0 ? text.length : nl;
+      continue;
+    }
+    const dollar = text[i] === "$" ? dollarQuote(text, i) : null;
+    if (dollar) {
+      out.push(dollar.content);
+      i = dollar.next;
       continue;
     }
     if (text[i] === "'") {
@@ -69,6 +94,15 @@ function normalize(text: string): string {
     if (text.startsWith("--", i)) {
       const nl = text.indexOf("\n", i);
       i = nl < 0 ? text.length : nl;
+      continue;
+    }
+    const dollar = text[i] === "$" ? dollarQuote(text, i) : null;
+    if (dollar) {
+      // Emptied to the same '' a single-quoted one becomes, so a format
+      // string written this way is still seen as one and a semicolon inside
+      // it cannot end the statement early.
+      out += "''";
+      i = dollar.next;
       continue;
     }
     if (text[i] === "'") {

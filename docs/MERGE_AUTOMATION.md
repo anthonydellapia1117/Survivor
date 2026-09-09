@@ -34,8 +34,20 @@ in `supabase_migrations.schema_migrations`, then one commit. The smoke check
 reads the entry count and the money totals back, re-saves one existing entry
 with its own values, and submits one pick on a scratch owner and entry; the
 rollback to the savepoint drops all of that, and its audit rows with it. It
-runs as the admin through the JWT claims for that transaction only. A raise
-anywhere leaves the transaction open, so nothing is applied.
+runs as the admin through the JWT claims for that transaction only.
+
+**Run it with `psql -v ON_ERROR_STOP=1`, or in a client that aborts the whole
+batch on an error.** This is not a preference. `rollback to savepoint smoke`
+is the step for a check that PASSED: it drops the scratch writes and keeps
+the migration. Issued after a check that RAISED, it clears the failed state
+and keeps the migration too - and the tracking row and the commit then
+succeed, applying a migration whose smoke check failed. Plain interactive
+psql keeps reading commands after an error, so nothing stops that sequence
+but the flag. The deleted wrapper set it; a person typing the steps has to.
+
+**If the smoke check raises: `rollback`, the whole transaction, and stop.**
+Not `rollback to savepoint`. Read the raise, fix the migration, start over
+from the top. Nothing is applied, which is the point.
 
 Because the output is read by a person and often pasted into a report, the
 smoke check prints **no money total** - it compares them and raises only
