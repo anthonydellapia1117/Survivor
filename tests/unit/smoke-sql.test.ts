@@ -65,6 +65,20 @@ function dollarQuote(text: string, i: number): { content: string; next: number }
 // text once, dropping comments and emptying literals, and only then look for
 // statements. A format string prints no value on its own; only the arguments
 // after it can, and those are what has to be read.
+// What counts as the gap that joins two string constants. Not "whitespace":
+// a `--` comment is whitespace for this purpose and a `/* */` comment is not.
+// scan.l builds it as {horiz_whitespace}*{newline}{special_whitespace}*, and
+// the {comment} in both of those is the `--` form only - a block comment is
+// consumed by a separate start condition and never reaches the rule. Checked
+// against postgres 16 rather than read off the grammar: `select 'due ' -- why`
+// newline `'200'` returns "due 200", and so do the comment-after-the-newline,
+// apostrophe-in-the-comment, tab, CRLF and three-fragment shapes, while every
+// `/* why */` variant is a syntax error. So this is matched to the real
+// grammar rather than to "whitespace with a newline", which missed the comment
+// forms, or to "whitespace once comments are stripped", which would join a
+// pair postgres refuses and fail on SQL that cannot exist.
+const JOINS = /^[ \t\f\v]*(?:--[^\n\r]*)?[\n\r](?:[ \t\n\r\f\v]|--[^\n\r]*[\n\r])*$/;
+
 // The same walk, keeping what the literals SAY. normalize() blanks them, so
 // a total typed straight into a message - `raise notice 'money total 284000'`
 // - leaves no argument to check and would pass a guard that only reads
@@ -78,7 +92,7 @@ function messageText(text: string): string[] {
   let end = -1;
   const push = (literal: string, from: number) => {
     const gap = end < 0 ? null : text.slice(end, from);
-    if (gap !== null && /^\s*$/.test(gap) && gap.includes("\n") && out.length > 0) {
+    if (gap !== null && out.length > 0 && JOINS.test(gap)) {
       out[out.length - 1] += literal;
       return;
     }
