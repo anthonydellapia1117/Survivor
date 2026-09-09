@@ -105,8 +105,8 @@ describe("poolStats", () => {
     const stats = poolStats({ poolEntryCount: 1318, poolFreeCount: 46, poolPaidCount: 1272, poolPotCents: 2862000 });
     expect(stats).toEqual([
       { label: "Total in Pool", value: "1,318" },
-      { label: "Free", value: "46" },
-      { label: "Total Paid", value: "1,272" },
+      { label: "Admin entries", value: "46" },
+      { label: "Total paid", value: "1,272" },
       { label: "Total Payout", value: "$28,620" },
     ]);
     expect(JSON.stringify(stats)).not.toMatch(/22\.5/);

@@ -188,8 +188,10 @@ export interface PoolStat {
 export function poolStats(pot: Pick<PotSummary, "poolEntryCount" | "poolFreeCount" | "poolPaidCount" | "poolPotCents">): PoolStat[] {
   const out: PoolStat[] = [];
   if (pot.poolEntryCount !== null) out.push({ label: "Total in Pool", value: pot.poolEntryCount.toLocaleString("en-US") });
-  if (pot.poolFreeCount !== null) out.push({ label: "Free", value: pot.poolFreeCount.toLocaleString("en-US") });
-  if (pot.poolPaidCount !== null) out.push({ label: "Total Paid", value: pot.poolPaidCount.toLocaleString("en-US") });
+  // The card labels are Anthony's (2026-09-09): her sheet's Free is "Admin
+  // entries", her Total is "Total paid". The values are hers verbatim.
+  if (pot.poolFreeCount !== null) out.push({ label: "Admin entries", value: pot.poolFreeCount.toLocaleString("en-US") });
+  if (pot.poolPaidCount !== null) out.push({ label: "Total paid", value: pot.poolPaidCount.toLocaleString("en-US") });
   if (pot.poolPotCents !== null) out.push({ label: "Total Payout", value: formatCents(pot.poolPotCents) });
   return out;
 }

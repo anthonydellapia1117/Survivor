@@ -112,9 +112,12 @@ describe("Dashboard, signed out", () => {
     const out = await html();
     expect(out).toContain("Total in Pool");
     expect(out).toContain("1,318");
-    expect(out).toContain("Free");
+    // His labels of 2026-09-09: her Free is "Admin entries", her Total is
+    // "Total paid", Total in Pool and Total Payout stay.
+    expect(out).toContain("Admin entries");
     expect(out).toContain(">46<");
-    expect(out).toContain("Total Paid");
+    expect(out).toContain("Total paid");
+    expect(out).not.toContain("Total Paid");
     expect(out).toContain("1,272");
     expect(out).toContain("Total Payout");
     expect(out).toContain("$28,620");

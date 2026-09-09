@@ -28,7 +28,7 @@ async function guarded<T extends ActionResult>(
 }
 
 function revalidateAll() {
-  for (const p of ["/", "/grid", "/teams", "/entries", "/admin"]) {
+  for (const p of ["/", "/grid", "/teams", "/records/roster", "/admin"]) {
     revalidatePath(p, "layout");
   }
 }

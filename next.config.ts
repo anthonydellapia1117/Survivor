@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
     return [
       { source: "/lynne", destination: "/master-list", permanent: true },
       { source: "/official", destination: "/master-list", permanent: true },
+      // Records is the parent of the roster (the old Entries page) and the
+      // 2025 archive (2026-09-09); the old paths stay reachable.
+      { source: "/entries", destination: "/records/roster", permanent: true },
+      { source: "/2025", destination: "/records/2025", permanent: true },
+      { source: "/records", destination: "/records/roster", permanent: false },
     ];
   },
 };

@@ -6,14 +6,15 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MASTER_POOL } from "@/lib/site-copy";
 
+// Six top-level tabs (Anthony, 2026-09-09). Records is a parent: its two
+// subpages, Roster and 2025, are chosen inside it.
 const links = [
   { href: "/", label: "Dashboard" },
   { href: "/grid", label: "Grid" },
   { href: "/schedule", label: "Schedule" },
   { href: "/teams", label: "Teams" },
-  { href: "/entries", label: "Entries" },
   { href: "/master-list", label: MASTER_POOL.tab },
-  { href: "/2025", label: "2025" },
+  { href: "/records/roster", label: "Records", prefix: "/records" },
 ];
 
 export function SiteHeader() {
@@ -53,10 +54,11 @@ export function SiteHeader() {
             className="-mb-px flex h-full items-stretch gap-1 overflow-x-auto"
           >
             {links.map((l) => {
+              const root = "prefix" in l ? l.prefix : l.href;
               const active =
                 l.href === "/"
                   ? pathname === "/"
-                  : pathname === l.href || pathname.startsWith(l.href + "/");
+                  : pathname === root || pathname.startsWith(root + "/");
               return (
                 <Link
                   key={l.href}

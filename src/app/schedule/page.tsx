@@ -4,6 +4,7 @@ import { getData } from "@/lib/data";
 import { currentPlayWeek } from "@/lib/dashboard";
 import { GameBoard } from "@/components/schedule/game-board";
 import { ScheduleGrid } from "@/components/schedule/schedule-grid";
+import { WindowLegend } from "@/components/schedule/window-legend";
 
 export const metadata: Metadata = { title: "Schedule" };
 export const dynamic = "force-dynamic";
@@ -36,13 +37,13 @@ export default async function SchedulePage(props: {
               : "Every game of the week - scores, who our entries picked, and what each result cost."}
           </p>
         </div>
-        <div className="flex rounded-lg border border-border bg-surface p-0.5 text-sm">
+        <div className="flex rounded-md border border-border bg-surface p-0.5 text-[11px] leading-4">
           <Link
             href={`/schedule?week=${week}`}
             className={
               !season
-                ? "rounded-md bg-surface-2 px-3 py-1.5 font-medium"
-                : "px-3 py-1.5 text-muted-foreground hover:text-foreground"
+                ? "rounded bg-surface-2 px-2 py-0.5 font-medium"
+                : "px-2 py-0.5 text-muted-foreground hover:text-foreground"
             }
           >
             Games
@@ -51,14 +52,16 @@ export default async function SchedulePage(props: {
             href={`/schedule?week=${week}&view=season`}
             className={
               season
-                ? "rounded-md bg-surface-2 px-3 py-1.5 font-medium"
-                : "px-3 py-1.5 text-muted-foreground hover:text-foreground"
+                ? "rounded bg-surface-2 px-2 py-0.5 font-medium"
+                : "px-2 py-0.5 text-muted-foreground hover:text-foreground"
             }
           >
             Season grid
           </Link>
         </div>
       </div>
+
+      <WindowLegend />
 
       {season ? (
         <ScheduleGrid
