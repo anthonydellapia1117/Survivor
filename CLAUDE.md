@@ -694,6 +694,12 @@ Two standing facts that are NOT snapshots and must survive:
   row, one commit. **The smoke check stays** - `scripts/db/smoke.sql` and its
   guard `tests/unit/smoke-sql.test.ts`, which holds it to printing no money
   total, because a person reads that output and pastes it into a report.
+  **Removing the consumer does not remove the credential:** a repository
+  Actions secret outlives the workflow that read it, so if `SUPABASE_DB_URL`
+  was ever set it is still stored and still valid, and deleting it (and
+  rotating the database password) is Anthony's click - `docs/MERGE_AUTOMATION.md`
+  section 3c. The job's last run, 2026-09-09 00:01 UTC, failed because it was
+  unset, so there may be nothing to delete; check rather than assume.
 
 ## Gmail
 

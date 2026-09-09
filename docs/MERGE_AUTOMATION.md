@@ -3,8 +3,9 @@
 TLDR: two workflows in `.github/workflows` do the checking; a ruleset on
 main does the gating; auto-merge does the merging. The workflows are in the
 repo. The ruleset and the repository merge settings are repository settings
-that only the owner can set; the exact clicks are in section 3. **No secret
-is needed** - see section 2.
+that only the owner can set; the exact clicks are in section 3. **Nothing
+here reads a secret any more, and one that was set has to be deleted by
+hand** - sections 2 and 3c.
 
 ## 1. Workflows
 
@@ -49,6 +50,15 @@ repository settings, the same shape as the service-role key this project
 deliberately does not have. `scripts/db/migrate-prod.sh` went with it, being
 the only thing that read the secret.
 
+**Deleting the consumer does not delete the credential.** A repository
+Actions secret outlives the workflow that read it: if `SUPABASE_DB_URL` was
+ever set under the old section 3c, it is still stored, still a live
+production connection string, and now readable by any workflow this repo
+gains later with nothing needing it. It has to be removed by hand - 3c
+below. As of the last run of the job, 2026-09-09 00:01 UTC on fa9af2e, it
+was unset and the job failed for exactly that reason, so there may be
+nothing to delete; check rather than assume.
+
 ## 3. What only the owner can set
 
 None of these can be set from a session (the proxy refuses repository
@@ -67,7 +77,16 @@ settings writes), and none is code.
     to date before merging ticked and the two checks `ci` and `codex-gate`
     added. Save. You should see the ruleset listed as Active.
 
-3c. Auto-merge on a pull request: once 3a is on, open the PR, click Enable
+3c. Delete the secret, if it was ever set. Settings > Secrets and variables
+    > Actions. If `SUPABASE_DB_URL` is listed under Repository secrets,
+    click its bin icon and confirm; nothing reads it now, and a stored
+    production connection string with no consumer is only a way to lose one.
+    If it was ever set, also rotate the database password (Supabase
+    dashboard > Project Settings > Database > Reset database password),
+    because the value it held remains valid until you do. If it is not
+    listed, there is nothing to do.
+
+3d. Auto-merge on a pull request: once 3a is on, open the PR, click Enable
     auto-merge (squash). From a session, the `enable_pr_auto_merge` tool does
     the same. The PR merges itself the moment `ci` and `codex-gate` are green
     and every thread is resolved.
