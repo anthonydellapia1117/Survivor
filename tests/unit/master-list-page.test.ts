@@ -6,6 +6,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 // her figures as published. It must never name the runner, never show an
 // uploaded filename, never print a per-entry rate, and never reveal a pick
 // the public view still masks.
+// Her published total is switchable so the match sentence can be exercised
+// in both directions: null is a supported state (a sheet loaded before her
+// figures are entered) and must not read as a match.
+const potState = vi.hoisted(() => ({ poolEntryCount: 1318 as number | null }));
+
 vi.mock("../../src/lib/data", () => ({
   getData: () => ({
     getMasterList: async () => ({
@@ -19,7 +24,7 @@ vi.mock("../../src/lib/data", () => ({
     }),
     getPot: async () => ({
       entryCount: 121,
-      poolEntryCount: 1318,
+      poolEntryCount: potState.poolEntryCount,
       poolFreeCount: 46,
       poolPaidCount: 1272,
       poolPotCents: 2862000,
@@ -69,17 +74,42 @@ vi.mock("../../src/lib/data", () => ({
 import MasterListPage from "../../src/app/master-list/page";
 
 describe("Master List, signed out", () => {
-  it("shows her figures as published and never a per-entry rate", async () => {
+  it("no longer carries her four figures - they open the dashboard now - and still never a rate", async () => {
+    // The figures moved to the dashboard so the site opens on them; this page
+    // keeps the one thing only it can say, how her published total sits
+    // against the rows actually on the sheet. The rate guard stays here as
+    // well as there: it must appear on no public route at all.
     const html = renderToStaticMarkup(await MasterListPage());
     expect(html).toContain("Master List");
-    expect(html).toContain("Total in Pool");
-    expect(html).toContain("1,318");
-    expect(html).toContain(">46<");
-    expect(html).toContain("1,272");
-    expect(html).toContain("$28,620");
-    // Neither quotient of her pot, by paying entries or by total, in any form.
+    expect(html).not.toContain("Total in Pool");
+    expect(html).not.toContain("Total Payout");
     for (const s of ["$22.50", "22.5", "$21.71", "21.71", "2250", "2171"]) expect(html).not.toContain(s);
     expect(html).not.toMatch(/per (paying )?entry|apiece|each entry|\/\s*entry/i);
+  });
+
+  it("reports the gap between her published total and the rows on the sheet, correcting neither", async () => {
+    // 1,318 published against 4 mocked rows: both numbers, no arithmetic on
+    // either (CLAUDE.md - report the variance, never auto-resolve).
+    const html = renderToStaticMarkup(await MasterListPage());
+    expect(html).toContain("1,318");
+    expect(html).toMatch(/this sheet carries 4 rows/);
+    expect(html).not.toContain("matches the rows on this sheet");
+  });
+
+  it("says her total matches the sheet only when she has published one and it does", async () => {
+    try {
+      // No published total: nothing to compare, so no match and no variance.
+      potState.poolEntryCount = null;
+      let html = renderToStaticMarkup(await MasterListPage());
+      expect(html).not.toContain("matches the rows on this sheet");
+      expect(html).not.toContain("this sheet carries");
+      // Published and equal to the 4 mocked rows: now it is a match.
+      potState.poolEntryCount = 4;
+      html = renderToStaticMarkup(await MasterListPage());
+      expect(html).toContain("matches the rows on this sheet");
+    } finally {
+      potState.poolEntryCount = 1318;
+    }
   });
 
   it("never shows the uploaded filename or the runner's name, and keeps the weekly files", async () => {

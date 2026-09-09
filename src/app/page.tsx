@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getData } from "@/lib/data";
 import { formatCents } from "@/lib/pool";
-import { formatDeadline } from "@/lib/format";
+import { formatDeadline, formatEtDate } from "@/lib/format";
 import {
   currentPlayWeek,
   LOCK_KIND_LABEL,
@@ -15,7 +15,13 @@ import { NFL_TEAMS, RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
 import { eliminationWeekOf } from "@/lib/alive";
 import { TEAM_PALETTE } from "@/lib/team-colors";
 import { lynneBucket } from "@/lib/lynne/names";
-import { poolDistribution, poolWeekFilled } from "@/lib/master-list";
+import {
+  fullyRevealedWeeks,
+  poolDistribution,
+  poolStandings,
+  poolStats,
+  poolWeekFilled,
+} from "@/lib/master-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   PickDistributionLazy,
@@ -48,7 +54,10 @@ export default async function DashboardPage() {
     data.getMasterList(),
   ]);
 
-  if (entries.length === 0) {
+  // Her sheet and our roster are independent sources. The empty state is
+  // for when NEITHER has anything; a loaded sheet with no roster yet still
+  // opens on the master pool, as the Grid does.
+  if (entries.length === 0 && master.rows.length === 0) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl">2026 NFL Survivor Pool</h1>
@@ -72,6 +81,17 @@ export default async function DashboardPage() {
     playWeek && poolWeekFilled(master.rows, playWeek.week)
       ? poolDistribution(master.rows, playWeek.week)
       : null;
+  // The public view serves her cells only as their games kick off, so until
+  // every game of the week has, the chart is the revealed subset and the
+  // caption says so rather than claiming the whole pool.
+  const poolDistWhole = playWeek !== null && fullyRevealedWeeks(games, now).includes(playWeek.week);
+  // Her four figures, from the same poolStats() the Master List reads, so
+  // the two pages cannot drift apart.
+  const herFigures = poolStats(pot);
+  // The whole pool's health in her buckets, over every row of her sheet
+  // rather than our 121. Ours is the second, independent calculation
+  // (CLAUDE.md): a row she has struck OUT is Out whatever our scores say.
+  const poolStand = poolStandings(master, games);
   const deadline = nextLockBoundary(weeks, games, now);
   const activity = recentActivity(entries, cells, 10);
 
@@ -154,43 +174,111 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {/* The POOL-WIDE prize pot from Lynne's full pool - the number a
-            player actually cares about. Stays honestly empty until she
-            confirms the 2026 pool size. This group's collected/due figures
-            are not public and are not computed here. */}
-        <Card className="bg-surface">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Pool pot
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {pot.poolPotCents !== null ? (
-              <>
-                <div className="text-2xl tabular-nums">
-                  {formatCents(pot.poolPotCents)}
+      {/* Row 1 - the master pool's own four figures, exactly as she
+          publishes them, read through the same poolStats() the Master List
+          uses so the two pages cannot drift. Her per-entry rate is never
+          printed on a public route. */}
+      {herFigures.length > 0 ? (
+        <div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {herFigures.map((s) => (
+              <Card key={s.label} className="bg-surface">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {s.label}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl tabular-nums">{s.value}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            The master pool&apos;s own figures, as published.
+            {master.loadedAt ? (
+              <span suppressHydrationWarning>
+                {" "}
+                Sheet as of {formatEtDate(master.loadedAt)}.
+              </span>
+            ) : null}
+          </p>
+        </div>
+      ) : null}
+
+      {/* Row 2 - the whole pool's health, in her buckets. Her middle bucket
+          is "1 LOSS/BYE" on the sheet, not "1 loss": a burned bye lands here
+          without a loss, so the label follows her wording. */}
+      {master.rows.length > 0 ? (
+        <div>
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="bg-surface">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  No Losses
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl tabular-nums text-win">
+                  {poolStand.noLosses.toLocaleString()}
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  {pot.poolEntryCount !== null
-                    ? `across ${pot.poolEntryCount.toLocaleString()} pool entries`
-                    : "across the full pool"}
-                  {pot.poolPaidCount !== null && pot.poolFreeCount !== null
-                    ? ` (${pot.poolPaidCount.toLocaleString()} paying, ${pot.poolFreeCount.toLocaleString()} free)`
-                    : ""}
+                  in the master pool
                 </p>
-              </>
-            ) : (
-              <>
-                <div className="text-2xl text-muted-foreground">Pending</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-surface">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  1 Loss/Bye
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl tabular-nums text-tie">
+                  {poolStand.lossBye.toLocaleString()}
+                </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  Set once the official pool size is confirmed
+                  a loss or a bye burned
                 </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+            <Card className="bg-surface">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Eliminated
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl tabular-nums text-loss">
+                  {poolStand.out.toLocaleString()}
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {/* Not "struck out": most of these are our own calculation -
+                      two losses, a late loss, a repeated team. Her explicit
+                      OUT is authoritative and included, but it is not the
+                      whole number. */}
+                  out on this sheet
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Across all {poolStand.total.toLocaleString()} rows of her sheet
+            {poolStand.scoredThrough !== null
+              ? `, scored through Week ${poolStand.scoredThrough}`
+              : poolStand.inProgressWeek !== null
+                ? ", no week fully scored yet"
+                : ", before any week has been scored"}
+            {poolStand.inProgressWeek !== null ? `, Week ${poolStand.inProgressWeek} in progress` : ""}
+            . Our own count from her published picks; a row her sheet writes
+            OUT on is out whatever we compute. She removes eliminated entries
+            as the season goes, so these describe the rows on her newest sheet
+            rather than a running total for the season.
+          </p>
+        </div>
+      ) : null}
 
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card className="bg-surface">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -296,7 +384,9 @@ export default async function DashboardPage() {
               <>
                 <PickDistributionLazy rows={poolDist.rows} />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Every entry in the master pool, from the published sheet
+                  {poolDistWhole
+                    ? "Every entry in the master pool, from the published sheet"
+                    : `Revealed picks so far in the master pool, ${poolDist.revealed.toLocaleString("en-US")} of ${master.rows.length.toLocaleString("en-US")} rows on the published sheet; the rest appear as their games kick off`}
                   {poolDist.other > 0
                     ? `; ${poolDist.other} cells are not a team (OUT or a note)`
                     : ""}

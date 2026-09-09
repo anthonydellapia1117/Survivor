@@ -11,8 +11,10 @@
 // on the strip are hers, verbatim.
 
 import {
+  gameIsRevealed,
   LOCKED_TEAM,
   type EntrySummary,
+  type GameRow,
   type GridCell,
   type MasterListData,
   type MasterListRow,
@@ -187,12 +189,19 @@ export function poolStats(pot: Pick<PotSummary, "poolEntryCount" | "poolFreeCoun
   const out: PoolStat[] = [];
   if (pot.poolEntryCount !== null) out.push({ label: "Total in Pool", value: pot.poolEntryCount.toLocaleString("en-US") });
   if (pot.poolFreeCount !== null) out.push({ label: "Free", value: pot.poolFreeCount.toLocaleString("en-US") });
-  if (pot.poolPaidCount !== null) out.push({ label: "Total", value: pot.poolPaidCount.toLocaleString("en-US") });
-  if (pot.poolPotCents !== null) out.push({ label: "Total Pay Out", value: formatCents(pot.poolPotCents) });
+  if (pot.poolPaidCount !== null) out.push({ label: "Total Paid", value: pot.poolPaidCount.toLocaleString("en-US") });
+  if (pot.poolPotCents !== null) out.push({ label: "Total Payout", value: formatCents(pot.poolPotCents) });
   return out;
 }
 
-/** Marks a row she has struck out: her cell reads OUT (any case). */
+/**
+ * Marks a row she has struck out: a week cell that reads OUT (any case).
+ *
+ * This is the only elimination marker the roster copy carries. Her other one,
+ * the red fill on the NAMES cell, is not persisted by the master-sheet loader
+ * (lynne_roster stores text only), so a row she has eliminated by fill alone
+ * is scored here like any other row - a known undercount, tracked in #37.
+ */
 export function herOut(row: Pick<MasterRow, "cells">): boolean {
   return Object.values(row.cells).some((v) => /^\s*out\s*$/i.test(v));
 }
@@ -204,36 +213,120 @@ export function herOut(row: Pick<MasterRow, "cells">): boolean {
  * eliminated; anything else is left alone. Ids are her NO., prefixed so they
  * can never collide with an entry id of ours.
  */
-export function poolAsEntries(list: MasterList): { entries: EntrySummary[]; cells: GridCell[] } {
+export function poolAsEntries(
+  list: MasterList,
+  /**
+   * Optional game results. Given them, each of her published picks carries
+   * its own win/loss/tie and the row's losses, bye and status are our second,
+   * independent calculation. Omitted, the picks stay unscored - which is what
+   * the Teams page wants, since it only reads which teams are used.
+   */
+  games: Parameters<typeof teamResults>[0] = [],
+  doubleElimThrough = 7,
+): { entries: EntrySummary[]; cells: GridCell[] } {
   const columns = weekColumns(list.rows);
+  const results = teamResults(games);
   const entries: EntrySummary[] = [];
   const cells: GridCell[] = [];
   const at = list.loadedAt ?? "1970-01-01T00:00:00Z";
   for (const r of list.rows) {
     const used: string[] = [];
+    let wins = 0;
+    let losses = 0;
+    let lastScoredWeek: number | null = null;
+    // Her own entry id where the row is one of ours, so the Grid can link the
+    // row to its real page; a synthetic id otherwise, which the Grid renders
+    // without a link because no such page exists.
+    const id = r.entryId ?? `pool-${r.no}`;
     for (const col of columns) {
-      const team = herTeam(herCell(r, col));
-      if (team === null) continue;
+      const cell = herCell(r, col);
+      const team = herTeam(cell);
+      if (team === null) {
+        // A published BYE is a real week with a real state, and the legend
+        // advertises it; dropping it left a blank where the grid should show
+        // the bye. Other non-team text (OUT, a note) is still left alone.
+        if (cell !== undefined && /^\s*bye\s*$/i.test(cell)) {
+          cells.push({
+            entryId: id,
+            week: col.week,
+            team: SKIP_WEEK,
+            result: "bye",
+            late: false,
+            submittedAt: at,
+            source: MASTER_LIST_SOURCE,
+            resultSource: null,
+          });
+        }
+        continue;
+      }
       used.push(team);
-      cells.push({ entryId: `pool-${r.no}`, week: col.week, team, result: null, late: false, submittedAt: at, source: "master_list", resultSource: null });
+      const scored = results.get(`${col.week}:${team}`);
+      if (scored !== undefined) lastScoredWeek = col.week;
+      if (scored === "win") wins += 1;
+      if (scored === "loss" || scored === "tie") losses += 1;
+      cells.push({
+        entryId: id,
+        week: col.week,
+        team,
+        // The real result, so a tie reads as a tie rather than as a win. It
+        // still counts as a loss above, which is what tie_loss means.
+        result:
+          scored === undefined
+            ? null
+            : scored === "loss"
+              ? "loss"
+              : scored === "tie"
+                ? "tie_loss"
+                : "win",
+        late: false,
+        // When her sheet was loaded: the only time this copy of her row has.
+        submittedAt: at,
+        source: MASTER_LIST_SOURCE,
+        resultSource: null,
+      });
     }
+    const bucket = poolBucketOf(r, results, columns, doubleElimThrough);
     entries.push({
-      id: `pool-${r.no}`,
+      id,
       entryName: `${r.no} ${r.names}`,
       nameIsDefault: false,
       ownerId: "",
       ownerName: "",
-      wins: 0,
-      losses: 0,
-      livesRemaining: 2,
-      status: herOut(r) ? "eliminated" : "active",
-      byeUsed: false,
+      wins,
+      losses,
+      // Lives and status mirror v_entry_standing exactly, so a row of hers
+      // sorts, colours and reads like the same row of ours: an eliminated row
+      // has no lives whatever its loss count (her OUT and a repeated team
+      // eliminate without one), one loss is at_risk, and a clean row is bye
+      // eligible once its last scored week reaches the view's boundary
+      // (last_scored_week >= 7, inclusive, as v_entry_standing has it).
+      livesRemaining: bucket === "Out" ? 0 : Math.max(0, 2 - losses),
+      status:
+        bucket === "Out"
+          ? "eliminated"
+          : losses === 1
+            ? "at_risk"
+            : lastScoredWeek !== null && lastScoredWeek >= doubleElimThrough && losses === 0 && !herBye(r)
+              ? "bye_eligible"
+              : "active",
+      byeUsed: herBye(r),
       teamsUsed: used,
-      lastScoredWeek: null,
+      lastScoredWeek,
       isAdminEntry: r.entryId !== null,
     });
   }
   return { entries, cells };
+}
+
+/**
+ * One entry's bucket in her words, for either pool. Our 121 carry their own
+ * losses and bye from local scoring; her rows carry the ones poolAsEntries
+ * computed. Same three labels either way, so the Grid's chips mean the same
+ * thing whichever scope is showing.
+ */
+export function bucketOfEntry(e: Pick<EntrySummary, "status" | "losses" | "byeUsed">): PoolBucket {
+  if (e.status === "eliminated") return "Out";
+  return e.losses === 0 && !e.byeUsed ? "No Losses" : "1 Loss/Bye";
 }
 
 export type TeamsSourceKind = "pool" | "ours";
@@ -246,4 +339,281 @@ export type TeamsSourceKind = "pool" | "ours";
  */
 export function defaultTeamsSource(poolLoaded: boolean, poolHasPicks: boolean): TeamsSourceKind {
   return poolLoaded && poolHasPicks ? "pool" : "ours";
+}
+
+// ---------------------------------------------------------------- standings
+//
+// The whole pool's standing, in her buckets. She is the authority on
+// elimination in her pool (CLAUDE.md), so a row she has struck OUT is Out
+// whatever our scores say; everything else is OUR second, independent
+// calculation from her published picks and our game results. When her own
+// stats block arrives with a weekly file, the two are shown side by side and
+// any difference is reported, never resolved here.
+//
+// Her middle bucket is "1 LOSS/BYE" on the sheet, not "1 loss": a burned bye
+// puts an entry there without a loss. The label follows her wording so the
+// site, lynneBucket() and the stats she emails all count the same thing.
+
+/**
+ * A team's result in a week, from the final score.
+ *
+ * A tie is a LOSS in this pool, as it is everywhere else in this app: the
+ * pick result is `tie_loss`, v_entry_public counts it in `losses`, and
+ * standing.ts labels it "Tie (loss)". An earlier draft of this file treated a
+ * tie as survival, which was invented rather than read off the rules.
+ */
+export type TeamResult = "win" | "loss" | "tie";
+
+/**
+ * (week, team) -> result, built once per render. A game counts only when it
+ * is final and both scores are in; a scheduled or in-progress game leaves
+ * both its teams absent, which reads as "not yet scored" rather than as a
+ * loss.
+ */
+export function teamResults(games: Pick<GameRow, "week" | "homeTeam" | "awayTeam" | "homeScore" | "awayScore" | "status">[]): Map<string, TeamResult> {
+  const out = new Map<string, TeamResult>();
+  for (const g of games) {
+    if (g.status !== "final" || g.homeScore === null || g.awayScore === null) continue;
+    const home: TeamResult = g.homeScore > g.awayScore ? "win" : g.homeScore < g.awayScore ? "loss" : "tie";
+    const away: TeamResult = home === "win" ? "loss" : home === "loss" ? "win" : "tie";
+    out.set(`${g.week}:${g.homeTeam}`, home);
+    out.set(`${g.week}:${g.awayTeam}`, away);
+  }
+  return out;
+}
+
+/** Her cell for a week reads BYE. A burned bye is not a loss but does leave "No Losses". */
+export function herBye(row: Pick<MasterRow, "cells">): boolean {
+  return Object.values(row.cells).some((v) => /^\s*bye\s*$/i.test(v));
+}
+
+export type PoolBucket = "No Losses" | "1 Loss/Bye" | "Out";
+
+export interface PoolStandings {
+  noLosses: number;
+  lossBye: number;
+  out: number;
+  /** Rows counted: every row of her newest sheet. */
+  total: number;
+  /**
+   * The highest week every GAME of which is final and public, with every
+   * week before it the same. Null until a whole week is in. "Scored through" has to mean
+   * the buckets will not move for that week, and that is decided from the
+   * schedule, never from the cells: the public view omits each team cell
+   * until its game kicks off, so "every revealed pick is scored" is true on
+   * a Sunday afternoon with the whole late slate still hidden.
+   */
+  scoredThrough: number | null;
+  /** The first week past that, on her sheet, with some games final and some not; null when none is part-way. */
+  inProgressWeek: number | null;
+}
+
+/**
+ * One row's bucket. Only a scored loss or tie counts, so an unplayed or
+ * unpublished week leaves the row where it was rather than moving it.
+ */
+export function poolBucketOf(
+  row: Pick<MasterRow, "cells">,
+  results: Map<string, TeamResult>,
+  columns: WeekColumn[],
+  doubleElimThrough: number,
+): PoolBucket {
+  if (herOut(row)) return "Out";
+  let losses = 0;
+  const used = new Set<string>();
+  for (const col of columns) {
+    const team = herTeam(herCell(row, col));
+    if (team === null) continue;
+    // A repeated team is an ELIMINATION in this pool, not a caution
+    // (CLAUDE.md), and it eliminates whatever the repeated team's results
+    // were - so it is checked before the results are.
+    if (used.has(team)) return "Out";
+    used.add(team);
+    const r = results.get(`${col.week}:${team}`);
+    // A tie counts here for the same reason it counts in v_entry_public.
+    if (r !== "loss" && r !== "tie") continue;
+    losses += 1;
+    if (col.week > doubleElimThrough || losses >= 2) return "Out";
+  }
+  return losses === 0 && !herBye(row) ? "No Losses" : "1 Loss/Bye";
+}
+
+/** The three bucket counts across her whole sheet. */
+export function poolStandings(
+  list: Pick<MasterList, "rows">,
+  games: (Parameters<typeof teamResults>[0][number] & Pick<GameRow, "revealOverride" | "kickoffAt">)[],
+  doubleElimThrough = 7,
+  now: Date = new Date(),
+): PoolStandings {
+  const columns = weekColumns(list.rows);
+  const results = teamResults(games);
+  let noLosses = 0;
+  let lossBye = 0;
+  let out = 0;
+  for (const r of list.rows) {
+    const bucket = poolBucketOf(r, results, columns, doubleElimThrough);
+    if (bucket === "Out") out += 1;
+    else if (bucket === "No Losses") noLosses += 1;
+    else lossBye += 1;
+  }
+  // Completeness from the SCHEDULE, bounded to the weeks her sheet carries:
+  // a week that is final on the schedule but absent from her newest sheet
+  // has put nothing into the buckets above, so it is neither scored through
+  // nor in progress here, and it stops the marker like an open week would.
+  // A game counts as in only when it is final AND public: the view hides a
+  // game's cells while its reveal is held (pick_is_public), so a final game
+  // an admin is holding back has contributed nothing either.
+  // Week order, and contiguous: once a week is found open (or unpublished),
+  // no later week advances the marker however complete it is - "through
+  // Week 3" with Week 2 still open would be a lie.
+  const onSheet = new Set(columns.map((c) => c.week));
+  const byWeek = new Map<number, { total: number; final: number }>();
+  for (const g of games) {
+    const w = byWeek.get(g.week) ?? { total: 0, final: 0 };
+    w.total += 1;
+    if (g.status === "final" && g.homeScore !== null && g.awayScore !== null && gameIsRevealed(g, now)) w.final += 1;
+    byWeek.set(g.week, w);
+  }
+  let scoredThrough: number | null = null;
+  let inProgressWeek: number | null = null;
+  let blocked = false;
+  for (const week of [...byWeek.keys()].sort((a, b) => a - b)) {
+    const w = byWeek.get(week)!;
+    if (!blocked && onSheet.has(week) && w.final === w.total) {
+      scoredThrough = week;
+      continue;
+    }
+    blocked = true;
+    if (onSheet.has(week) && w.final > 0 && w.final < w.total && inProgressWeek === null) inProgressWeek = week;
+  }
+  return { noLosses, lossBye, out, total: list.rows.length, scoredThrough, inProgressWeek };
+}
+
+/** The source every cell built from her sheet carries. */
+export const MASTER_LIST_SOURCE = "master_list";
+
+/**
+ * What a cell's timestamp is. Our cells carry when the pick was submitted;
+ * a cell built from her sheet carries when the sheet was loaded, which is
+ * not a submission time and must not be labelled as one.
+ */
+export function cellTimeLabel(cell: Pick<GridCell, "source">): "Submitted" | "Sheet as of" {
+  return cell.source === MASTER_LIST_SOURCE ? "Sheet as of" : "Submitted";
+}
+
+/**
+ * The weeks every game of which has kicked off (or been overridden public),
+ * so a tally over their cells describes the whole slate. Until then the
+ * public view holds back every unrevealed cell and a tally is a subset.
+ */
+export function fullyRevealedWeeks(
+  games: Pick<GameRow, "week" | "revealOverride" | "kickoffAt">[],
+  now: Date = new Date(),
+): number[] {
+  const byWeek = new Map<number, boolean>();
+  for (const g of games) byWeek.set(g.week, (byWeek.get(g.week) ?? true) && gameIsRevealed(g, now));
+  return [...byWeek]
+    .filter(([, all]) => all)
+    .map(([w]) => w)
+    .sort((a, b) => a - b);
+}
+
+/** The words before the tally: plain once the week is fully revealed, qualified until then. */
+export function tallyHeading(week: number, fullyRevealed: boolean): string {
+  return fullyRevealed ? `Week ${week}:` : `Week ${week} so far, revealed picks only:`;
+}
+
+/**
+ * Her published Total in Pool against the number of rows on her sheet.
+ *
+ * These are different quantities and can legitimately disagree, so neither is
+ * corrected to the other (CLAUDE.md: report the variance, never auto-resolve).
+ * On the 2026-09-08 sheet hers is 1,318 - her 1,320 NO.s less the two
+ * duplicate Ian Lubin rows - while our copy holds 1,319, her 1,320 less the
+ * row whose NO. cell reads "1311 Andrew Yukanis" and so carries no integer
+ * NO. for the loader to key on. Null when they agree or when she has
+ * published no total.
+ */
+export function countVariance(publishedTotal: number | null, sheetRows: number): string | null {
+  if (publishedTotal === null || publishedTotal === sheetRows) return null;
+  return `Her published total is ${publishedTotal.toLocaleString("en-US")}; this sheet carries ${sheetRows.toLocaleString("en-US")} rows. Both are shown as they stand.`;
+}
+
+/**
+ * The week's picks as the one line Lynne sends by email: "7 picked Seattle
+ * Seahawks, 1 picked LA Rams", biggest first. Derived from whatever cells
+ * are in scope, so the Grid's toggle changes it rather than anyone typing a
+ * tally in. Placeholder teams are not picks and are left out; null when the
+ * week has no real pick yet.
+ */
+export function tallySentence(
+  cells: Pick<GridCell, "week" | "team">[],
+  week: number,
+  teamName: (abbr: string) => string,
+): string | null {
+  const counts = new Map<string, number>();
+  for (const c of cells) {
+    if (c.week !== week || !countsInTally(c.team)) continue;
+    counts.set(c.team, (counts.get(c.team) ?? 0) + 1);
+  }
+  if (counts.size === 0) return null;
+  return [...counts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([team, n]) => `${n} picked ${teamName(team)}`)
+    .join(", ");
+}
+
+/** A cell that names a team. A bye, a miss and a pick the public view still masks are not picks to count. */
+function countsInTally(team: string): boolean {
+  return team !== SKIP_WEEK && team !== LOCKED_TEAM && team !== "MISSED";
+}
+
+/**
+ * The week the tally describes: the latest week holding a pick that counts,
+ * which is the latest week tallySentence() has anything to say about. A
+ * future-week pick the public view still masks arrives as a LOCKED cell, so
+ * "the highest week with any cell" would land on that week and the tally
+ * would read as empty while the revealed week before it still had picks.
+ */
+export function tallyWeekOf(cells: Pick<GridCell, "week" | "team">[]): number | null {
+  let latest: number | null = null;
+  for (const c of cells) {
+    if (!countsInTally(c.team)) continue;
+    if (latest === null || c.week > latest) latest = c.week;
+  }
+  return latest;
+}
+
+/**
+ * The Grid's standing filters. "Alive" is No Losses plus 1 Loss/Bye: "who is
+ * still in" and "who is still clean" are different questions and both get
+ * asked week to week, so both are their own chip.
+ */
+export type StandingFilter = "all" | "alive" | PoolBucket;
+
+export const STANDING_FILTERS: StandingFilter[] = ["all", "alive", "No Losses", "1 Loss/Bye", "Out"];
+
+export function matchesStanding(bucket: PoolBucket, filter: StandingFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "alive") return bucket !== "Out";
+  return bucket === filter;
+}
+
+/** How many entries each chip would show, so its count moves with the scope. */
+export function standingCounts(
+  entries: Pick<EntrySummary, "status" | "losses" | "byeUsed">[],
+): Record<StandingFilter, number> {
+  const out: Record<StandingFilter, number> = {
+    all: entries.length,
+    alive: 0,
+    "No Losses": 0,
+    "1 Loss/Bye": 0,
+    Out: 0,
+  };
+  for (const e of entries) {
+    const bucket = bucketOfEntry(e);
+    out[bucket] += 1;
+    if (bucket !== "Out") out.alive += 1;
+  }
+  return out;
 }

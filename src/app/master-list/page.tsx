@@ -2,10 +2,9 @@ import type { Metadata } from "next";
 import { getData } from "@/lib/data";
 import { LOCKED_TEAM } from "@/lib/data/types";
 import { MASTER_POOL } from "@/lib/site-copy";
-import { mergeWeekColumns, poolStats, weekColumns } from "@/lib/master-list";
+import { countVariance, mergeWeekColumns, weekColumns } from "@/lib/master-list";
 import { formatEtDate } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MasterListTable, type OurCell } from "@/components/master-list/master-list-table";
 import { WeeklyResultFiles } from "@/components/master-list/weekly-result-files";
 
@@ -21,7 +20,10 @@ export default async function MasterListPage() {
     data.getLynneImports(),
   ]);
 
-  const stats = poolStats(pot);
+  // Her four figures moved to the dashboard, where they open the site.
+  // What stays here is the one thing only this page can say: how her
+  // published total sits against the rows actually on the sheet.
+  const variance = countVariance(pot.poolEntryCount, master.rows.length);
   const ourIds = new Set(master.rows.map((r) => r.entryId).filter((id): id is string => id !== null));
   // Only revealed picks reach the public view; a masked one stays masked here.
   const ourCells: OurCell[] = cells
@@ -43,30 +45,15 @@ export default async function MasterListPage() {
         </p>
       </div>
 
-      {stats.length > 0 ? (
-        <div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {stats.map((s) => (
-              <Card key={s.label} className="bg-surface">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {s.label}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl tabular-nums">{s.value}</div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            The master pool&apos;s own figures, as published.
-            {master.loadedAt ? (
-              <span suppressHydrationWarning> Sheet as of {formatEtDate(master.loadedAt)}.</span>
-            ) : null}
-          </p>
-        </div>
-      ) : null}
+      <p className="text-xs text-muted-foreground">
+        {master.loadedAt ? (
+          <span suppressHydrationWarning>Sheet as of {formatEtDate(master.loadedAt)}. </span>
+        ) : null}
+        {/* No variance means either the two counts agree or she has not
+            published a total yet. Only the first is a match. */}
+        {variance ??
+          (pot.poolEntryCount !== null ? "Her published total matches the rows on this sheet." : null)}
+      </p>
 
       {master.rows.length === 0 ? (
         <EmptyState

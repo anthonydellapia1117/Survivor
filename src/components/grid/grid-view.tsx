@@ -10,14 +10,24 @@ import type {
 } from "@/lib/data/types";
 import {
   RESULT_LABEL,
-  STATUS_LABEL,
   STATUS_ORDER,
   SKIP_WEEK,
   TEAM_NAME,
 } from "@/lib/standing";
 import { StatusDot } from "@/components/status-dot";
-import { eliminationWeekOf, matchesShowMode, showCounts } from "@/lib/alive";
-import { ShowToggle, useShowMode } from "@/components/show-toggle";
+import { eliminationWeekOf } from "@/lib/alive";
+import {
+  bucketOfEntry,
+  matchesStanding,
+  standingCounts,
+  STANDING_FILTERS,
+  cellTimeLabel,
+  tallyHeading,
+  tallySentence,
+  tallyWeekOf,
+  type PoolBucket,
+  type StandingFilter,
+} from "@/lib/master-list";
 import { formatEtDateTime } from "@/lib/format";
 import {
   Select,
@@ -31,16 +41,65 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 
 interface Props {
+  /** This group's 121. */
   entries: EntrySummary[];
   weeks: WeekRow[];
   cells: GridCell[];
+  /**
+   * The master pool as rows of her sheet, already scored against our game
+   * results by poolAsEntries(). Empty until a sheet is loaded, which is what
+   * hides the scope toggle.
+   */
+  poolEntries: EntrySummary[];
+  poolCells: GridCell[];
+  /** One line naming the sheet and any gap against her published total. */
+  poolNote: string | null;
+  /** Weeks every game of which has kicked off; a tally on any other week is a revealed subset and says so. */
+  revealedWeeks: number[];
 }
+
+/** Everyone is her whole sheet; Our group is the 121 Anthony manages. */
+type Scope = "everyone" | "ours";
+
+/**
+ * The chips. "Alive" is No Losses plus 1 Loss/Bye - it answers "who is still
+ * in", which is a different question from "who is still clean", and both are
+ * asked week to week. Her wording throughout: the middle bucket is
+ * "1 Loss/Bye" because a burned bye lands there without a loss.
+ */
+type Filter = StandingFilter;
+const FILTERS = STANDING_FILTERS;
+const FILTER_LABEL: Record<Filter, string> = {
+  all: "All",
+  alive: "Alive",
+  "No Losses": "No Losses",
+  "1 Loss/Bye": "1 Loss/Bye",
+  Out: "Out",
+};
 
 interface PopState {
   cell: GridCell;
   entry: EntrySummary;
   x: number;
   y: number;
+}
+
+/** Her rows have no entry page; ours do. Same markup either way. */
+function PoolRowName({
+  entry,
+  children,
+}: {
+  entry: EntrySummary;
+  children: React.ReactNode;
+}) {
+  if (entry.id.startsWith("pool-")) {
+    return <span className="flex items-center gap-2">{children}</span>;
+  }
+  return (
+    <Link href={`/entry/${entry.id}`} className="flex items-center gap-2">
+      {children}
+    </Link>
+  );
 }
 
 const RESULT_CELL: Record<string, string> = {
@@ -52,16 +111,34 @@ const RESULT_CELL: Record<string, string> = {
   missed: "text-loss border-loss/40 cell-hatched",
 };
 
-export function GridView({ entries, weeks, cells }: Props) {
-  const [status, setStatus] = useState<"all" | EntryStatus>("all");
+export function GridView({
+  entries,
+  weeks,
+  cells,
+  poolEntries,
+  poolCells,
+  poolNote,
+  revealedWeeks,
+}: Props) {
+  const poolLoaded = poolEntries.length > 0;
+  // The whole pool is the front door when there is a sheet to show it from;
+  // our group stands in until then (CLAUDE.md, Public surfaces).
+  const [scope, setScope] = useState<Scope>(poolLoaded ? "everyone" : "ours");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
   const [owner, setOwner] = useState<string>("all");
-  const [mode, setMode] = useShowMode();
   const [comfortable, setComfortable] = useState(false);
   const [weekFrom, setWeekFrom] = useState(1);
   const [weekTo, setWeekTo] = useState(18);
   const [pop, setPop] = useState<PopState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const ours = scope === "ours" || !poolLoaded;
+  const activeEntries = ours ? entries : poolEntries;
+  const activeCells = ours ? cells : poolCells;
+
+  // Owners only mean something for our group: her sheet carries no owner, so
+  // the filter is hidden rather than shown listing nothing.
   const owners = useMemo(() => {
     const m = new Map<string, string>();
     for (const e of entries) m.set(e.ownerId, e.ownerName);
@@ -70,44 +147,63 @@ export function GridView({ entries, weeks, cells }: Props) {
 
   const cellMap = useMemo(() => {
     const m = new Map<string, GridCell>();
-    for (const c of cells) m.set(`${c.entryId}:${c.week}`, c);
+    for (const c of activeCells) m.set(`${c.entryId}:${c.week}`, c);
     return m;
-  }, [cells]);
+  }, [activeCells]);
 
   // The week each eliminated entry died - marks the killing pick.
   const elimWeekById = useMemo(() => {
     const byEntry = new Map<string, GridCell[]>();
-    for (const c of cells) {
+    for (const c of activeCells) {
       if (!byEntry.has(c.entryId)) byEntry.set(c.entryId, []);
       byEntry.get(c.entryId)!.push(c);
     }
     const m = new Map<string, number | null>();
-    for (const e of entries) {
+    for (const e of activeEntries) {
       m.set(e.id, e.status === "eliminated" ? eliminationWeekOf(byEntry.get(e.id) ?? []) : null);
     }
     return m;
-  }, [cells, entries]);
+  }, [activeCells, activeEntries]);
 
-  const counts = useMemo(() => showCounts(entries), [entries]);
+  const bucketById = useMemo(() => {
+    const m = new Map<string, PoolBucket>();
+    for (const e of activeEntries) m.set(e.id, bucketOfEntry(e));
+    return m;
+  }, [activeEntries]);
+
+  /** How many entries each chip would show, so the counts move with the scope. */
+  const chipCounts = useMemo(() => standingCounts(activeEntries), [activeEntries]);
 
   const sorted = useMemo(
     () =>
-      [...entries].sort(
+      [...activeEntries].sort(
         (a, b) =>
           Number(b.isAdminEntry) - Number(a.isAdminEntry) ||
           STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
           a.ownerName.localeCompare(b.ownerName) ||
           a.entryName.localeCompare(b.entryName),
       ),
-    [entries],
+    [activeEntries],
   );
 
+  const q = query.trim().toLowerCase();
   const visible = sorted.filter((e) => {
-    if (!matchesShowMode(e.status, mode)) return false;
-    if (status !== "all" && e.status !== status) return false;
-    if (owner !== "all" && e.ownerId !== owner) return false;
+    const bucket = bucketById.get(e.id) ?? "Out";
+    if (!matchesStanding(bucket, filter)) return false;
+    if (ours && owner !== "all" && e.ownerId !== owner) return false;
+    // Her rows read "NO. NAMES", so one box finds a number or a name in
+    // either scope without a second control.
+    if (q !== "" && !e.entryName.toLowerCase().includes(q) && !e.ownerName.toLowerCase().includes(q)) return false;
     return true;
   });
+
+  // The week's picks as a sentence, from whatever is in scope: the same
+  // tally she sends by email, derived rather than typed.
+  // The latest week with a countable pick, not the latest week with any
+  // cell: a masked future pick arrives as LOCKED and would otherwise pull
+  // the tally onto a week that then reads as empty.
+  const tallyWeek = useMemo(() => tallyWeekOf(activeCells), [activeCells]);
+  const tally = tallyWeek === null ? null : tallySentence(activeCells, tallyWeek, (t) => TEAM_NAME[t] ?? t);
 
   const visibleWeeks = weeks.filter(
     (w) => w.week >= weekFrom && w.week <= weekTo,
@@ -133,37 +229,68 @@ export function GridView({ entries, weeks, cells }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <ShowToggle mode={mode} counts={counts} onChange={setMode} />
-        <Select
-          value={status}
-          onValueChange={(v) => setStatus(v as "all" | EntryStatus)}
-        >
-          <SelectTrigger size="sm" className="w-[9.5rem]" aria-label="Filter by status">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {(Object.keys(STATUS_LABEL) as EntryStatus[]).map((s) => (
-              <SelectItem key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </SelectItem>
+        {poolLoaded ? (
+          <div
+            role="radiogroup"
+            aria-label="Everyone or our group"
+            className="inline-flex rounded-lg border border-border bg-surface p-0.5"
+          >
+            {(
+              [
+                { key: "everyone", label: "Everyone", n: poolEntries.length },
+                { key: "ours", label: "Our group", n: entries.length },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                role="radio"
+                aria-checked={scope === opt.key}
+                onClick={() => {
+                  setScope(opt.key);
+                  // Her sheet has no owners, so a filter set in our scope
+                  // must not silently narrow the whole pool to nothing.
+                  if (opt.key === "everyone") setOwner("all");
+                }}
+                className={cn(
+                  "flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold tracking-wide transition-colors duration-150",
+                  scope === opt.key
+                    ? "bg-surface-2 text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {opt.label}
+                <span className="tabular-nums opacity-70">
+                  {opt.n.toLocaleString("en-US")}
+                </span>
+              </button>
             ))}
-          </SelectContent>
-        </Select>
+          </div>
+        ) : null}
 
-        <Select value={owner} onValueChange={setOwner}>
-          <SelectTrigger size="sm" className="w-[10.5rem]" aria-label="Filter by owner">
-            <SelectValue placeholder="Owner" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All owners</SelectItem>
-            {owners.map(([id, name]) => (
-              <SelectItem key={id} value={id}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Find a NO. or a name"
+          aria-label="Find an entry by NO. or name"
+          className="h-9 w-64 rounded-lg border border-border bg-surface px-3 text-sm"
+        />
+
+        {ours ? (
+          <Select value={owner} onValueChange={setOwner}>
+            <SelectTrigger size="sm" className="w-[10.5rem]" aria-label="Filter by owner">
+              <SelectValue placeholder="Owner" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All owners</SelectItem>
+              {owners.map(([id, name]) => (
+                <SelectItem key={id} value={id}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
 
         <div className="flex items-center gap-1.5">
           <Select
@@ -222,6 +349,42 @@ export function GridView({ entries, weeks, cells }: Props) {
         </div>
       </div>
 
+      <div
+        role="radiogroup"
+        aria-label="Filter by standing"
+        className="flex flex-wrap items-center gap-1.5"
+      >
+        {FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            role="radio"
+            aria-checked={filter === f}
+            onClick={() => setFilter(f)}
+            className={cn(
+              "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold tracking-wide transition-colors duration-150",
+              filter === f
+                ? "border-transparent bg-surface-2 text-foreground"
+                : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {FILTER_LABEL[f]}
+            <span className="tabular-nums opacity-70">
+              {chipCounts[f].toLocaleString("en-US")}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {tally && tallyWeek !== null ? (
+        <p className="text-xs text-muted-foreground">
+          {tallyHeading(tallyWeek, revealedWeeks.includes(tallyWeek))} {tally}
+        </p>
+      ) : null}
+      {!ours && poolNote ? (
+        <p className="text-xs text-muted-foreground">{poolNote}</p>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-[2px] bg-win/70" /> Win
@@ -247,7 +410,10 @@ export function GridView({ entries, weeks, cells }: Props) {
           <span aria-hidden>🔒</span> Picks unlock when each game kicks off
         </span>
         <span className="ml-auto tabular-nums">
-          {visible.length} of {entries.length} entries
+          {/* The scope's own total, not our 121: in Everyone this read
+              "1,319 of 121 entries". */}
+          {visible.length.toLocaleString("en-US")} of{" "}
+          {sorted.length.toLocaleString("en-US")} entries
         </span>
       </div>
 
@@ -282,10 +448,11 @@ export function GridView({ entries, weeks, cells }: Props) {
                     e.status === "eliminated" && "opacity-55",
                   )}
                 >
-                  <Link
-                    href={`/entry/${e.id}`}
-                    className="flex items-center gap-2"
-                  >
+                  {/* A row of her sheet that is not one of ours has no entry
+                      page of its own - poolAsEntries gives it a synthetic id -
+                      so it renders as plain text rather than as a link to a
+                      404. Rows that ARE ours carry their real id and link. */}
+                  <PoolRowName entry={e}>
                     <StatusDot status={e.status} className="shrink-0" />
                     <span className="truncate font-medium">{e.entryName}</span>
                     {e.status === "eliminated" ? (
@@ -293,7 +460,7 @@ export function GridView({ entries, weeks, cells }: Props) {
                         OUT{elimWeekById.get(e.id) ? ` · WK ${elimWeekById.get(e.id)}` : ""}
                       </span>
                     ) : null}
-                  </Link>
+                  </PoolRowName>
                 </td>
                 {visibleWeeks.map((w) => {
                   const cell = cellMap.get(`${e.id}:${w.week}`);
@@ -406,7 +573,7 @@ export function GridView({ entries, weeks, cells }: Props) {
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-muted-foreground">Submitted</dt>
+                <dt className="text-muted-foreground">{cellTimeLabel(pop.cell)}</dt>
                 <dd>
                   {formatEtDateTime(pop.cell.submittedAt)} ET
                   {pop.cell.late ? (

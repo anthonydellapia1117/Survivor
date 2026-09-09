@@ -1,0 +1,227 @@
+import { describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+
+// The public dashboard now opens on the MASTER POOL: her four figures as she
+// publishes them, then the whole pool's health in her buckets, and only then
+// this group's own cards. Two rules ride on that and are guarded here:
+//
+//   1. Her per-entry rate is never printed on a public route (CLAUDE.md).
+//      The guard used to live on the Master List; the figures moved, so it
+//      moved with them rather than being dropped.
+//   2. None of THIS GROUP's money reaches a public route - no collected, no
+//      due, no outstanding, and no recruited-vs-free split.
+//
+// Two of her rows are scored here so the buckets are not all in one pile:
+// pool-1 picked a winner, pool-2 a loser, pool-3 is struck OUT on her sheet,
+// pool-4 burned a bye.
+// Extra games switchable per test: one test adds a Week 1 game still to be
+// played, to show a part-played week is not "scored through" even when every
+// revealed pick on the sheet has a result.
+const sheet = vi.hoisted(() => ({
+  // Switchable to an empty roster: her sheet must still open the page.
+  noEntries: false,
+  extraGames: [] as Record<string, unknown>[],
+  // The Week 1 game's reveal override: false holds the week back whatever
+  // the clock says, true lets it out. Pinned so no test depends on today.
+  reveal: null as boolean | null,
+}));
+
+vi.mock("../../src/lib/data", () => ({
+  getData: () => ({
+    getEntries: async () =>
+      sheet.noEntries
+        ? []
+        : [
+      {
+        id: "e-983",
+        entryName: "Adriana Flacco ",
+        nameIsDefault: false,
+        ownerId: "o-1",
+        ownerName: "Adriana Flacco",
+        wins: 0,
+        losses: 0,
+        livesRemaining: 2,
+        status: "active",
+        byeUsed: false,
+        teamsUsed: ["PHI"],
+        lastScoredWeek: null,
+        isAdminEntry: true,
+      },
+    ],
+    getWeeks: async () => [
+      {
+        week: 1,
+        earlyDeadlineAt: "2026-09-08T16:00:00Z",
+        lateDeadlineAt: "2026-09-11T16:00:00Z",
+      },
+    ],
+    getGridCells: async () => [
+      {
+        entryId: "e-983",
+        week: 1,
+        team: "PHI",
+        result: null,
+        late: false,
+        submittedAt: "2026-09-08T00:00:00Z",
+        source: "text",
+        resultSource: null,
+      },
+    ],
+    getPot: async () => ({
+      entryCount: 121,
+      poolEntryCount: 1318,
+      poolFreeCount: 46,
+      poolPaidCount: 1272,
+      poolPotCents: 2862000,
+    }),
+    getSchedule: async () => [
+      {
+        id: "g-1",
+        week: 1,
+        // Kicked off in the past, so with no override it is public.
+        kickoffAt: "2026-09-06T17:00:00Z",
+        dayOfWeek: "Sunday",
+        awayTeam: "DAL",
+        homeTeam: "PHI",
+        homeScore: 24,
+        awayScore: 17,
+        status: "final",
+        revealOverride: sheet.reveal,
+        network: "FOX",
+      },
+      ...sheet.extraGames,
+    ],
+    getMasterList: async () => ({
+      loadedAt: "2026-09-08T21:53:00Z",
+      rows: [
+        { no: 1, names: "Winner Row", cells: { "Week 1": "Philadelphia" }, entryId: null },
+        { no: 2, names: "Loser Row", cells: { "Week 1": "Dallas" }, entryId: null },
+        { no: 3, names: "Struck Row", cells: { "Week 1": "OUT" }, entryId: null },
+        { no: 4, names: "Bye Row", cells: { "Week 1": "BYE" }, entryId: null },
+      ],
+    }),
+  }),
+}));
+
+import DashboardPage from "../../src/app/page";
+
+const html = async () => renderToStaticMarkup(await DashboardPage());
+
+describe("Dashboard, signed out", () => {
+  it("opens on her four figures, as published", async () => {
+    const out = await html();
+    expect(out).toContain("Total in Pool");
+    expect(out).toContain("1,318");
+    expect(out).toContain("Free");
+    expect(out).toContain(">46<");
+    expect(out).toContain("Total Paid");
+    expect(out).toContain("1,272");
+    expect(out).toContain("Total Payout");
+    expect(out).toContain("$28,620");
+  });
+
+  it("never prints her per-entry rate, in any form", async () => {
+    // The guard that used to sit on the Master List. Neither quotient of her
+    // pot - by paying entries or by total - may appear.
+    const out = await html();
+    for (const s of ["$22.50", "22.5", "$21.71", "21.71", "2250", "2171"]) {
+      expect(out).not.toContain(s);
+    }
+    expect(out).not.toMatch(/per (paying )?entry|apiece|each entry|\/\s*entry/i);
+  });
+
+  it("counts the whole pool's health in her buckets, not our 121", async () => {
+    const out = await html();
+    expect(out).toContain("No Losses");
+    // Her wording, not "1 Loss": a burned bye lands here without a loss.
+    expect(out).toContain("1 Loss/Bye");
+    expect(out).toMatch(/Across all 4 rows of her sheet/);
+    // PHI won, so row 1 is clean; DAL lost and BYE was burned, so rows 2 and
+    // 4 are the middle bucket; row 3 she struck out herself.
+    expect(out).toMatch(/text-win">\s*1\s*</);
+    expect(out).toMatch(/text-tie">\s*2\s*</);
+    expect(out).toMatch(/text-loss">\s*1\s*</);
+  });
+
+  it("says the buckets describe this sheet, not a season running total", async () => {
+    // She deletes eliminated entries as the season goes, so an "Eliminated"
+    // card read as cumulative would drift toward zero. The card and the
+    // caption both say what is actually being counted.
+    const out = await html();
+    expect(out).toMatch(/>\s*out on this sheet\s*</);
+    expect(out).toMatch(/removes eliminated entries as the season goes/);
+    // And not "struck out": her explicit OUT is only part of that number, the
+    // rest is our own calculation. Asserted negatively too, because
+    // "out on this sheet" is a substring of "struck out on this sheet" and
+    // the positive check alone would pass on the wrong wording.
+    expect(out).not.toContain("struck out on this sheet");
+    // The caption names the one marker of hers this copy of the sheet can
+    // see - a week cell that reads OUT. Her red fill is not persisted, so
+    // "a row she has struck out" would promise more than is delivered.
+    expect(out).toMatch(/a row her sheet writes OUT on is out whatever we compute/);
+    expect(out).not.toMatch(/a row she has struck out/);
+  });
+
+  it("says which week the pool count is scored through", async () => {
+    // Every Week 1 pick on the sheet (PHI, DAL) has a final: the week is in.
+    const out = await html();
+    expect(out).toContain("scored through Week 1");
+    expect(out).not.toContain("in progress");
+  });
+
+  it("calls a part-played week in progress rather than scored through, from the schedule and not from the revealed cells", async () => {
+    // Every revealed Week 1 pick on the sheet (PHI, DAL) has a final, and one
+    // more Week 1 game is still scheduled: its picks are the ones the public
+    // view is still holding back. The buckets can still move, so the page
+    // must not say the count is scored through Week 1.
+    sheet.extraGames = [{ id: "g-2", week: 1, kickoffAt: "2026-09-14T00:20:00Z", dayOfWeek: "Sunday", awayTeam: "MIA", homeTeam: "BUF", homeScore: null, awayScore: null, status: "scheduled", revealOverride: null, network: "NBC" }];
+    try {
+      const out = await html();
+      expect(out).not.toContain("scored through Week 1");
+      expect(out).toContain("Week 1 in progress");
+      expect(out).toContain("no week fully scored yet");
+    } finally {
+      sheet.extraGames = [];
+    }
+  });
+
+  it("qualifies the master-pool distribution until every game of the week has kicked off", async () => {
+    // Every game public (kicked off, no hold): the whole pool, said plainly.
+    let out = await html();
+    expect(out).toContain("Every entry in the master pool");
+    expect(out).not.toContain("Revealed picks so far");
+    // Held back: the chart is whatever cells the view has revealed, and the
+    // caption must not call that the whole pool. The same hold keeps the
+    // week from reading as scored through.
+    sheet.reveal = false;
+    try {
+      out = await html();
+      expect(out).toContain("Revealed picks so far in the master pool");
+      expect(out).not.toContain("Every entry in the master pool");
+      expect(out).not.toContain("scored through Week 1");
+    } finally {
+      sheet.reveal = null;
+    }
+  });
+
+  it("still opens on the master pool when our roster is empty but her sheet is loaded", async () => {
+    // The two sources are independent. The empty state is for neither
+    // having anything, not for the roster alone.
+    sheet.noEntries = true;
+    try {
+      const out = await html();
+      expect(out).not.toContain("Season not seeded yet");
+      expect(out).toContain("Total in Pool");
+      expect(out).toContain("No Losses");
+      expect(out).toMatch(/Across all 4 rows of her sheet/);
+    } finally {
+      sheet.noEntries = false;
+    }
+  });
+
+  it("puts none of this group's money on the page", async () => {
+    const out = await html();
+    expect(out).not.toMatch(/collected|outstanding|amount due|owed to/i);
+    expect(out).not.toMatch(/recruited/i);
+  });
+});
