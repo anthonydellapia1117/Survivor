@@ -29,6 +29,9 @@ function literals(src: string): string {
   return found.join("\n");
 }
 
+// The app's own host, however it is written.
+const APP_DOMAIN = /(?:https?:\/\/)?[a-z0-9-]*survivor[a-z0-9-]*\.vercel\.app|\bad-26-survivor\b/i;
+
 // Ways a message could point a player at the app instead of at a reply.
 const SENDS_THEM_TO_THE_APP = [
   /\bsubmit\b[^.]{0,40}\b(at|on|in|via|through)\b/i,
@@ -47,12 +50,26 @@ describe("player-facing copy", () => {
     }
   });
 
+  it("never puts the word submit anywhere near the app domain", () => {
+    // Named explicitly because it is the exact shape the wrong draft took:
+    // "Submit at ad-26-survivor.vercel.app". Prepositionless variants
+    // ("submit ad-26-survivor.vercel.app") slip past the phrase list above,
+    // so proximity is checked on its own.
+    for (const file of [PICK_REQUEST, CHASE, DISTRIBUTE]) {
+      const copy = literals(read(file));
+      const near = copy.match(
+        new RegExp(`submit[\\s\\S]{0,80}?${APP_DOMAIN.source}|${APP_DOMAIN.source}[\\s\\S]{0,80}?submit`, "i"),
+      );
+      expect({ file, near: near?.[0] ?? null }).toEqual({ file, near: null });
+    }
+  });
+
   it("never links the site where a pick is asked for", () => {
     // The exemption is DISTRIBUTE and only DISTRIBUTE, and only after the
     // lock, when there is no pick left to ask for.
     for (const file of [PICK_REQUEST, CHASE]) {
       const src = read(file);
-      expect({ file, url: /vercel\.app/i.test(literals(src)) }).toEqual({ file, url: false });
+      expect({ file, url: APP_DOMAIN.test(literals(src)) }).toEqual({ file, url: false });
       expect({ file, siteUrl: /\bSITE_URL\b/.test(src) }).toEqual({ file, siteUrl: false });
     }
   });
