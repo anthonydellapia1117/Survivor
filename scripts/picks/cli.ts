@@ -34,9 +34,11 @@ import {
   submitPick,
   type CurrentPickRow,
 } from "../lib/db";
-import { gmailClient, listUnreadFrom, markProcessed, type InboundMessage } from "../lib/gmail";
+import { gmailClient, listUnreadFrom, markProcessed, type InboundMessage, listUnreadMatching } from "../lib/gmail";
 import { takeValue, weekArg } from "../lib/args";
-import { ADMIN_MAILBOX } from "../lib/constants";
+import { ADMIN_MAILBOX, LYNNE_EMAIL } from "../lib/constants";
+import { loadOpsConfig } from "../ops/lib/config";
+import { strangerMessages, subjectSweepQuery } from "./lib/subject-sweep";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { aliveEntries, confirmedOwners, intakeAddresses } from "../lib/roster";
 import { resolveFromArg } from "./lib/from";
@@ -73,10 +75,12 @@ interface Args {
   source: "email" | "text" | null;
   dryRun: boolean;
   keepUnread: boolean;
+  /** Skip the y/N prompt: the schedule's form (npm run ops -- sweep). */
+  yes: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { week: null, paste: false, file: null, from: null, source: null, dryRun: false, keepUnread: false };
+  const a: Args = { week: null, paste: false, file: null, from: null, source: null, dryRun: false, keepUnread: false, yes: false };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--week") a.week = weekArg(takeValue(argv, ++i, x));
@@ -89,6 +93,7 @@ function parseArgs(argv: string[]): Args {
       a.source = s;
     } else if (x === "--dry-run") a.dryRun = true;
     else if (x === "--keep-unread") a.keepUnread = true;
+    else if (x === "--yes") a.yes = true;
     else throw new Error(`Unknown argument ${x}`);
   }
   return a;
@@ -260,7 +265,15 @@ async function main(): Promise<void> {
     }
     const gmail = gmailClient();
     const addresses = intakeAddresses(owners, entries, ADMIN_MAILBOX);
-    const msgs: InboundMessage[] = await listUnreadFrom(gmail, addresses);
+    // Two reads. Every unread message from a known address, whatever its
+    // subject or label; then the Gmail filter's rule in code - unread mail
+    // from anyone else whose subject names the pool or the picks - which
+    // lands below as an identity question, never as a written pick.
+    const known: InboundMessage[] = await listUnreadFrom(gmail, addresses);
+    const terms = loadOpsConfig().sweepSubjectTerms;
+    const strangers = strangerMessages(await listUnreadMatching(gmail, subjectSweepQuery(terms)), addresses, [ADMIN_MAILBOX, LYNNE_EMAIL], terms);
+    const msgs: InboundMessage[] = [...known, ...strangers];
+    if (strangers.length) console.log(`${strangers.length} unread message(s) from unknown senders with "${terms.join('" or "')}" in the subject; staged for Anthony, never written.`);
     for (const m of msgs) {
       items.push({
         id: itemIdentity(m.id, m.subject, items.length),
@@ -485,7 +498,7 @@ async function main(): Promise<void> {
     await fileMessages(fileOnly);
     return;
   }
-  const ok = await confirm(`\nWrite ${toWrite.length} pick(s) and stage ${unresolved.length} pending row(s)? (y/N) `);
+  const ok = args.yes || (await confirm(`\nWrite ${toWrite.length} pick(s) and stage ${unresolved.length} pending row(s)? (y/N) `));
   if (!ok) {
     console.log("Not approved. Nothing written.");
     return;

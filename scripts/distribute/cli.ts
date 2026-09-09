@@ -12,10 +12,11 @@
 //   --yes         skip the confirmation prompt
 
 import { groupSendList } from "@/lib/emails/group-send";
-import { SITE_URL } from "../lib/constants";
+import { EXPECTED_ROSTER_ADDRESSES, SITE_URL } from "../lib/constants";
 import { adminClient, loadLiveEntries, loadOwners, loadStandings, loadWeeks } from "../lib/db";
 import { createDraft, gmailClient, profileAddress } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
+import { countGate } from "../remind/lib/recipients";
 import { confirm } from "../lib/prompt";
 import { confirmedOwners } from "../lib/roster";
 import { formatEt, type WeekBounds } from "../picks/lib/deadline";
@@ -77,6 +78,13 @@ async function main(): Promise<void> {
   const list = groupSendList(buildGroupSendOwners(owners, entries), { includeGiftedPlayers: true });
   const k = list.addresses.length;
   console.log(`Recipients: ${k} addresses.`);
+  // The exact count gate every whole-roster message keeps: not a range.
+  const gate = countGate(EXPECTED_ROSTER_ADDRESSES, list.addresses);
+  for (const line of gate.lines) console.log(line);
+  if (!gate.ok) {
+    await notify(needsAnthonyLine("distribute", "count gate", `${gate.actual} recipients derived, ${gate.expected} expected (${gate.delta > 0 ? "+" : ""}${gate.delta}) - nothing drafted - the list is on the terminal`), { tags: "warning" });
+    throw new Error(`Count gate: ${gate.actual} recipients, ${gate.expected} expected. Stopped.`);
+  }
   for (const o of list.missingEmail) {
     const line = needsAnthonyLine(
       "distribute",

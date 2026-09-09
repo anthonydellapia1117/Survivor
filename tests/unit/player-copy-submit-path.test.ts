@@ -14,6 +14,8 @@ import { describe, expect, it } from "vitest";
 import { buildPickRequests, CONTACT_PHONE } from "@/lib/emails/pick-request";
 import type { GameRow, WeekRow } from "@/lib/data/types";
 import { bccBody, recipientBody } from "../../scripts/chase/lib/message";
+import { NOT_THE_APP, reminderBody } from "../../scripts/remind/lib/message";
+import type { GameLite, WeekBounds } from "../../scripts/picks/lib/deadline";
 
 const here = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(here(rel), "utf8");
@@ -26,6 +28,20 @@ const CHASE = "../../scripts/chase/lib/message.ts";
 // submission instruction, so it is exempt from the link rule below and held
 // to the phrase rule like the rest.
 const DISTRIBUTE = "../../scripts/distribute/lib/message.ts";
+// The week reminder. It asks for picks and it MAY carry the site link, on one
+// line only: the one that says picks are not made there (CLAUDE.md, set by
+// Anthony on 2026-09-09 in the reminder he wrote himself). That sentence says
+// "in the app" to deny it, so it is cut out before the phrase scan runs and
+// asserted present exactly once, so the exemption cannot widen quietly.
+const REMIND = "../../scripts/remind/lib/message.ts";
+
+/** A module's copy for the phrase scan, with REMIND's one exempt sentence removed. */
+function copyOf(file: string): string {
+  const copy = literals(read(file));
+  if (file !== REMIND) return copy;
+  expect(copy.split(NOT_THE_APP)).toHaveLength(2);
+  return copy.replace(NOT_THE_APP, "");
+}
 
 // Walk the source once rather than pattern-matching quotes: an apostrophe in
 // a comment ("picks.source = 'text'", or any possessive) pairs with the next
@@ -96,6 +112,17 @@ const GAMES: Pick<GameRow, "week" | "dayOfWeek">[] = [
 ];
 
 const chaseBcc = { week: 1, tiers: [], lateDeadlineIso: WEEK1.lateDeadlineAt };
+
+const REMIND_BOUNDS: WeekBounds = { week: 1, earlyDeadlineAt: WEEK1.earlyDeadlineAt, lateDeadlineAt: WEEK1.lateDeadlineAt };
+const REMIND_GAMES: GameLite[] = [
+  { week: 1, dayOfWeek: "Wednesday", homeTeam: "SEA", awayTeam: "NE" },
+  { week: 1, dayOfWeek: "Thursday", homeTeam: "LAR", awayTeam: "SF" },
+  { week: 1, dayOfWeek: "Sunday", homeTeam: "PHI", awayTeam: "DAL" },
+];
+const remindEarly = () =>
+  reminderBody({ week: 1, kind: "early", deadlineIso: WEEK1.earlyDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-09T10:00:00Z"));
+const remindLate = () =>
+  reminderBody({ week: 1, kind: "late", deadlineIso: WEEK1.lateDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-11T10:00:00Z"));
 const chaseInput = (entryNames: string[]) => ({
   week: 1,
   greetingName: "Tom",
@@ -173,6 +200,8 @@ function pickAsks(): { what: string; body: string }[] {
     { what: "chase, several entries", body: recipientBody(chaseInput(["A #1", "A #2"])) },
     { what: "chase bcc, all singular", body: bccBody({ ...chaseBcc, entryCounts: [1, 1] }) },
     { what: "chase bcc, someone plural", body: bccBody({ ...chaseBcc, entryCounts: [1, 3] }) },
+    { what: "week reminder, early boundary", body: remindEarly() },
+    { what: "week reminder, late boundary", body: remindLate() },
   ];
   for (const names of [["Pumpy321"], ["Caroline #1", "Caroline #2"]]) {
     const built = pickRequest(names);
@@ -192,8 +221,8 @@ function pickAsks(): { what: string; body: string }[] {
 
 describe("player-facing copy", () => {
   it("never tells a player to submit a pick in the app", () => {
-    for (const file of [PICK_REQUEST, CHASE, DISTRIBUTE]) {
-      const copy = literals(read(file));
+    for (const file of [PICK_REQUEST, CHASE, DISTRIBUTE, REMIND]) {
+      const copy = copyOf(file);
       const hits = SENDS_THEM_TO_THE_APP.filter((re) => re.test(copy)).map(String);
       expect({ file, hits }).toEqual({ file, hits: [] });
     }
@@ -204,8 +233,8 @@ describe("player-facing copy", () => {
     // "Submit at ad-26-survivor.vercel.app". Prepositionless variants
     // ("submit ad-26-survivor.vercel.app") slip past the phrase list above,
     // so proximity is checked on its own.
-    for (const file of [PICK_REQUEST, CHASE, DISTRIBUTE]) {
-      const copy = literals(read(file));
+    for (const file of [PICK_REQUEST, CHASE, DISTRIBUTE, REMIND]) {
+      const copy = copyOf(file);
       const near = copy.match(
         new RegExp(`submit[\\s\\S]{0,80}?${APP_DOMAIN.source}|${APP_DOMAIN.source}[\\s\\S]{0,80}?submit`, "i"),
       );
@@ -220,6 +249,19 @@ describe("player-facing copy", () => {
       const src = read(file);
       expect({ file, url: APP_DOMAIN.test(literals(src)) }).toEqual({ file, url: false });
       expect({ file, siteUrl: /\bSITE_URL\b/.test(src) }).toEqual({ file, siteUrl: false });
+    }
+  });
+
+  it("links the site in the week reminder on the not-the-app line and nowhere else", () => {
+    // The second exemption, narrower than DISTRIBUTE's: the link may appear,
+    // but only after the sentence that says picks are not made there. Checked
+    // on the RENDERED bodies, every line, both boundaries.
+    for (const [what, body] of [["early", remindEarly()], ["late", remindLate()]] as const) {
+      const linked = body.split("\n").filter((l) => APP_DOMAIN.test(l));
+      expect({ what, linked }).toEqual({ what, linked: [`${NOT_THE_APP} https://ad-26-survivor.vercel.app`] });
+      // And the denial itself is intact: nothing between "You do not make
+      // picks in the app" and the link.
+      expect(body).toContain("You do not make picks in the app. It is there to look at: https://ad-26-survivor.vercel.app");
     }
   });
 
@@ -267,6 +309,10 @@ describe("player-facing copy", () => {
     // mailto: and tel: are how the message says "reply" and "text", so they
     // are the two schemes that belong here. Anything web-shaped does not.
     for (const { what, body } of pickAsks()) {
+      // The week reminder is the one ask allowed a link, on one line, and the
+      // test above holds it to exactly that line; here it would only repeat
+      // the exemption.
+      if (what.startsWith("week reminder")) continue;
       expect({ what, links: body.match(/https?:\/\/[^\s"'<>]+/gi) ?? [] }).toEqual({
         what,
         links: [],

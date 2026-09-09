@@ -285,7 +285,88 @@ command ran.
 - One entry, one team, or it is reported. No guess is ever written.
 - Every write is an audited RPC as the admin. No service-role key exists.
 - Drafts only. The one send path is `scripts/lib/send.ts`, allowlisted to
-  `pick_reminder`, gated on `REMINDER_AUTOSEND=true`, once per recipient per
-  lock day, every send audited.
+  `pick_reminder` (once per recipient per lock day) and `week_reminder`
+  (once per week boundary, exact recipient count), both gated on
+  `REMINDER_AUTOSEND=true`, every send audited.
 - A variance is printed with both values and never resolved.
 - Nothing here touches money or identity resolution.
+
+## 9. The week reminder
+
+```
+npm run remind
+```
+
+Six hours before a week's early deadline and again six hours before its late
+deadline, one message to everyone: To yourself, Bcc every address on the live
+roster (every owner address and every `player_email` on a live entry,
+lowercased, once each, yours included). Set by Anthony on 2026-09-09; the
+text is his Week 1 reminder with the deadline sentences derived from the
+week's games, so Week 12 and Week 16 read right without a special case.
+
+With no arguments it reads the weeks table and the clock, finds the boundary
+whose six-hour window holds now, and drafts for it; outside every window it
+prints `Nothing due` and exits. `--week N --boundary early|late` names one
+for a hand run (a boundary that has passed is refused). `--dry-run` prints
+the message and stops. `--yes` skips the y prompt.
+
+9a. **The count gate.** The derived recipient count must equal
+`EXPECTED_ROSTER_ADDRESSES` in `scripts/lib/constants.ts` (39)
+exactly. Anything else prints the whole list and the delta, pushes a NEEDS
+ANTHONY line, and stops before any draft or send. Not a range: a range let a
+wrong count through once. When an address is corrected the count usually
+stays 39; when it does not, the constant changes in a reviewed PR.
+
+9b. **Sending.** `--send` mails the `week_reminder` template instead of
+drafting, only when the environment has `REMINDER_AUTOSEND=true`, only once
+per boundary (a `week_reminder_claim` or `week_reminder_sent` audit row on
+`week:N:early` or `week:N:late` makes a re-run print `already sent` and
+skip), and only when the Bcc count equals the expected count - the gate is
+checked again inside `sendWeekReminder`, not only by the command. The claim
+row goes in before the Gmail call, the sent row with the message id and the
+full Bcc after it. The subject must begin `Survivor` or the send is refused.
+
+9c. **What it says, and the one link.** Reply to the email or text the
+number; more than one entry means one team for each; and the site link on
+exactly one line, "You do not make picks in the app. It is there to look
+at:". That line is the only place any pick-asking message may carry the
+link, and `tests/unit/player-copy-submit-path.test.ts` holds it there.
+
+9d. **The schedule** is a Routine, documented in `docs/ROUTINES.md`
+section 10.
+
+## 10. Operations from the repo
+
+```
+npm run ops -- tick
+npm run ops -- sweep | pick-reminder | lynne-import | chase | results | distribute
+```
+
+Set by Anthony on 2026-09-09. `scripts/ops/config.json` holds every schedule
+(5-field cron, UTC) and parameter; `scripts/ops/cli.ts` runs a job by
+spawning the same npm script a hand run uses, with the config's arguments,
+so nothing here is a second code path. `tick` runs every job whose cron fell
+inside the last `tickWindowMinutes` (60) and prints one line per job; the
+jobs' own once-only guards make a second tick in the same hour a no-op. `--dry-run`
+prints what a tick would run and starts nothing.
+
+10a. `sweep` is `npm run picks -- --yes`: every unread message from a known
+player address whatever its subject or label, plus unread mail from anyone
+else whose subject carries a word in `sweepSubjectTerms` (`survivor`,
+`picks`), which is staged for you as an identity question and never written.
+
+10b. `pick-reminder` and `chase` are the only jobs the config may mark as
+sending, and the loader refuses a config that says otherwise or hands
+`--send` to another job. Both still send only through `scripts/lib/send.ts`
+with `REMINDER_AUTOSEND=true`; when that is unset the dispatcher does not
+start them and prints `REMINDER_AUTOSEND is not true: drafts only, nothing
+started`.
+
+10c. `lynne-import` fetches her newest Football xlsx from Gmail to a temp
+file and runs `lynne:roster` on it (a sha256 loads once). `results` and
+`distribute` run for the most recent week whose late deadline has passed and
+say `no week has locked yet` before Week 1 locks.
+
+10d. `expectedRosterAddresses` (39) is the exact count every whole-roster
+message gates on - the reminder and the distribute draft both stop on any
+other number and print the list.

@@ -1,0 +1,54 @@
+{
+  "$comment": "Operations for the Survivor sub-pool, checked in so a schedule or a parameter is a reviewed change. Read by scripts/ops (npm run ops). Crons are UTC, 5 fields. Only pick-reminder and chase may send, and only when the environment has REMINDER_AUTOSEND=true; every other job drafts or writes rows and never mails.",
+  "timezone": "America/New_York",
+  "tickWindowMinutes": 60,
+  "expectedRosterAddresses": 39,
+  "reminderLeadHours": 6,
+  "sweepSubjectTerms": ["survivor", "picks"],
+  "jobs": {
+    "sweep": {
+      "schedule": "43 * * * *",
+      "command": "picks",
+      "args": ["--yes"],
+      "sends": false,
+      "what": "Unread mail from every owner and player_email address on a live entry, whatever its subject or label, plus mail from anyone else whose subject names the pool or the picks; picks recorded through admin_submit_pick, everything else staged for Anthony."
+    },
+    "pick-reminder": {
+      "schedule": "0 10,11,12 * * 3,5",
+      "command": "remind",
+      "args": ["--send", "--yes"],
+      "sends": true,
+      "template": "week_reminder",
+      "what": "The week reminder to every live address, six hours before a week's early and late deadlines, once per boundary, exact recipient count."
+    },
+    "chase": {
+      "schedule": "5 13 * * 2-5",
+      "command": "chase",
+      "args": ["--send", "--yes"],
+      "sends": true,
+      "template": "pick_reminder",
+      "what": "One message per recipient with no pick for the open week, once per recipient per lock day."
+    },
+    "lynne-import": {
+      "schedule": "5 21 * * 2,4",
+      "command": "lynne:roster",
+      "args": ["--yes"],
+      "sends": false,
+      "what": "Her newest Football xlsx from Gmail into lynne_roster, once per sha256."
+    },
+    "results": {
+      "schedule": "5 21 * * 2,4",
+      "command": "results",
+      "args": ["--yes"],
+      "sends": false,
+      "what": "Her newest Football xlsx as the last locked week's results through admin_apply_lynne_import, once per sha256, variances reported never resolved."
+    },
+    "distribute": {
+      "schedule": "20 18 * * 5",
+      "command": "distribute",
+      "args": ["--yes"],
+      "sends": false,
+      "what": "After the Friday lock, one Bcc draft to every live address with the grid link and the standings sentence. A draft, never a send."
+    }
+  }
+}
