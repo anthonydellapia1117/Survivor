@@ -65,6 +65,63 @@ function dollarQuote(text: string, i: number): { content: string; next: number }
 // text once, dropping comments and emptying literals, and only then look for
 // statements. A format string prints no value on its own; only the arguments
 // after it can, and those are what has to be read.
+// PostgreSQL's E'...' strings take backslash escapes, so the apostrophe in
+// E'the migration\'s check' does NOT close the literal. Plain '...' strings do
+// not take them: standard_conforming_strings has been on by default since 9.1
+// and is on here, so a backslash in one is an ordinary character. Verified
+// against postgres 16: E'the migration\'s check' and the lowercase e'...' form
+// both return "the migration's check", while the same without the prefix is a
+// syntax error, and U&'a\'b' is one too - only the E form needs this.
+//
+// The prefix has to START a token. `select 1 as typee'x'` is the identifier
+// typee followed by a plain string, not an escape string, so the character
+// before it must not be one an identifier can carry.
+const IDENT = /[A-Za-z0-9_$]/;
+
+// Where a single-quoted literal ends, and what it says. A doubled quote is an
+// escaped quote in both forms; a backslash escapes the next character only in
+// the E form. The escaped character is taken literally rather than decoded -
+// this exists to pair the quotes correctly, and `\n` reading as "n" cannot
+// turn a message into a money total or hide one.
+function singleQuoted(text: string, quote: number, escapes: boolean) {
+  let j = quote + 1;
+  let content = "";
+  while (j < text.length) {
+    if (escapes && text[j] === "\\" && j + 1 < text.length) {
+      content += text[j + 1];
+      j += 2;
+      continue;
+    }
+    if (text[j] !== "'") {
+      content += text[j];
+      j += 1;
+      continue;
+    }
+    if (text[j + 1] === "'") {
+      content += "'";
+      j += 2;
+      continue;
+    }
+    j += 1;
+    break;
+  }
+  return { content, next: j, quoteAt: quote };
+}
+
+// A quoted literal starting at i, in either form. `quoteAt` is the opening
+// QUOTE rather than the start of the token, because that is what the
+// concatenation rule measures from: postgres joins E'due ' to a following
+// '200' across a newline, but refuses to join 'due ' to a following E'200',
+// and only the quote position tells those apart.
+function stringAt(text: string, i: number) {
+  const ch = text[i];
+  if ((ch === "E" || ch === "e") && text[i + 1] === "'" && !IDENT.test(text[i - 1] ?? "")) {
+    return singleQuoted(text, i + 1, true);
+  }
+  if (ch === "'") return singleQuoted(text, i, false);
+  return null;
+}
+
 // What counts as the gap that joins two string constants. Not "whitespace":
 // a `--` comment is whitespace for this purpose and a `/* */` comment is not.
 // scan.l builds it as {horiz_whitespace}*{newline}{special_whitespace}*, and
@@ -117,26 +174,11 @@ function messageText(text: string): string[] {
       i = dollar.next;
       continue;
     }
-    if (text[i] === "'") {
-      const from = i;
-      i += 1;
-      let literal = "";
-      while (i < text.length) {
-        if (text[i] !== "'") {
-          literal += text[i];
-          i += 1;
-          continue;
-        }
-        if (text[i + 1] === "'") {
-          literal += "'";
-          i += 2;
-          continue;
-        }
-        i += 1;
-        break;
-      }
-      push(literal, from);
-      end = i;
+    const quoted = stringAt(text, i);
+    if (quoted) {
+      push(quoted.content, quoted.quoteAt);
+      end = quoted.next;
+      i = quoted.next;
       continue;
     }
     i += 1;
@@ -183,21 +225,13 @@ function normalize(text: string): string {
       i = dollar.next;
       continue;
     }
-    if (text[i] === "'") {
-      i += 1;
-      while (i < text.length) {
-        if (text[i] !== "'") {
-          i += 1;
-          continue;
-        }
-        if (text[i + 1] === "'") {
-          i += 2;
-          continue;
-        }
-        i += 1;
-        break;
-      }
+    const quoted = stringAt(text, i);
+    if (quoted) {
+      // The whole token, prefix included, becomes the same '' a plain literal
+      // does, so a legitimate E'text' argument reads as an allowlisted '' and
+      // not as the unknown value `E''`.
       out += "''";
+      i = quoted.next;
       continue;
     }
     out += text[i];
