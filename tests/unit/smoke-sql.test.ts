@@ -74,6 +74,11 @@ const PRINTABLE = new Set([
   "v_week",
   "v_due_moved",
   "v_paid_moved",
+  // An emptied string literal. normalize() blanks literals, and a fixed
+  // string cannot carry a runtime total, so a USING MESSAGE = 'some text' is
+  // allowed. Numeric literals are NOT emptied and are not on this list: 284000
+  // is exactly the shape a hardcoded total takes.
+  "''",
 ]);
 
 // WHOLE arguments, not the identifiers inside them. Pulling out names that
@@ -81,16 +86,19 @@ const PRINTABLE = new Set([
 // in `raise notice 'money %', total_owed();`, so the allowlist passes over a
 // printed total by matching nothing. Each complete argument has to BE on the
 // list: a literal, a function call and an unfamiliar variable all fail alike.
-function printed(raise: string): string[] {
-  const at = raise.indexOf("''");
-  // No format string means no arguments: a bare `raise;` re-raises the
-  // current error and prints nothing new.
-  if (at < 0) return [];
-  const args = raise.slice(at + 2).replace(/;\s*$/, "");
+//
+// What this covers is every value the statement HANDS to the log: the format
+// arguments and the USING options. It cannot see a total someone types into
+// the message text itself, because normalize() has emptied that literal by
+// the time this runs - which is exactly why the totals are read into
+// variables and compared, never formatted into a message.
+
+// Split at commas that are not inside parentheses.
+function topLevelCommas(text: string): string[] {
   const out: string[] = [];
   let depth = 0;
   let current = "";
-  for (const ch of args) {
+  for (const ch of text) {
     if (ch === "(") depth += 1;
     if (ch === ")") depth -= 1;
     if (ch === "," && depth === 0) {
@@ -101,7 +109,31 @@ function printed(raise: string): string[] {
     current += ch;
   }
   out.push(current);
-  return out
+  return out;
+}
+
+function printed(raise: string): string[] {
+  const body = raise.replace(/;\s*$/, "").replace(/^\s*raise\b/i, "");
+  // A USING clause carries values with no format string in front of them:
+  // `raise warning using message = v_due::text;` prints a total and has no
+  // '' at all. Keying the whole parse off the format string returned nothing
+  // for that, so the clause is split off first and its options are read as
+  // the expressions they are.
+  const usingAt = body.search(/\busing\b/i);
+  const head = usingAt < 0 ? body : body.slice(0, usingAt);
+  const usingClause = usingAt < 0 ? "" : body.slice(usingAt).replace(/^\s*using\b/i, "");
+
+  const at = head.indexOf("''");
+  // Nothing but a severity or a condition name before the clause: a bare
+  // `raise;` re-raises the current error and hands the log no new value.
+  const formatArgs = at < 0 ? [] : topLevelCommas(head.slice(at + 2));
+
+  // option = expression, and the expression is what gets printed.
+  const usingValues = usingClause === ""
+    ? []
+    : topLevelCommas(usingClause).map((opt) => opt.slice(opt.indexOf("=") + 1));
+
+  return [...formatArgs, ...usingValues]
     .map((a) => a.trim().replace(/\s+/g, " ").toLowerCase())
     .filter((a) => a !== "");
 }
