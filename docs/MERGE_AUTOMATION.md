@@ -67,8 +67,18 @@ A file in `supabase/migrations/` whose name after the prefix is not in that
 list is pending. Apply pending files **in filename order**, all of them in
 **one** transaction, and commit once at the end.
 
-For each pending file, in order, with `20260908224500_master_list.sql` as the
-example:
+**`begin;` first, before anything else.** psql autocommits: without it the
+migration is live the moment it is pasted, `savepoint smoke` then errors
+because there is no transaction to save inside, and ON_ERROR_STOP stops the
+run only after the schema change has already committed, unrecorded, with no
+smoke check having run and nothing to roll back.
+
+```sql
+begin;
+```
+
+Then, for each pending file, in order, with `20260908224500_master_list.sql`
+as the example:
 
 ```sql
 -- 1. the migration itself, pasted whole
@@ -87,6 +97,10 @@ $migration_body$]);
 Then `commit;` once, after the last file. A raise anywhere stops the run
 (that is what ON_ERROR_STOP is for) and the whole batch is rolled back, so
 production carries every pending file or none of them, never the first few.
+
+Check you are actually inside a transaction before pasting a migration: in
+psql the prompt ends `*#` inside one and `=#` outside, and `select
+txid_current_if_assigned() is not null;` answers it either way.
 
 The `statements` array is what the Supabase tooling reads back as the
 migration's text. Writing a pointer there instead of the body is a

@@ -17,12 +17,15 @@ const sql = () => unwrapDoBlocks(readFileSync(here("../../scripts/db/smoke.sql")
 // wherever a single-quoted one goes - `raise notice $msg$money 284000$msg$;`
 // is a valid message with no quote in sight.
 function unwrapDoBlocks(text: string): string {
-  return text.replace(/\bdo\s+\$([a-z_]*)\$([\s\S]*?)\$\1\$/gi, (_all, _tag, body) => body);
+  return text.replace(/\bdo\s+(\$[a-z_]?[a-z0-9_]*\$)([\s\S]*?)\1/gi, (_all, _tag, body) => body);
 }
 
 // Where a dollar-quoted literal starts here, and where its content ends.
 function dollarQuote(text: string, i: number): { content: string; next: number } | null {
-  const open = /^\$([a-z_]*)\$/i.exec(text.slice(i));
+  // The tag grammar is a letter or underscore then letters, digits and
+  // underscores, or nothing at all: $$, $msg$ and $msg1$ are all valid, and
+  // a pattern that stops at letters misses the third.
+  const open = /^\$[a-z_]?[a-z0-9_]*\$/i.exec(text.slice(i));
   if (!open) return null;
   const close = text.indexOf(open[0], i + open[0].length);
   const from = i + open[0].length;
