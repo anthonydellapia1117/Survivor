@@ -132,6 +132,13 @@ describe("the legend", () => {
     // Rendered once, before the season/games switch, so both views carry it.
     expect(page.indexOf("<WindowLegend />")).toBeGreaterThan(0);
     expect(page.indexOf("<WindowLegend />")).toBeLessThan(page.indexOf("{season ? ("));
+    // The Games / Season grid toggle is a very small chip pair (Anthony,
+    // 2026-09-09): 11px text, half-unit padding, never the body size.
+    const toggle = page.slice(page.indexOf('href={`/schedule?week=${week}`}') - 400, page.indexOf("<WindowLegend />"));
+    expect(toggle).toContain("text-[11px]");
+    expect(toggle).toContain("px-2 py-0.5");
+    expect(toggle).not.toContain("text-sm");
+    expect(toggle).not.toContain("py-1.5");
     const grid = read("src/components/schedule/schedule-grid.tsx");
     expect(grid).toContain("WINDOW_CELL_CLASS[win]");
     // The frozen header and the scroll container are untouched.
