@@ -267,11 +267,13 @@ function rawStatements(text: string): string[] {
 // no digit and the argument is three digits with no money word beside it. The
 // pieces pass and the line leaks, so the composed line is what has to be read.
 //
-// Only literal arguments can be substituted here; a variable is left as its %.
-// That makes the composition approximate when a statement mixes the two, since
-// the literals fill the slots in order - but a variable argument has to be on
-// the allowlist regardless, so the approximation only touches statements that
-// are already constrained. %% is a literal percent and consumes no argument.
+// Every slot is filled, in its real position: a literal slot takes the
+// literal's text, an expression slot takes the expression's own text. An
+// earlier version filled the slots with the literals compacted in order and
+// called the result approximate on the grounds that an expression argument has
+// to be on the allowlist anyway. That reasoning was wrong - v_due_moved IS on
+// the allowlist - and it left a hole exactly where the excuse was written.
+// %% is a literal percent and consumes no argument.
 function composedMessages(text: string): string[] {
   return rawStatements(text)
     .filter((statement) => /\braise\b/i.test(normalize(statement)))
@@ -279,9 +281,21 @@ function composedMessages(text: string): string[] {
       const literals = messageText(statement);
       const format = literals[0];
       if (format === undefined) return "";
-      const args = literals.slice(1);
+      // Which slot each literal actually fills. Compacting the literals and
+      // dropping them into the first % each was wrong: in
+      // `raise notice 'a % ...... due %', v_due_moved, '200';` postgres puts
+      // 200 next to "due", while compacting put it where v_due_moved goes and
+      // left "due %" with no digit near it. A slot holding an expression takes
+      // the expression's own text - the value is unknown, and the name holds
+      // the position, which is what the distance rules read.
+      const slots = formatSlots(normalize(statement));
+      const literalArgs = literals.slice(1);
+      let nextLiteral = 0;
+      const values = slots.map((slot) =>
+        slot === "''" ? (literalArgs[nextLiteral++] ?? "") : slot,
+      );
       let next = 0;
-      return format.replace(/%%|%/g, (slot) => (slot === "%%" ? "%" : (args[next++] ?? "%")));
+      return format.replace(/%%|%/g, (slot) => (slot === "%%" ? "%" : (values[next++] ?? "%")));
     })
     .filter((line) => line.length > 0);
 }
@@ -460,6 +474,20 @@ function topLevelCommas(text: string): string[] {
   }
   out.push(current);
   return out;
+}
+
+// The format arguments of a normalized raise, in order and untrimmed, so a
+// literal (which reads as '') can be told from an expression by position.
+// Composition needs the positions; printed() only needs the values.
+function formatSlots(raise: string): string[] {
+  const body = raise.replace(/;\s*$/, "").replace(/^\s*raise\b/i, "");
+  const usingAt = body.search(/\busing\b/i);
+  const head = usingAt < 0 ? body : body.slice(0, usingAt);
+  const at = head.indexOf("''");
+  if (at < 0) return [];
+  return topLevelCommas(head.slice(at + 2))
+    .map((slot) => slot.trim())
+    .filter((slot) => slot !== "");
 }
 
 function printed(raise: string): string[] {
