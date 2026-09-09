@@ -17,6 +17,7 @@
     "results": "tsx scripts/results/cli.ts",
     "distribute": "tsx scripts/distribute/cli.ts",
     "remind": "tsx scripts/remind/cli.ts",
+    "ops": "tsx scripts/ops/cli.ts",
     "notify": "tsx scripts/notify/cli.ts"
   },
   "dependencies": {

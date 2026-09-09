@@ -5,7 +5,7 @@
 // deadline. Everything is derived on the run - the boundary from the weeks
 // table and the clock, the recipients from the live roster, the text from
 // the week's games and deadlines - and the recipient count must equal
-// WEEK_REMINDER_EXPECTED_RECIPIENTS exactly or the run stops with the list
+// EXPECTED_ROSTER_ADDRESSES exactly or the run stops with the list
 // and the delta printed. Nothing is ever sent except through
 // sendWeekReminder, which needs --send AND REMINDER_AUTOSEND=true and
 // refuses a second send for the same boundary.
@@ -16,7 +16,7 @@
 //   --dry-run prints the message and stops. --yes skips the y/N prompt.
 
 import { adminClient, loadGames, loadLiveEntries, loadOwners, loadWeeks } from "../lib/db";
-import { ADMIN_MAILBOX, WEEK_REMINDER_EXPECTED_RECIPIENTS } from "../lib/constants";
+import { ADMIN_MAILBOX, EXPECTED_ROSTER_ADDRESSES } from "../lib/constants";
 import { createDraft, gmailClient } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
 
   // ---- who: derived live, then the exact count gate
   const bcc = reminderAddresses(owners, entries);
-  const gate = countGate(WEEK_REMINDER_EXPECTED_RECIPIENTS, bcc);
+  const gate = countGate(EXPECTED_ROSTER_ADDRESSES, bcc);
   for (const line of gate.lines) console.log(line);
   if (!gate.ok) {
     await notify(
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
       week: b.week,
       boundary: b.kind,
       deadlineIso: b.deadlineIso,
-      expectedRecipients: WEEK_REMINDER_EXPECTED_RECIPIENTS,
+      expectedRecipients: EXPECTED_ROSTER_ADDRESSES,
       actor,
     });
     if (out.kind === "sent") {

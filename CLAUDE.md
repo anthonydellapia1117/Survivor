@@ -753,6 +753,7 @@ in any of them.**
 | `npm run results -- --week N`            | Her newest Football xlsx from Gmail through `admin_apply_lynne_import`; refuses a sha256 seen before; prints the variance table |
 | `npm run distribute -- --week N`         | After the Friday lock, one BCC draft to every owner and player address with the /grid link and the standings sentence           |
 | `npm run remind [-- --send --yes]`      | The week reminder due now (six hours before a week's early or late deadline) to every live address, exact count gate, drafted or sent |
+| `npm run ops -- <job>` / `npm run ops -- tick` | Operations from the repo: sweep, pick-reminder, lynne-import, chase, results, distribute, each from `scripts/ops/config.json`; `tick` runs whatever fell due in the last hour |
 | `npm run notify -- "line"`               | One line to ntfy.sh/`NTFY_TOPIC`, printed when the topic is unset                                                               |
 | `npm run gmail:auth`                     | One-time OAuth consent for the Gmail token                                                                                     |
 
@@ -781,13 +782,34 @@ in any of them.**
     `week_reminder_sent` on the key `week:N:early|late`). Recipients are
     derived on the run - every owner address and every `player_email` on
     a live entry, lowercased, once each - and **the count must equal
-    `WEEK_REMINDER_EXPECTED_RECIPIENTS` (39) exactly or the run stops**
+    `EXPECTED_ROSTER_ADDRESSES` (39) exactly or the run stops**
     with the list and the delta printed; a range is what let a wrong
     count through once in another pool. Subject begins `Survivor` so
     replies hit the filter. The body is his Week 1 text with the deadline
     sentences derived from the games. Changing the count is a reviewed
     change to the constant, never a flag.
   Adding a template is a reviewed change to the allowlist, never a flag.
+- **Operations run from the repo (set 2026-09-09).** `scripts/ops` holds one
+  entry point per job - sweep, pick-reminder, lynne-import, chase, results,
+  distribute - and every schedule and parameter comes from the checked-in
+  `scripts/ops/config.json`, so changing one is a reviewed change and never a
+  pasted prompt or a Gmail setting. `npm run ops -- tick` runs whatever fell
+  due in the last hour; the claude.ai Routine that drives it is one line
+  (docs/ROUTINES.md section 10) and is paused until its environment carries
+  the variables it needs. Three rules that used to live in a Routine prompt
+  or a Gmail filter are code:
+  - The sweep reads unread mail from **every owner address and every
+    `player_email` on a live entry, whatever its subject or label**, plus
+    unread mail from anyone else whose subject carries `survivor` or `picks`
+    (the Gmail filter's rule); a stranger's mail is staged for Anthony, never
+    written as a pick.
+  - The week reminder goes **six hours before each stored boundary**, from
+    the weeks table.
+  - **Only pick-reminder and chase may send**; the config loader refuses any
+    other job marked as sending or handed `--send`. Every whole-roster message
+    derives its recipients live and stops unless the count equals
+    `expectedRosterAddresses` (39) **exactly** - a range let a wrong count
+    through once in another pool.
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
   Anthony's to choose and is never invented.

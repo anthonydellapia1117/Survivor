@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EntryRow, OwnerRow, WeekBoundsRow } from "../../scripts/lib/db";
-import { WEEK_REMINDER_EXPECTED_RECIPIENTS } from "../../scripts/lib/constants";
+import { EXPECTED_ROSTER_ADDRESSES } from "../../scripts/lib/constants";
 import { boundariesOf, boundaryKey, dueBoundary, findBoundary } from "../../scripts/remind/lib/due";
 import { countGate, reminderAddresses } from "../../scripts/remind/lib/recipients";
 import {
@@ -64,7 +64,7 @@ describe("who the reminder goes to", () => {
   });
 
   it("the expected count is the one Anthony set", () => {
-    expect(WEEK_REMINDER_EXPECTED_RECIPIENTS).toBe(39);
+    expect(EXPECTED_ROSTER_ADDRESSES).toBe(39);
   });
 });
 

@@ -130,10 +130,22 @@ function bodyOf(payload: gmail_v1.Schema$MessagePart | undefined): string {
 /** Every unread message from any of the addresses, whatever its subject or label. */
 export async function listUnreadFrom(gmail: gmail_v1.Gmail, addresses: string[]): Promise<InboundMessage[]> {
   const unique = Array.from(new Set(addresses.map((a) => a.trim().toLowerCase()).filter(Boolean)));
-  const ids = new Set<string>();
+  const queries: string[] = [];
   for (let i = 0; i < unique.length; i += 15) {
     const chunk = unique.slice(i, i + 15);
-    const q = `is:unread -in:draft (${chunk.map((a) => `from:${a}`).join(" OR ")})`;
+    queries.push(`is:unread -in:draft (${chunk.map((a) => `from:${a}`).join(" OR ")})`);
+  }
+  return listUnreadByQueries(gmail, queries);
+}
+
+/** Every unread message a Gmail search matches, in full. The subject sweep's reader. */
+export async function listUnreadMatching(gmail: gmail_v1.Gmail, q: string): Promise<InboundMessage[]> {
+  return listUnreadByQueries(gmail, [q]);
+}
+
+async function listUnreadByQueries(gmail: gmail_v1.Gmail, queries: string[]): Promise<InboundMessage[]> {
+  const ids = new Set<string>();
+  for (const q of queries) {
     let pageToken: string | undefined;
     do {
       const res = await gmail.users.messages.list({ userId: "me", q, pageToken, maxResults: 100 });
