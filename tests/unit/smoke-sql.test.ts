@@ -71,6 +71,19 @@ function dollarQuote(text: string, i: number): { content: string; next: number }
 // arguments. The text has to be looked at before it is thrown away.
 function messageText(text: string): string[] {
   const out: string[] = [];
+  // PostgreSQL joins two string constants separated by whitespace containing
+  // a NEWLINE into one string: `raise notice 'due '\n'200';` emits "due 200".
+  // Collected apart, neither half looks like money. `end` is where the last
+  // literal stopped, so the gap before the next one can be measured.
+  let end = -1;
+  const push = (literal: string, from: number) => {
+    const gap = end < 0 ? null : text.slice(end, from);
+    if (gap !== null && /^\s*$/.test(gap) && gap.includes("\n") && out.length > 0) {
+      out[out.length - 1] += literal;
+      return;
+    }
+    out.push(literal);
+  };
   let i = 0;
   while (i < text.length) {
     if (text.startsWith("--", i)) {
@@ -85,11 +98,13 @@ function messageText(text: string): string[] {
     }
     const dollar = text[i] === "$" ? dollarQuote(text, i) : null;
     if (dollar) {
-      out.push(dollar.content);
+      push(dollar.content, i);
+      end = dollar.next;
       i = dollar.next;
       continue;
     }
     if (text[i] === "'") {
+      const from = i;
       i += 1;
       let literal = "";
       while (i < text.length) {
@@ -106,7 +121,8 @@ function messageText(text: string): string[] {
         i += 1;
         break;
       }
-      out.push(literal);
+      push(literal, from);
+      end = i;
       continue;
     }
     i += 1;
