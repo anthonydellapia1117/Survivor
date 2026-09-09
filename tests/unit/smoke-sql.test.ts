@@ -54,19 +54,37 @@ function normalize(text: string): string {
 const raises = (text: string) =>
   normalize(text).match(/raise\s+(?:notice|exception)[^;]*;/gi) ?? [];
 
-// Any money-ish variable, not only the four spelled out today: a v_due_cents
-// added later leaks exactly the same. Only the two booleans may be printed.
-const MONEY = /\bv_[a-z_]*(?:due|paid)[a-z_]*\b/gi;
-const PRINTABLE = new Set(["v_due_moved", "v_paid_moved"]);
+// An allowlist, not a blocklist. Naming a few money-ish variables to forbid
+// only holds while the money keeps those names: a total parked in
+// v_amount_cents or v_total_cents would print and the guard would stay
+// green. So the rule is inverted - these are the only values the check may
+// print, and anything else fails until it is added here deliberately. The
+// two booleans say WHETHER the totals moved; the totals themselves are not
+// on the list and cannot be added without this line changing.
+const PRINTABLE = new Set([
+  "v_entries",
+  "v_entries_after",
+  "v_recruited",
+  "v_entry.entry_name",
+  "v_team",
+  "v_week",
+  "v_due_moved",
+  "v_paid_moved",
+]);
+
+// The arguments of a raise are everything after its format string, which
+// normalize() has already emptied to ''.
+function printed(raise: string): string[] {
+  const args = raise.slice(raise.indexOf("''") + 2);
+  return (args.match(/\bv_[a-z0-9_]*(?:\.[a-z0-9_]+)?/gi) ?? []).map((n) => n.toLowerCase());
+}
 
 describe("smoke check", () => {
-  it("never prints a money total in a notice or an exception", () => {
+  it("prints only the values on the allowlist, so no money total can reach the log", () => {
     const found = raises(sql());
     expect(found.length).toBeGreaterThan(0);
-    const leaked = found
-      .flatMap((r) => r.match(MONEY) ?? [])
-      .filter((name) => !PRINTABLE.has(name.toLowerCase()));
-    expect(leaked).toEqual([]);
+    const unlisted = found.flatMap(printed).filter((name) => !PRINTABLE.has(name));
+    expect(unlisted).toEqual([]);
   });
 
   it("reads every raise through to its arguments", () => {
