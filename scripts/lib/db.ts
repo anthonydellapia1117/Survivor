@@ -179,6 +179,21 @@ export async function loadCurrentPicks(client: SupabaseClient, week: number): Pr
  * v_entry_public is granted, and already restricted to the live entries of
  * confirmed owners, which is the set the commands act on.
  */
+/**
+ * The last week of double elimination, from `config`. The bye opens the week
+ * after it, and the picks intake checks that before proposing a bye rather
+ * than letting admin_submit_pick refuse mid-run (issue #22).
+ */
+export async function loadDoubleElimThroughWeek(client: SupabaseClient): Promise<number> {
+  const rows = unwrap(
+    await client.from("config").select("double_elim_through_week").returns<{ double_elim_through_week: number }[]>(),
+    "config (double_elim_through_week)",
+  );
+  const v = rows[0]?.double_elim_through_week;
+  if (typeof v !== "number" || !Number.isInteger(v)) throw new Error("config.double_elim_through_week is not set");
+  return v;
+}
+
 export async function loadStandings(client: SupabaseClient): Promise<StandingRow[]> {
   const rows = unwrap(
     await client

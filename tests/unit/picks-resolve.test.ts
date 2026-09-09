@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { SKIP_WEEK } from "../../src/lib/standing";
+import { byeRefusal, resolveTeam as resolveTeamForBye, strictTeam as strictTeamForBye } from "../../scripts/picks/lib/resolve";
 import {
   entryKey,
   parsePickLines,
@@ -130,5 +132,54 @@ describe("resolveEntry, owner name with a number", () => {
   it("picks the numbered entry of the owner named", () => {
     expect(resolveEntry("Jim Teti 3", roster)).toMatchObject({ ok: true, entry: { entryName: "Jim Teti #3" } });
     expect(resolveEntry("James Teti 3", [...roster.filter((e) => !e.entryName.startsWith("Jim Teti")), ...[1, 2, 3, 4].map((n) => mk(`JT #${n}`, "James Teti", "jt@example.com"))])).toMatchObject({ ok: true, how: "owner_name", entry: { entryName: "JT #3" } });
+  });
+});
+
+describe("the bye, through strictTeam", () => {
+  it("takes every wording resolveTeam takes, one word or two", () => {
+    // resolveTeam mapped all of these to the sentinel, but strictTeam then
+    // checked each word against TEAM_NAME[SKIP_WEEK], which does not exist -
+    // so the two-word forms came back null and were staged as unrecognised
+    // where a bye was meant (issue #23). The one-word forms always worked,
+    // which is why it went unnoticed.
+    for (const wording of ["bye", "skip", "skip week", "SKIP_WEEK", "skip_week", "Skip Week", "  skip   week "]) {
+      expect({ wording, resolved: resolveTeamForBye(wording), strict: strictTeamForBye(wording) }).toEqual({
+        wording,
+        resolved: SKIP_WEEK,
+        strict: SKIP_WEEK,
+      });
+    }
+  });
+
+  it("does not loosen a real team name", () => {
+    // The word check still runs for everything that is not the sentinel.
+    expect(strictTeamForBye("Los Angles Chargers")).toBe("LAC");
+    expect(strictTeamForBye("Pumpy321 Chargers")).toBeNull();
+    expect(strictTeamForBye("skip the chargers")).toBeNull();
+  });
+});
+
+describe("byeRefusal", () => {
+  const clean = { losses: 0, bye_used: false };
+
+  it("opens the bye the week after the double-elimination weeks", () => {
+    expect(byeRefusal(7, clean, 7)).toBe("bye may only be used from week 8 on");
+    expect(byeRefusal(1, clean, 7)).toBe("bye may only be used from week 8 on");
+    expect(byeRefusal(8, clean, 7)).toBeNull();
+    expect(byeRefusal(18, clean, 7)).toBeNull();
+    // It reads the configured week, never a literal 7.
+    expect(byeRefusal(8, clean, 9)).toBe("bye may only be used from week 10 on");
+    expect(byeRefusal(10, clean, 9)).toBeNull();
+  });
+
+  it("refuses a bye already used and one not earned, and says which", () => {
+    expect(byeRefusal(8, { losses: 0, bye_used: true }, 7)).toBe("bye already used");
+    expect(byeRefusal(8, { losses: 1, bye_used: false }, 7)).toBe("bye not earned: entry took a loss in weeks 1-7");
+    // Used wins over not-earned, as the rules engine checks them in that order.
+    expect(byeRefusal(8, { losses: 1, bye_used: true }, 7)).toBe("bye already used");
+  });
+
+  it("refuses rather than guesses when the entry has no standings row", () => {
+    expect(byeRefusal(8, null, 7)).toMatch(/cannot be judged/);
   });
 });

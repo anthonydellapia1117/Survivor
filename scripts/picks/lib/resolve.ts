@@ -133,6 +133,11 @@ export function strictTeam(raw: string): string | null {
   const cleaned = cleanTeam(raw);
   const team = resolveTeam(cleaned);
   if (!team) return null;
+  // The bye is a sentinel, not a team, so the word check below has no name to
+  // check against: TEAM_NAME[SKIP_WEEK] is undefined, and "skip week" failed
+  // every word against the empty string while the one-word "bye" and "skip"
+  // passed straight through (issue #23).
+  if (team === SKIP_WEEK) return team;
   const words = cleaned.split(" ");
   if (words.length === 1) return team;
   const nameWords = (TEAM_NAME[team] ?? "").toLowerCase().split(" ");
@@ -566,4 +571,59 @@ export function unparsedReason(line: string): string | null {
   if (!/[A-Za-z]{3,}/.test(t)) return null;
   if (/^(hi|hey|hello|thanks|thank you|thx)\b/i.test(t)) return null;
   return "no team recognised on this line";
+}
+
+
+/**
+ * Why this entry may not take a bye in this week, or null when it may.
+ *
+ * The database is the authority - admin_submit_pick raises on each of these -
+ * but a pick that only fails at the write kills the run: the proposals before
+ * it are written, the rest are not, and the remaining mail stays unread until
+ * the next sweep (issue #22). Checked here so an ineligible bye is staged as
+ * a question like any other, and the run finishes.
+ *
+ * The three rules are the rules engine's, in its order: the bye opens after
+ * the double-elimination weeks, it is not earned by an entry that took a loss
+ * inside them, and it is once. `losses` is the entry's total, which for an
+ * entry the intake still takes picks for is the same number: after the double
+ * weeks a loss eliminates, and an eliminated entry is off the intake roster.
+ */
+export function byeRefusal(
+  week: number,
+  standing: { losses: number; bye_used: boolean } | null,
+  doubleElimThroughWeek: number,
+): string | null {
+  if (week <= doubleElimThroughWeek) return `bye may only be used from week ${doubleElimThroughWeek + 1} on`;
+  if (!standing) return "no standings row for this entry; the bye cannot be judged";
+  if (standing.bye_used) return "bye already used";
+  if (standing.losses > 0) return `bye not earned: entry took a loss in weeks 1-${doubleElimThroughWeek}`;
+  return null;
+}
+
+
+/**
+ * Which of a message's accepted picks may stand as what the NEXT message in
+ * the same run is judged against.
+ *
+ * Every message used to be compared with the snapshot taken before the run,
+ * so an on-time "PHI" and a later after-lock "KC" for one entry both saw no
+ * current pick: both were proposed, and the write loop put PHI down and then
+ * let KC override it, bypassing the rule that a change after the lock is
+ * staged (issue #21).
+ *
+ * An entry this message gave more than one team is left out. That is the
+ * one-entry-one-team conflict, both rows are withdrawn, and neither may stand
+ * as the current pick - carrying one forward would turn the next message's
+ * conflict into a stale-pick complaint about a pick that was never recorded.
+ */
+export function picksToCarryForward<T>(
+  itemPicks: Map<string, T>,
+  itemTeams: Map<string, Set<string>>,
+): Map<string, T> {
+  const out = new Map<string, T>();
+  for (const [entryId, row] of itemPicks) {
+    if (itemTeams.get(entryId)?.size === 1) out.set(entryId, row);
+  }
+  return out;
 }

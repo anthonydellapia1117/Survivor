@@ -24,6 +24,7 @@ import {
   adminClient,
   currentWeek,
   loadCurrentPicks,
+  loadDoubleElimThroughWeek,
   loadGames,
   loadLiveEntries,
   loadOwners,
@@ -43,11 +44,14 @@ import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { aliveEntries, confirmedOwners, intakeAddresses } from "../lib/roster";
 import { resolveFromArg } from "./lib/from";
 import { confirm, readStdin } from "../lib/prompt";
+import { SKIP_WEEK } from "@/lib/standing";
 import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from "./lib/deadline";
 import {
+  byeRefusal,
   effectiveSubmitTime,
   overrideDecision,
   parsePickLines,
+  picksToCarryForward,
   pendingKind,
   pickSourceFor,
   resolveEntry,
@@ -164,7 +168,14 @@ function pad(s: string, n: number): string {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const { client, actor } = await adminClient();
-  const [owners, entries, weeks, standings] = await Promise.all([loadOwners(client), loadLiveEntries(client), loadWeeks(client), loadStandings(client)]);
+  const [owners, entries, weeks, standings, doubleElimThroughWeek] = await Promise.all([
+    loadOwners(client),
+    loadLiveEntries(client),
+    loadWeeks(client),
+    loadStandings(client),
+    loadDoubleElimThroughWeek(client),
+  ]);
+  const standingByEntry = new Map(standings.map((s) => [s.entry_id, s]));
   const now = new Date();
   // The week a message names wins; --week, then the open week, is only the
   // fallback for a message that names none. A Week 1 reply read on Saturday
@@ -311,6 +322,21 @@ async function main(): Promise<void> {
   for (const item of items) {
     const rowsBefore = unresolved.length + proposals.length;
     const ctx = await contextFor(item.week);
+    // What THIS message gave each entry, so the snapshot can be moved on
+    // after it. Two messages for one entry in one run both read the pre-run
+    // snapshot, so an after-lock correction saw no current pick and was
+    // written straight over the on-time one instead of being staged
+    // (issue #21). Merged at the end of the item, never inside it: within one
+    // message two teams for one entry is the conflict the pass below reports,
+    // and moving the snapshot mid-message would turn that into a stale-pick
+    // complaint instead.
+    const itemTeams = new Map<string, Set<string>>();
+    const itemPicks = new Map<string, CurrentPickRow>();
+    const sawTeam = (entryId: string, team: string) => {
+      const seen = itemTeams.get(entryId) ?? new Set<string>();
+      seen.add(team);
+      itemTeams.set(entryId, seen);
+    };
     const madeAt = effectiveSubmitTime(item.receivedAt, now);
     const scopeEntries = scopeEntriesFor(item, roster, entriesFor);
     const kind = pendingKind(item.senderAddress, scopeEntries.length);
@@ -381,6 +407,7 @@ async function main(): Promise<void> {
         // Anthony records it knowingly on /admin/queue or dismisses it.
         const usedIn = repeatedWeek(p.team, ctx.priorByEntry.get(t.entry.id));
         if (usedIn !== null) {
+          sawTeam(t.entry.id, p.team);
           stagedRepeats.push({ key: keyFor(item.id, item.week, t.entry.id), team: p.team, entryName: t.entry.entryName, usedIn, item });
           unresolved.push({
             kind: "pick",
@@ -392,6 +419,25 @@ async function main(): Promise<void> {
           });
           continue;
         }
+        // A bye admin_submit_pick would refuse is staged as a question here.
+        // Reaching the write with it killed the run: what was written before
+        // it stayed, the rest was not written, and the remaining mail stayed
+        // unread until the next sweep (issue #22).
+        if (p.team === SKIP_WEEK) {
+          const why = byeRefusal(item.week, standingByEntry.get(t.entry.id) ?? null, doubleElimThroughWeek);
+          if (why !== null) {
+            fail(`${t.entry.entryName} -> bye: ${why}`, p.line);
+            continue;
+          }
+        }
+        sawTeam(t.entry.id, p.team);
+        itemPicks.set(t.entry.id, {
+          entry_id: t.entry.id,
+          team: p.team,
+          late: isLate(deadline, madeAt),
+          submitted_at: madeAt.toISOString(),
+          result: null,
+        });
         proposals.push({
           entry: t.entry,
           week: item.week,
@@ -414,6 +460,9 @@ async function main(): Promise<void> {
     // back on every sweep (issue #42). It becomes one identity question, which
     // is what the log line above already claimed. A stranger never becomes a
     // pick; this only makes sure they become a question.
+    // Only an entry this message gave exactly one team moves the snapshot on.
+    for (const [entryId, row] of picksToCarryForward(itemPicks, itemTeams)) ctx.currentByEntry.set(entryId, row);
+
     const nothingHeard = strangerIdentityRow(item.stranger, unresolved.length + proposals.length - rowsBefore);
     if (nothingHeard) unresolved.push({ ...nothingHeard, candidates: [], item });
   }

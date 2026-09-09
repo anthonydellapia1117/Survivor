@@ -376,3 +376,79 @@ describe("stagedDetail", () => {
     expect(stagedDetail(2)).toBe("week 2 - /admin/queue");
   });
 });
+
+import { readFileSync } from "node:fs";
+import { picksToCarryForward } from "../../scripts/picks/lib/resolve";
+
+describe("two messages for one entry in one run", () => {
+  const LATE_DEADLINE = "2026-09-11T18:00:00Z";
+  const onTime = new Date("2026-09-11T15:00:00Z");
+  const afterLock = new Date("2026-09-11T19:00:00Z");
+
+  it("judges the second against the first, so an after-lock correction is staged and not written over it", () => {
+    // Both messages used to read the pre-run snapshot, so the second saw no
+    // current pick, was proposed, and the write loop let it override the
+    // first - bypassing the rule that a change after the lock needs Anthony
+    // (issue #21).
+    const snapshot = new Map<string, { entry_id: string; team: string; late: boolean; submitted_at: string; result: string | null }>();
+
+    // Message one: PHI, on time, no pick on file.
+    expect(overrideDecision(snapshot.get("e1") ?? null, onTime, LATE_DEADLINE)).toEqual({ ok: true });
+    const first = { entry_id: "e1", team: "PHI", late: false, submitted_at: onTime.toISOString(), result: null };
+    for (const [id, row] of picksToCarryForward(new Map([["e1", first]]), new Map([["e1", new Set(["PHI"])]]))) {
+      snapshot.set(id, row);
+    }
+    expect(snapshot.get("e1")?.team).toBe("PHI");
+
+    // Message two: KC, after the lock. Now it sees PHI and is refused.
+    const decision = overrideDecision(snapshot.get("e1") ?? null, afterLock, LATE_DEADLINE);
+    expect(decision.ok).toBe(false);
+    expect(decision.ok === false && decision.reason).toMatch(/after the lock with PHI already on file/);
+  });
+
+  it("carries forward only an entry the message gave exactly one team", () => {
+    const rowA = { team: "PHI" };
+    const rowB = { team: "KC" };
+    // One team: carried.
+    expect([...picksToCarryForward(new Map([["e1", rowA]]), new Map([["e1", new Set(["PHI"])]])).keys()]).toEqual(["e1"]);
+    // Two teams in one message is the conflict, both are withdrawn, so
+    // neither may stand as the current pick for the next message.
+    expect(picksToCarryForward(new Map([["e1", rowA]]), new Map([["e1", new Set(["PHI", "KC"])]])).size).toBe(0);
+    // A repeated team staged as an elimination counts as one of the two.
+    expect(picksToCarryForward(new Map([["e1", rowA]]), new Map([["e1", new Set(["PHI", "DAL"])]])).size).toBe(0);
+    // An entry with no teams recorded is not carried.
+    expect(picksToCarryForward(new Map([["e2", rowB]]), new Map()).size).toBe(0);
+    // Entries are judged one at a time.
+    const both = picksToCarryForward(
+      new Map([["e1", rowA], ["e2", rowB]]),
+      new Map([["e1", new Set(["PHI", "KC"])], ["e2", new Set(["KC"])]]),
+    );
+    expect([...both.keys()]).toEqual(["e2"]);
+  });
+
+  it("is wired into the sweep: the snapshot moves after the message, never inside it", () => {
+    const src = readFileSync("scripts/picks/cli.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    expect(src).toMatch(/for \(const \[entryId, row\] of picksToCarryForward\(itemPicks, itemTeams\)\) ctx\.currentByEntry\.set\(entryId, row\);/);
+    // Inside the message the snapshot is untouched, so the conflict pass
+    // still sees both teams rather than a stale-pick complaint.
+    expect(src.indexOf("picksToCarryForward(itemPicks, itemTeams)")).toBeGreaterThan(src.indexOf("proposals.push({"));
+    expect(src).toMatch(/sawTeam\(t\.entry\.id, p\.team\);/);
+  });
+});
+
+describe("a bye the database would refuse", () => {
+  it("is checked before proposing, so one refused write cannot stop the run", () => {
+    // admin_submit_pick raises on an ineligible bye. Reaching the write with
+    // it left the proposals before it written, the rest not written, and the
+    // remaining mail unread until the next sweep (issue #22).
+    const src = readFileSync("scripts/picks/cli.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    expect(src).toMatch(/if \(p\.team === SKIP_WEEK\) \{/);
+    expect(src).toMatch(/byeRefusal\(item\.week, standingByEntry\.get\(t\.entry\.id\) \?\? null, doubleElimThroughWeek\)/);
+    expect(src).toMatch(/fail\(`\$\{t\.entry\.entryName\} -> bye: \$\{why\}`, p\.line\);/);
+    // The check comes before the proposal, not after it.
+    expect(src.indexOf("if (p.team === SKIP_WEEK)")).toBeLessThan(src.indexOf("proposals.push({"));
+    // The window comes from config, never a literal.
+    expect(src).toMatch(/loadDoubleElimThroughWeek\(client\)/);
+    expect(src).not.toMatch(/doubleElimThroughWeek = 7/);
+  });
+});
