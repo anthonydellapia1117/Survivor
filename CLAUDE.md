@@ -484,8 +484,9 @@ names and `name_is_default` did not move. The mapping is
 674-675 and again at 1319-1320) kept as separate rows; her sheet's row for
 NO. 1311 reads `1311 Andrew Yukanis` in the NO. cell and `Amy  3` in NAMES,
 so the loader skipped it (no integer NO.) and nothing was invented. It is
-her `Amy 3`: `Amy 1` and `Amy 2` sit at 1309-1310 and `Amy 4` at 1312, and
-"Andrew Yukanis" was typed into the number cell. Her 1,318 already counts
+her `Amy  3`: `Amy  1` and `Amy  2` sit at 1309-1310 and `Amy  4` at 1312,
+every one with her double space, and "Andrew Yukanis" was typed into the
+number cell. Her 1,318 already counts
 it, so our copy carries 1,319 rows until her next sheet, which the loader
 diffs. A one-line note pointing at 1311 and the duplicate Ian Lubin rows
 was drafted in her "Sheet" thread on 2026-09-09; a draft is never a send,
