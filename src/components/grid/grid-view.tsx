@@ -370,10 +370,6 @@ export function GridView({
             </span>
           </button>
         ))}
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-          Showing {visible.length.toLocaleString("en-US")} of{" "}
-          {sorted.length.toLocaleString("en-US")}
-        </span>
       </div>
 
       {tally ? (
@@ -410,7 +406,10 @@ export function GridView({
           <span aria-hidden>🔒</span> Picks unlock when each game kicks off
         </span>
         <span className="ml-auto tabular-nums">
-          {visible.length} of {entries.length} entries
+          {/* The scope's own total, not our 121: in Everyone this read
+              "1,319 of 121 entries". */}
+          {visible.length.toLocaleString("en-US")} of{" "}
+          {sorted.length.toLocaleString("en-US")} entries
         </span>
       </div>
 

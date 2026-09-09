@@ -230,6 +230,15 @@ describe("Grid, signed out", () => {
     expect(html).toMatch(/Week 3: 1 picked/);
   });
 
+  it("counts the footer against the scope on screen, not against our 121", async () => {
+    // In Everyone this read "7 of 1 entries" - visible rows over the managed
+    // group's total. The mock has 7 sheet rows and 1 entry of ours, so the
+    // two denominators are distinguishable.
+    const html = renderToStaticMarkup(await GridPage());
+    expect(html).toMatch(/7 of\s*(<!-- -->)?\s*7 entries/);
+    expect(html).not.toMatch(/of\s*(<!-- -->)?\s*1 entries/);
+  });
+
   it("does not link a row of hers to an entry page that does not exist", async () => {
     // Her rows carry synthetic ids; /entry/pool-1 would 404.
     const html = renderToStaticMarkup(await GridPage());

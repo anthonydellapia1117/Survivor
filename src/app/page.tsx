@@ -245,7 +245,11 @@ export default async function DashboardPage() {
                   {poolStand.out.toLocaleString()}
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  struck out on this sheet
+                  {/* Not "struck out": most of these are our own calculation -
+                      two losses, a late loss, a repeated team. Her explicit
+                      OUT is authoritative and included, but it is not the
+                      whole number. */}
+                  out on this sheet
                 </p>
               </CardContent>
             </Card>

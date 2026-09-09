@@ -131,8 +131,13 @@ describe("Dashboard, signed out", () => {
     // card read as cumulative would drift toward zero. The card and the
     // caption both say what is actually being counted.
     const out = await html();
-    expect(out).toContain("struck out on this sheet");
+    expect(out).toMatch(/>\s*out on this sheet\s*</);
     expect(out).toMatch(/removes eliminated entries as the season goes/);
+    // And not "struck out": her explicit OUT is only part of that number, the
+    // rest is our own calculation. Asserted negatively too, because
+    // "out on this sheet" is a substring of "struck out on this sheet" and
+    // the positive check alone would pass on the wrong wording.
+    expect(out).not.toContain("struck out on this sheet");
   });
 
   it("says which week the pool count is scored through", async () => {
