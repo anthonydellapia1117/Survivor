@@ -1,241 +1,132 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { EntrySummary, GameRow, GridCell } from "@/lib/data/types";
-import { NFL_TEAMS, SKIP_WEEK, STATUS_ORDER } from "@/lib/standing";
-import { matchesShowMode, showCounts } from "@/lib/alive";
-import { ShowToggle, useShowMode } from "@/components/show-toggle";
-import { StatusDot } from "@/components/status-dot";
+// How many entries picked each team, week by week, across whichever pool is
+// showing.
+//
+// Set by Anthony on 2026-09-10, once results were being stored. The per-entry
+// picker went with it: the question this page answers is what the POOL did,
+// not what one entry has left, and a filter that shows one entry at a time
+// cannot answer it. What is left is one number per team per week -
+//
+//   the count is over FINISHED games only, so a week still in play shows
+//   nothing rather than a number that will move;
+//   subtle green where that team won, yellow where it lost, and NEVER red -
+//   red on this page would read as an elimination, and a team losing is not
+//   one, it is a fact about a game.
+//
+// Every number is derived on the render from the cells and the schedule.
+// Nothing here is stored.
+
+import { useMemo } from "react";
+import type { GameRow, GridCell } from "@/lib/data/types";
+import { NFL_TEAMS, SKIP_WEEK } from "@/lib/standing";
+import { teamResults } from "@/lib/master-list";
+import { toneOfTeamResult, TONE_FILL_CLASS } from "@/lib/result-colour";
 import { TeamLabel } from "@/components/team-label";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 interface Props {
-  entries: EntrySummary[];
   cells: GridCell[];
   weekCount: number;
   games: GameRow[];
 }
 
-export function TeamsClient({ entries, cells, weekCount, games }: Props) {
-  const [mode, setMode] = useShowMode();
-  const counts = useMemo(() => showCounts(entries), [entries]);
-  const sorted = useMemo(
-    () =>
-      [...entries]
-        .filter((e) => matchesShowMode(e.status, mode))
-        .sort(
-          (a, b) =>
-            STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
-            a.entryName.localeCompare(b.entryName),
-        ),
-    [entries, mode],
-  );
-  const [entryId, setEntryId] = useState<string>(sorted[0]?.id ?? "");
-  const [openTeam, setOpenTeam] = useState<string | null>(null);
-  const selected = sorted.find((e) => e.id === entryId) ?? sorted[0];
+/** The cell values the grid uses for something other than a team. */
+function isTeamPick(team: string): boolean {
+  return team !== SKIP_WEEK && team !== "MISSED" && team !== "LOCKED";
+}
 
-  // The master pool is over a thousand entries: the picker takes a search
-  // and lists at most 200 matches, the selected entry always among them.
-  const LONG_LIST = 100;
-  const [find, setFind] = useState("");
-  const listed = useMemo(() => {
-    const q = find.trim().toLowerCase();
-    const base = (q ? sorted.filter((e) => e.entryName.toLowerCase().includes(q)) : sorted).slice(0, 200);
-    if (selected && !base.some((e) => e.id === selected.id)) base.unshift(selected);
-    return base;
-  }, [sorted, find, selected]);
+export function TeamsClient({ cells, weekCount, games }: Props) {
+  const results = useMemo(() => teamResults(games), [games]);
 
-  // team -> week it was used by each entry (first current pick of that team)
-  const usedByEntry = useMemo(() => {
-    const m = new Map<string, Map<string, number>>();
-    for (const c of cells) {
-      if (c.team === SKIP_WEEK || c.team === "MISSED" || c.team === "LOCKED") continue;
-      if (!m.has(c.entryId)) m.set(c.entryId, new Map());
-      const tm = m.get(c.entryId)!;
-      if (!tm.has(c.team) || c.week < tm.get(c.team)!) tm.set(c.team, c.week);
-    }
-    return m;
-  }, [cells]);
-
-  // team -> week -> count of current picks
+  // team -> week -> how many entries picked it, counting only weeks whose
+  // game is final. A team absent from `results` for that week has no final
+  // game, so it contributes no count and gets no fill.
   const heat = useMemo(() => {
     const m = new Map<string, Map<number, number>>();
-    let max = 1;
     for (const c of cells) {
-      if (c.team === SKIP_WEEK || c.team === "MISSED" || c.team === "LOCKED") continue;
+      if (!isTeamPick(c.team)) continue;
+      if (!results.has(`${c.week}:${c.team}`)) continue;
       if (!m.has(c.team)) m.set(c.team, new Map());
       const wm = m.get(c.team)!;
-      const n = (wm.get(c.week) ?? 0) + 1;
-      wm.set(c.week, n);
-      if (n > max) max = n;
+      wm.set(c.week, (wm.get(c.week) ?? 0) + 1);
     }
-    return { m, max };
-  }, [cells]);
+    return m;
+  }, [cells, results]);
 
   const weeks = Array.from({ length: weekCount }, (_, i) => i + 1);
-  const used = usedByEntry.get(selected?.id ?? "") ?? new Map<string, number>();
-  const selectedOut = selected?.status === "eliminated";
-
-  const upcomingFor = (abbr: string) =>
-    games
-      .filter((g) => g.homeTeam === abbr || g.awayTeam === abbr)
-      .map((g) => ({
-        week: g.week,
-        opp: g.homeTeam === abbr ? g.awayTeam : g.homeTeam,
-        home: g.homeTeam === abbr,
-        day: g.dayOfWeek,
-      }));
+  const total = useMemo(
+    () => [...heat.values()].reduce((n, wm) => n + [...wm.values()].reduce((a, b) => a + b, 0), 0),
+    [heat],
+  );
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg">Availability</h2>
-          <ShowToggle mode={mode} counts={counts} onChange={setMode} />
-          {entries.length > LONG_LIST ? (
-            <Input
-              value={find}
-              onChange={(e) => setFind(e.target.value)}
-              placeholder="Find an entry"
-              aria-label="Find an entry"
-              className="w-44"
-            />
-          ) : null}
-          <Select value={selected?.id ?? ""} onValueChange={setEntryId}>
-            <SelectTrigger size="sm" className="w-56" aria-label="Choose entry">
-              <SelectValue placeholder="Pick an entry" />
-            </SelectTrigger>
-            <SelectContent>
-              {listed.map((e) => (
-                <SelectItem key={e.id} value={e.id}>
-                  <span className="flex items-center gap-2">
-                    <StatusDot status={e.status} />
-                    <span className={e.status === "eliminated" ? "line-through opacity-70" : undefined}>
-                      {e.entryName}
-                    </span>
-                    {e.status === "eliminated" ? (
-                      <span className="text-[10px] font-semibold text-loss">OUT</span>
-                    ) : null}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selected ? (
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {NFL_TEAMS.length - used.size} teams left
-            </span>
-          ) : null}
-        </div>
-        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
-          {NFL_TEAMS.map((t) => {
-            const usedWeek = used.get(t.abbr);
-            const isUsed = usedWeek !== undefined;
-            return (
-              <button
-                key={t.abbr}
-                type="button"
-                title={isUsed ? `${t.name} - used week ${usedWeek}` : `${t.name} - upcoming matchups`}
-                onClick={() =>
-                  isUsed ? undefined : setOpenTeam((v) => (v === t.abbr ? null : t.abbr))
-                }
-                className={cn(
-                  "rounded-sm border px-2 py-2 text-center text-xs font-medium",
-                  isUsed || selectedOut
-                    ? "border-border bg-surface-2 text-muted-foreground line-through opacity-60"
-                    : "border-border bg-surface hover:border-primary/60",
-                  openTeam === t.abbr && !isUsed && "border-primary",
-                )}
-              >
-                <TeamLabel abbr={t.abbr} className="justify-center" />
-                {isUsed ? (
-                  <span className="block text-[9px] font-normal no-underline">WK {usedWeek}</span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-        {selectedOut ? (
-          <p className="text-xs text-loss">
-            This entry is out - its remaining teams no longer matter and render struck.
-          </p>
-        ) : null}
-        {openTeam && !used.has(openTeam) ? (
-          <div className="rounded-md border border-border bg-surface px-3 py-2 text-xs">
-            <span className="font-semibold">{openTeam}</span>{" "}
-            <span className="text-muted-foreground">upcoming:</span>{" "}
-            {upcomingFor(openTeam)
-              .map((m) => `W${m.week} ${m.home ? "" : "@"}${m.opp}`)
-              .join(" · ") || "season complete"}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg">League heatmap</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            How many entries picked each team, by week.
-          </p>
-        </div>
-        <div className="max-h-[70dvh] overflow-auto rounded-lg border border-border">
-          <table className="w-full border-separate border-spacing-0 text-xs">
-            <thead>
-              <tr>
-                <th className="sticky left-0 top-0 z-30 border-b border-r border-border bg-surface-2 px-2 py-1.5 text-left font-medium text-muted-foreground">
-                  Team
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-lg">Picks by team and week</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          How many entries picked each team, counting only games that have
+          finished. Green is a team that won that week, yellow one that lost.
+          A week still in play carries no number yet.
+        </p>
+      </div>
+      {total === 0 ? (
+        <p className="rounded-lg border border-border bg-surface px-3 py-6 text-center text-sm text-muted-foreground">
+          No finished game carries a pick yet. Numbers appear here as games go
+          final.
+        </p>
+      ) : null}
+      <div className="max-h-[70dvh] overflow-auto rounded-lg border border-border">
+        <table className="w-full border-separate border-spacing-0 text-xs">
+          <thead>
+            <tr>
+              <th className="sticky left-0 top-0 z-30 border-b border-r border-border bg-surface-2 px-2 py-1.5 text-left font-medium text-muted-foreground">
+                Team
+              </th>
+              {weeks.map((w) => (
+                <th
+                  key={w}
+                  className="sticky top-0 z-20 min-w-8 border-b border-border bg-surface-2 px-1 py-1.5 text-center font-medium text-muted-foreground"
+                >
+                  {w}
                 </th>
-                {weeks.map((w) => (
-                  <th
-                    key={w}
-                    className="sticky top-0 z-20 min-w-8 border-b border-border bg-surface-2 px-1 py-1.5 text-center font-medium text-muted-foreground"
-                  >
-                    {w}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {NFL_TEAMS.map((t) => (
-                <tr key={t.abbr}>
-                  <td className="sticky left-0 z-10 border-b border-r border-border/60 bg-surface px-2 py-1 font-medium">
-                    <TeamLabel abbr={t.abbr} />
-                  </td>
-                  {weeks.map((w) => {
-                    const n = heat.m.get(t.abbr)?.get(w) ?? 0;
-                    return (
-                      <td
-                        key={w}
-                        className="h-8 min-w-8 border-b border-border/60 text-center tabular-nums"
-                        style={
-                          n > 0
-                            ? {
-                                backgroundColor: `color-mix(in srgb, var(--primary) ${Math.round(
-                                  15 + (n / heat.max) * 60,
-                                )}%, transparent)`,
-                              }
-                            : undefined
-                        }
-                        title={`${t.name} - week ${w}: ${n}`}
-                      >
-                        {n > 0 ? n : ""}
-                      </td>
-                    );
-                  })}
-                </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+            </tr>
+          </thead>
+          <tbody>
+            {NFL_TEAMS.map((t) => (
+              <tr key={t.abbr}>
+                <td className="sticky left-0 z-10 border-b border-r border-border/60 bg-surface px-2 py-1 font-medium">
+                  <TeamLabel abbr={t.abbr} />
+                </td>
+                {weeks.map((w) => {
+                  const n = heat.get(t.abbr)?.get(w) ?? 0;
+                  // The tone is the team's own result in that week, read off
+                  // the stored score. No stored result, no fill - which is
+                  // also every week the team did not play.
+                  const tone = toneOfTeamResult(results.get(`${w}:${t.abbr}`));
+                  return (
+                    <td
+                      key={w}
+                      className={cn(
+                        "h-8 min-w-8 border-b border-border/60 text-center font-semibold tabular-nums",
+                        n > 0 && TONE_FILL_CLASS[tone],
+                      )}
+                      title={
+                        n > 0
+                          ? `${t.name} - week ${w}: ${n} ${n === 1 ? "entry" : "entries"}, ${tone === "won" ? "won" : "lost"}`
+                          : `${t.name} - week ${w}`
+                      }
+                    >
+                      {n > 0 ? n : ""}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

@@ -87,6 +87,26 @@ describe("the window vocabulary and the result vocabulary", () => {
     expect(tokenClasses(src, WINDOW_TOKENS), "the game board must not colour a broadcast window - it is showing results").toEqual([]);
   });
 
+  it("keeps the RESULT classes to the three result surfaces, with no window colour in any of them", () => {
+    // The Grid, the Master List and the Teams table all colour results now
+    // (Anthony, 2026-09-10). None of them shows a broadcast window, so none
+    // may name one - amber on a Thursday cell and amber on a losing pick
+    // would be the same collision one page further along.
+    for (const file of [
+      "src/components/grid/grid-view.tsx",
+      "src/components/master-list/master-list-table.tsx",
+      "src/components/teams/teams-client.tsx",
+    ]) {
+      const src = read(file);
+      expect(src, `${file} must take its result colours from the module`).toContain('from "@/lib/result-colour"');
+      expect(tokenClasses(src, WINDOW_TOKENS), `${file} must not colour a broadcast window - it is showing results`).toEqual([]);
+    }
+    // And the result module names no window colour either.
+    const src = read("src/lib/result-colour.ts");
+    expect(tokenClasses(src, RESULT_TOKENS).length, "result-colour.ts is where the result classes live").toBeGreaterThan(0);
+    expect(tokenClasses(src, WINDOW_TOKENS), "result-colour.ts must not name a window colour").toEqual([]);
+  });
+
   it("names the window classes from the tokens, so a class cannot drift from its token", () => {
     for (const [w, token] of Object.entries(WINDOW_TOKEN)) {
       expect(WINDOW_CELL_CLASS[w as keyof typeof WINDOW_CELL_CLASS]).toBe(`bg-${token}/25`);

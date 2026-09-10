@@ -65,12 +65,12 @@ export function TeamsSource({ ours, pool, poolLoaded, poolHasPicks, weekCount, g
         {source === "pool" ? (
           <span className="text-xs text-muted-foreground">
             {poolHasPicks
-              ? "Built from the published picks revealed so far; a pick appears once its game has kicked off, so during a week in play a team may still show as in hand."
-              : "The published sheet carries no week picks yet, so every entry still holds all 32 teams here."}
+              ? "Built from the published picks revealed so far, counted only where the game has finished."
+              : "The published sheet carries no week picks yet."}
           </span>
         ) : null}
       </div>
-      <TeamsClient key={source} entries={active.entries} cells={active.cells} weekCount={weekCount} games={games} />
+      <TeamsClient key={source} cells={active.cells} weekCount={weekCount} games={games} />
     </div>
   );
 }
