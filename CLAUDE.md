@@ -1131,6 +1131,7 @@ in any of them.**
 | Command                                  | What it does                                                                                                                   |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `npm run picks`                          | Unread mail from any roster address, or pasted text, into a proposed table; writes through `admin_submit_pick` after `y`       |
+| `npm run picks:self`                     | Anthony's own dictated picks from a self-email, subject carrying Survivor, `<lynne_number or entry name> <team>` per line; strict, idempotent on the message, replies as a draft |
 | `npm run lynne -- --week N --deadline d` | The entries that locked at that deadline in her numbering, printed and left as a draft in the Entry List thread                  |
 | `npm run lynne:roster -- --file f`      | Her newest Football xlsx into `lynne_roster`, once per sha256; prints the row diff and the week-cell diff before writing              |
 | `npm run lynne:picks -- --message-id m` | Shape B: her plain-text pick email into her own week cells, matched on her NO., idempotent on the message, variances reported          |
@@ -1147,12 +1148,48 @@ in any of them.**
   applied 2026-09-08 as `20260908171220`). A pick from a text or a phone
   call is `text`; a pick from a player's mail is `email`. `admin` remains
   the hand-keyed value and `lynne_import` the importer's.
-- **The self-email UPDATE path is retired for picks.** Anthony no longer
-  mails himself a DECISION line per pick for the hourly sweep to apply;
-  `npm run picks` is the intake. **It stays for money and identity** - a
-  payment match or a who-is-this decision is still a DECISION self-email
-  the sweep reads and stages, because those are Anthony's calls and the
-  commands never resolve identity or mark Paid.
+- **The self-email path is back for picks, as its own command.** Set by
+  Anthony on 2026-09-10. He takes picks by text and by phone and enters them
+  by mailing HIMSELF, subject carrying `Survivor`, one per line:
+  `<lynne_number or entry name> <team>`. `npm run picks:self` reads those and
+  writes them through `admin_apply_self_pick_email`.
+
+  **`npm run picks` still cannot see his mailbox and must not.** His free
+  entries sit under his own owner row, so `intakeAddresses` drops the admin
+  address and every self-sent chase or distribute copy would otherwise be
+  read as a player's picks. That is why this is a SEPARATE command rather than
+  a branch inside the sweep - nothing in it can change what the hourly run
+  does, and `tests/unit/self-email-picks.test.ts` fails if the sweep ever
+  imports it.
+
+  It is strict exactly where the ordinary intake is forgiving, because no
+  human reads the line again before it is written:
+  - **the sender must be the admin mailbox**, checked in the command and not
+    only asked for in the Gmail query;
+  - **a number is an exact `lynne_number`**, never a near one;
+  - **a name must match exactly one live entry**, normalised for case and edge
+    whitespace only. There is **no fuzzy match** - the sweep's `resolveEntry`
+    falls back to tokens and owner names, which is right for a player naming
+    their own entry and wrong here;
+  - **a team must resolve to exactly one team that PLAYS THAT WEEK.** A team
+    with no game that week stages, and so does a bye;
+  - one entry given **two different teams in one message** stages both.
+
+  Every applied line carries the **Gmail message id** in its own audit row, and
+  a replay of the same message writes nothing - the guard is an `audit_log`
+  row, so it holds for a re-run and for SQL by hand. The write is
+  `admin_submit_pick` per line, so the deadline, repeated-team and bye guards
+  all still apply.
+
+  **It never sends.** The reply is a draft on his own thread plus the same
+  lines on stdout; the send allowlist is two templates and adding a third is a
+  reviewed change, not a convenience.
+
+  **The DECISION self-email for money and identity is a separate matter and
+  does not exist in code.** This file used to say the sweep "reads and stages"
+  it; it does not, and never did - `intakeAddresses` excludes the admin
+  mailbox on every path. A payment match or a who-is-this decision is still
+  Anthony's call and still has no automated intake.
 - **Drafts only, with one gate.** Nothing under `scripts/` sends except
   `scripts/lib/send.ts`, which sends exactly two templates, each behind the
   same switch: the environment must have `REMINDER_AUTOSEND=true`, and
@@ -1402,4 +1439,5 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | The Master List, public             | `src/app/master-list/`, `src/lib/master-list.ts`, `v_master_list` |
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
 | The sweep's ceiling and filter      | `scripts/picks/lib/resolve.ts`, `scripts/picks/lib/subject-sweep.ts` |
+| His dictated picks by self-email    | `scripts/picks/lib/self-email.ts`, `scripts/picks/self.ts` |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |
