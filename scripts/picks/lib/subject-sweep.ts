@@ -6,12 +6,32 @@
 // The words come from scripts/ops/config.json (sweepSubjectTerms).
 
 import type { InboundMessage } from "../../lib/gmail";
+import { SWEEP_WINDOW_DAYS } from "../../lib/constants";
 
-/** The Gmail search for the subject rule: unread, not a draft, subject carrying any of the words. */
-export function subjectSweepQuery(terms: string[]): string {
+/**
+ * The Gmail search for the subject rule: unread, not a draft, inside the
+ * window, not from a machine, subject carrying any of the phrases.
+ *
+ * Three of those four clauses were added on 2026-09-10. Without the window
+ * the sweep read five months of unread mail on its first credentialed run;
+ * without the sender exclusions every GitHub notification on this repo
+ * matched, because their subjects all read "Re: [.../Survivor] ..." and the
+ * pool's own name is a term. A phrase is quoted so Gmail matches it whole.
+ */
+export function subjectSweepQuery(
+  terms: string[],
+  excludeSenders: string[] = [],
+  windowDays: number = SWEEP_WINDOW_DAYS,
+): string {
   const words = terms.map((t) => t.trim()).filter(Boolean);
   if (words.length === 0) throw new Error("subject sweep: no terms");
-  return `is:unread -in:draft subject:(${words.join(" OR ")})`;
+  if (!Number.isInteger(windowDays) || windowDays < 1) throw new Error("subject sweep: windowDays must be a positive integer");
+  const quoted = words.map((w) => (w.includes(" ") ? `"${w}"` : w));
+  const notFrom = excludeSenders
+    .map((a) => a.trim().toLowerCase())
+    .filter(Boolean)
+    .map((a) => `-from:${a}`);
+  return [`is:unread`, `-in:draft`, `newer_than:${windowDays}d`, ...notFrom, `subject:(${quoted.join(" OR ")})`].join(" ");
 }
 
 /** Whether a subject carries any of the words, as whole words, any case. */

@@ -62,7 +62,14 @@ describe("the ops config", () => {
     expect(loadOpsConfig().expectedRosterAddresses).toBe(40);
     expect(EXPECTED_ROSTER_ADDRESSES).toBe(40);
     expect(loadOpsConfig().reminderLeadHours).toBe(6);
-    expect(loadOpsConfig().sweepSubjectTerms).toEqual(["survivor", "picks"]);
+    // Phrases, not the bare word. "picks" matched "Free stock picks from
+    // MarketBeat", "How to Draft from Picks 1-3" and "great picks for your
+    // dog" on 2026-09-10 and staged 1,951 rows; the loader now refuses it.
+    expect(loadOpsConfig().sweepSubjectTerms).toEqual(["survivor", "my picks", "pool picks", "week picks", "survivor picks"]);
+    expect(loadOpsConfig().sweepSubjectTerms).not.toContain("picks");
+    // Every GitHub notification on this repo carries "Survivor" in its
+    // subject, so only the address can keep them out.
+    expect(loadOpsConfig().sweepExcludeSenders).toEqual(["notifications@github.com", "noreply@github.com"]);
   });
 });
 
@@ -140,7 +147,10 @@ describe("the wiring the dispatcher and the commands keep", () => {
     expect(src).toMatch(/args\.yes \|\| \(await confirm\(/);
     expect(src).toMatch(/x === "--yes"/);
     expect(src).toMatch(/listUnreadFrom\(gmail, addresses\)/);
-    expect(src).toMatch(/strangerMessages\(await listUnreadMatching\(gmail, subjectSweepQuery\(terms\)\), addresses, \[ADMIN_MAILBOX, LYNNE_EMAIL\], terms\)/);
+    expect(src).toMatch(/strangerMessages\(await listUnreadMatching\(gmail, subjectSweepQuery\(terms, ops\.sweepExcludeSenders\)\), addresses, excluded, terms\)/);
+    // The excluded set is the admin, the runner and the machine senders, and
+    // it is applied in BOTH places: the Gmail query above and strangerMessages.
+    expect(src).toMatch(/const excluded = \[ADMIN_MAILBOX, LYNNE_EMAIL, \.\.\.ops\.sweepExcludeSenders\]/);
   });
   it("distribute keeps the same exact count gate as the reminder", () => {
     const src = code("scripts/distribute/cli.ts");

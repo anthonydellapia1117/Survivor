@@ -19,8 +19,16 @@ const msg = (from: string, subject: string): InboundMessage => ({
 
 describe("the subject sweep", () => {
   it("searches unread, non-draft mail whose subject carries any of the words", () => {
-    expect(subjectSweepQuery(["survivor", "picks"])).toBe("is:unread -in:draft subject:(survivor OR picks)");
+    expect(subjectSweepQuery(["survivor", "my picks"])).toBe(
+      'is:unread -in:draft newer_than:14d subject:(survivor OR "my picks")',
+    );
+    // A phrase is quoted so Gmail matches it whole; the window and the
+    // machine senders are in the query itself, so their mail is never fetched.
+    expect(subjectSweepQuery(["survivor"], ["notifications@github.com"], 7)).toBe(
+      "is:unread -in:draft newer_than:7d -from:notifications@github.com subject:(survivor)",
+    );
     expect(() => subjectSweepQuery([" "])).toThrow(/no terms/);
+    expect(() => subjectSweepQuery(["survivor"], [], 0)).toThrow(/positive integer/);
   });
 
   it("matches the words whole and in any case, and nothing else", () => {
@@ -79,7 +87,10 @@ describe("a stranger whose message parses to nothing", () => {
     // The count is this item's own, not the run's total: a stranger after a
     // player who picked would otherwise look like it had produced rows.
     expect(src).toMatch(/const rowsBefore = unresolved\.length \+ proposals\.length;/);
-    expect(src).toMatch(/strangerIdentityRow\(item\.stranger, unresolved\.length \+ proposals\.length - rowsBefore\)/);
+    // Widened on 2026-09-10 from item.stranger to !placed: a known address
+    // with no live entry behind it can write nothing either, and it was the
+    // one shape that could produce no row at all and return every hour.
+    expect(src).toMatch(/strangerIdentityRow\(!placed, unresolved\.length \+ proposals\.length - rowsBefore\)/);
     // Only the subject-swept messages are strangers.
     expect(src).toMatch(/stranger: strangerIds\.has\(m\.id\)/);
     expect(src).toMatch(/stranger: false/);

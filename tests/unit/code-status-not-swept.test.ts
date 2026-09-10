@@ -64,6 +64,11 @@ describe("the CODE STATUS self-email", () => {
     // explaining a rule instead of the code keeping it is the 2026-09-04 trap.
     const src = readFileSync("scripts/picks/cli.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
     expect(src).toMatch(/intakeAddresses\(owners, entries, ADMIN_MAILBOX\)/);
-    expect(src).toMatch(/strangerMessages\([\s\S]{0,200}?\[ADMIN_MAILBOX, LYNNE_EMAIL\]/);
+    // The admin reaches strangerMessages through `excluded`, which is built
+    // from ADMIN_MAILBOX first. Both halves are asserted, so neither can be
+    // dropped: the list must be built with the admin in it, and it must be
+    // the list that is handed to the sweep.
+    expect(src).toMatch(/const excluded = \[ADMIN_MAILBOX, LYNNE_EMAIL, \.\.\.ops\.sweepExcludeSenders\]/);
+    expect(src).toMatch(/strangerMessages\([\s\S]{0,220}?, addresses, excluded, terms\)/);
   });
 });

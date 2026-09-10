@@ -24,3 +24,25 @@ export const ADMIN_MAILBOX = "anthonydellapia@gmail.com";
  * to make a failing run pass.
  */
 export const EXPECTED_ROSTER_ADDRESSES = loadOpsConfig().expectedRosterAddresses;
+
+/**
+ * The most pending rows one sweep may stage before it refuses to write
+ * anything at all. Set by Anthony on 2026-09-10, after the first run with
+ * credentials staged 1,951 rows from 65 messages in four minutes: a run over
+ * this ceiling is reading the wrong mail, and half-applying it is worse than
+ * not running it. The gate has the same shape as the roster count gate on a
+ * send - it stops the run and prints, it does not trim to the limit.
+ *
+ * RAISING THIS IS NEVER THE FIX. If a legitimate week genuinely needs more
+ * than this many questions answered, the filter is wrong or the roster moved,
+ * and one of those is what changes.
+ */
+export const MAX_STAGED_PER_RUN = 25;
+
+/**
+ * How far back either sweep reads. Unread mail older than this is not a pick
+ * for the week in play; the first credentialed run read five months of it,
+ * and an unread Axios newsletter from 27 April became a staged question
+ * because the address path has no subject filter to save it.
+ */
+export const SWEEP_WINDOW_DAYS = 14;

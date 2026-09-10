@@ -6,7 +6,8 @@
   "dailySchedule": "30 12 * * *",
   "expectedRosterAddresses": 40,
   "reminderLeadHours": 6,
-  "sweepSubjectTerms": ["survivor", "picks"],
+  "sweepSubjectTerms": ["survivor", "my picks", "pool picks", "week picks", "survivor picks"],
+  "sweepExcludeSenders": ["notifications@github.com", "noreply@github.com"],
   "jobs": {
     "sweep": {
       "schedule": "43 * * * *",

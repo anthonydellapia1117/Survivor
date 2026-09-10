@@ -22,12 +22,16 @@ describe("picks wiring", () => {
     expect(c).toMatch(/weekFor\(weekOfMessage\("",\s*text\)\)/);
   });
 
-  it("pushes the kind and the week of a staged row, never its reason, line, team or pick", () => {
+  it("builds every push detail from a named helper, never from message content", () => {
+    // The invariant is not "stagedDetail" by name - it is that no push is
+    // built by interpolating anything from the message. stagedDetail carries
+    // a week; ceilingDetail (2026-09-10) carries two integers. Both are
+    // functions of numbers, which is what makes them safe before kickoff.
     const c = code(CLI);
     const calls = [...c.matchAll(/needsAnthonyLine\(([^;]*)\)/g)].map((m) => m[1]);
     expect(calls.length).toBeGreaterThan(0);
     for (const args of calls) {
-      expect(args).toMatch(/stagedDetail\(/);
+      expect(args).toMatch(/(stagedDetail|ceilingDetail)\(/);
       expect(args).not.toMatch(/\.(reason|line|team|pick|text|candidates)\b/);
     }
   });

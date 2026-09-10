@@ -1170,6 +1170,59 @@ in any of them.**
     derives its recipients live and stops unless the count equals
     `expectedRosterAddresses` (40) **exactly** - a range let a wrong count
     through once in another pool.
+- **The sweep has a CEILING, and it stops the run.** Set by Anthony on
+  2026-09-10, the evening the intake first ran with credentials. It read five
+  months of unread mail, matched 65 messages, and staged **1,951**
+  `pending_actions` rows in four minutes - `audit_log` 2,636, queue 1,960
+  against the 9 real rows already there. They were dismissed the same evening
+  through `admin_dismiss_pending`, one audited row each.
+
+  **Nothing was written and nothing could have been.** Every row was kind
+  `identity` (one `player_question`), and `admin_approve_pending` has write
+  arms for `payment`, `pick` and `entries` only - every other kind falls to
+  the `else`, which records the decision and applies nothing. Approving all
+  1,951 would have written no pick, no entry, no owner and no payment. **The
+  guard is structural, not the absence of a click**, and the payloads carry no
+  `entry_id` or `team` for a re-kinded row to use either.
+
+  **Two independent defects, and the second is the one that made it
+  unreadable.** Breadth let 65 messages in: every GitHub notification on this
+  repo has `Re: [anthonydellapia1117/Survivor]` as its subject, so the pool's
+  own name matched them, and the bare word `picks` matched "Free stock picks
+  from MarketBeat", "How to Draft from Picks 1-3", "Meta Picks Slack" and
+  "great picks for your dog". Duplication turned those 65 into 1,951:
+  `unparsedReason` calls **any** line with three consecutive letters and no
+  greeting "no team recognised on this line", and the CLI staged one row per
+  such line - a Codex review email is 149 lines, so it was 149 rows.
+
+  Four guards, in the order Anthony set them:
+
+  1. **The ceiling comes first.** More than `MAX_STAGED_PER_RUN` (**25**) rows
+     in one run and the sweep prints who they came from and **writes nothing,
+     stages nothing and marks nothing read** - so the same mail is still there
+     to sweep once the filter is right. Same shape as the roster count gate on
+     a send: it stops, it never trims to the limit. **Raising the number is
+     never the fix.** This is the guard that turns any future version of this
+     into one line instead of a flood, and it is built even if the rest slip.
+  2. **One row per MESSAGE, never one per line**, whenever the sender resolves
+     to no live entry. `unparsedLinesToAsk` returns nothing for such a sender;
+     a placed player keeps the per-line questions, which is the useful half.
+     This alone turns 1,951 into 65.
+  3. **A date floor of `SWEEP_WINDOW_DAYS` (14) on BOTH queries.** The address
+     path has no subject filter by design - a real reply may carry any subject
+     - so the window is the only thing filtering it, which is how an unread
+     Axios newsletter from 27 April became a staged question.
+  4. **No bare subject term, and no machine senders.** `notifications@github.com`
+     and `noreply@github.com` are excluded in the Gmail query AND in
+     `strangerMessages`, because a subject can never keep them out. The config
+     loader **refuses the bare words** in `BARE_TERMS_REFUSED` (`picks`,
+     `pick`, `pool`, `week`, `game`, `games`, `survivors`) by name and will not
+     load at all if one is present; terms are phrases (`my picks`).
+
+  `tests/unit/sweep-flood-guards.test.ts` holds all four, each confirmed to
+  FAIL when broken. **The ops Routine stays paused until they are merged** -
+  the Friday jobs run through connectors, not the sweep, so it costs nothing.
+
 - **Game results come from ESPN, and only ever land on `nfl_games`.** Set by
   Anthony on 2026-09-11. `npm run scores` reads the free public scoreboard - no
   key, no auth - and writes through `admin_apply_game_results`, which is
@@ -1302,4 +1355,5 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | The daily reporters                 | `scripts/ops/reporters/`, `scripts/ops/daily.ts` |
 | The Master List, public             | `src/app/master-list/`, `src/lib/master-list.ts`, `v_master_list` |
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
+| The sweep's ceiling and filter      | `scripts/picks/lib/resolve.ts`, `scripts/picks/lib/subject-sweep.ts` |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |

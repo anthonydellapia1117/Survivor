@@ -37,9 +37,9 @@ import {
 } from "../lib/db";
 import { gmailClient, listUnreadFrom, markProcessed, type InboundMessage, listUnreadMatching } from "../lib/gmail";
 import { takeValue, weekArg } from "../lib/args";
-import { ADMIN_MAILBOX, LYNNE_EMAIL } from "../lib/constants";
+import { ADMIN_MAILBOX, LYNNE_EMAIL, MAX_STAGED_PER_RUN } from "../lib/constants";
 import { loadOpsConfig } from "../ops/lib/config";
-import { strangerIdentityRow, strangerMessages, subjectSweepQuery } from "./lib/subject-sweep";
+import { STRANGER_NOTHING_LINE, strangerIdentityRow, strangerMessages, subjectSweepQuery } from "./lib/subject-sweep";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { aliveEntries, confirmedOwners, intakeAddresses } from "../lib/roster";
 import { resolveFromArg } from "./lib/from";
@@ -48,25 +48,27 @@ import { SKIP_WEEK } from "@/lib/standing";
 import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from "./lib/deadline";
 import {
   byeRefusal,
+  ceilingDetail,
+  conflictedKeys,
   effectiveSubmitTime,
+  itemIdentity,
   overrideDecision,
   parsePickLines,
-  picksToCarryForward,
   pendingKind,
   pickSourceFor,
+  picksToCarryForward,
+  repeatedWeek,
   resolveEntry,
   scopeCheck,
   scopeEntriesFor,
   senderUnplaced,
   stagedDetail,
-  unparsedReason,
-  conflictedKeys,
-  itemIdentity,
-  repeatedWeek,
+  stagingCeiling,
   stripQuotedReply,
   stripWeekHeading,
-  weekOfMessage,
   type RosterEntry,
+  unparsedLinesToAsk,
+  weekOfMessage,
 } from "./lib/resolve";
 
 const DONE_LABEL = "Pool-Survivor-Done";
@@ -290,8 +292,13 @@ async function main(): Promise<void> {
     // from anyone else whose subject names the pool or the picks - which
     // lands below as an identity question, never as a written pick.
     const known: InboundMessage[] = await listUnreadFrom(gmail, addresses);
-    const terms = loadOpsConfig().sweepSubjectTerms;
-    const strangers = strangerMessages(await listUnreadMatching(gmail, subjectSweepQuery(terms)), addresses, [ADMIN_MAILBOX, LYNNE_EMAIL], terms);
+    const ops = loadOpsConfig();
+    const terms = ops.sweepSubjectTerms;
+    // The machine senders are excluded twice on purpose: in the Gmail query,
+    // so their mail is never fetched, and in strangerMessages, so a forwarded
+    // copy arriving by another route is still dropped.
+    const excluded = [ADMIN_MAILBOX, LYNNE_EMAIL, ...ops.sweepExcludeSenders];
+    const strangers = strangerMessages(await listUnreadMatching(gmail, subjectSweepQuery(terms, ops.sweepExcludeSenders)), addresses, excluded, terms);
     const msgs: InboundMessage[] = [...known, ...strangers];
     const strangerIds = new Set(strangers.map((m) => m.id));
     if (strangers.length) console.log(`${strangers.length} unread message(s) from unknown senders with "${terms.join('" or "')}" in the subject; staged for Anthony, never written.`);
@@ -351,17 +358,27 @@ async function main(): Promise<void> {
         candidates: candidates.map((c) => c.entryName),
         item,
       });
-    for (const u of unparsed) {
-      const why = unparsedReason(u);
-      if (why !== null) fail(why, u);
-    }
+    // ONE ROW PER MESSAGE, NEVER ONE PER LINE, when the sender resolves to no
+    // live entry (Anthony, 2026-09-10). unparsedReason calls any line with
+    // three consecutive letters and no greeting "no team recognised on this
+    // line", which is right for a player's reply and catastrophic for a
+    // newsletter: a Codex review email is 149 lines, so it was 149 rows.
+    // Placed senders keep the per-line questions - that is the useful half.
+    const placed = scopeEntries.length > 0;
+    let askedForThisItem = false;
+    const askOnce = (reason: string) => {
+      if (askedForThisItem) return;
+      askedForThisItem = true;
+      fail(reason, STRANGER_NOTHING_LINE);
+    };
+    for (const ask of unparsedLinesToAsk(placed, unparsed)) fail(ask.reason, ask.line);
     // A known address, or a --from owner, with no live entry behind it (a
     // declined owner, a voided roster) may name anything; nothing it names
     // is written.
     const unplaced = senderUnplaced(item, scopeEntries.length);
     for (const p of picks) {
       if (unplaced) {
-        fail("sender matches no live entry on the roster", p.line);
+        askOnce("sender matches no live entry on the roster");
         continue;
       }
       let targets: { entry: RosterEntry; how: string }[] = [];
@@ -479,7 +496,12 @@ async function main(): Promise<void> {
     // Only an entry this message gave exactly one team moves the snapshot on.
     for (const [entryId, row] of picksToCarryForward(itemPicks, itemTeams)) ctx.currentByEntry.set(entryId, row);
 
-    const nothingHeard = strangerIdentityRow(item.stranger, unresolved.length + proposals.length - rowsBefore);
+    // Widened from item.stranger to !placed on 2026-09-10: a known address
+    // with no live entry behind it (a declined owner, a voided roster) is in
+    // exactly the same position as a stranger - nothing it says can be
+    // written - and it was the one shape that could still produce no row at
+    // all and come back on every sweep.
+    const nothingHeard = strangerIdentityRow(!placed, unresolved.length + proposals.length - rowsBefore);
     if (nothingHeard) unresolved.push({ ...nothingHeard, candidates: [], item });
   }
 
@@ -578,6 +600,20 @@ async function main(): Promise<void> {
     }
     console.log(`${ids.size} message(s) marked read and filed under ${DONE_LABEL}.`);
   };
+  // THE CEILING. Before the confirm, before any write, before a single
+  // message is marked read: a run that would stage more than the limit stops
+  // dead and prints who it came from. Nothing is written, nothing is staged,
+  // nothing is filed - so the same mail is still there to be swept once the
+  // filter is right. Raising the limit is never the fix.
+  const ceiling = stagingCeiling(unresolved.map((u) => u.item.senderAddress), MAX_STAGED_PER_RUN);
+  if (!ceiling.ok) {
+    console.log(`\nNEEDS ANTHONY: this run would stage ${ceiling.staged} rows, over the ceiling of ${ceiling.limit}.`);
+    console.log("Nothing was written, nothing was staged and no message was marked read.");
+    for (const s of ceiling.bySender) console.log(`  ${String(s.rows).padStart(5)}  ${s.sender}`);
+    console.log("A sweep that stages this many rows is reading the wrong mail. Fix the filter; do not raise the ceiling.");
+    await notify(needsAnthonyLine("picks", "staging ceiling", ceilingDetail(ceiling.staged, ceiling.limit)), { tags: "warning" });
+    return;
+  }
   if (!toWrite.length && !unresolved.length) {
     console.log(`\nNothing to write.${fileOnly.size ? ` ${fileOnly.size} message(s) already recorded in full.` : ""}`);
     await fileMessages(fileOnly);
