@@ -39,6 +39,7 @@ describe("the subject sweep", () => {
       msg("Stranger@example.com", "Survivor picks"),
       msg("known@example.com", "Survivor picks"),
       msg("anthonydellapia@gmail.com", "Survivor - sent to myself"),
+      msg("anthonydellapia@gmail.com", "Survivor CODE STATUS - oauth"),
       msg("lynnepiazza10@gmail.com", "Survivor sheet"),
       msg("other@example.com", "lunch"),
     ];

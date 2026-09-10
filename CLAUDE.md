@@ -982,6 +982,50 @@ Search returns only the ~5 oldest messages per thread with no truncation
 marker, which silently hides recent replies. Full fetches are what caught
 payments the previews missed.
 
+## Session status email (set 2026-09-10)
+
+Every Claude Code session working this repo ends each material run with one
+status email, so Anthony and the advisor chat can see what a session did
+without its terminal, PRs or notifications. Both sessions follow the same
+rule; each fills in its own session name (this rule's first user: `oauth`).
+
+- **When.** After any run that changed something or ended blocked. **Never**
+  after a run that changed nothing: a check-in that finds no reply, a Vercel
+  echo, a re-arm, a subscription confirmation - silent. If the report would
+  say "nothing actionable", send nothing.
+- **To** anthonydellapia@gmail.com only. **Subject** exactly
+  `Survivor CODE STATUS - <session>`. Plain text, under ten lines, sent, not
+  drafted. This subject is never used for a participant-facing message.
+- **Body**, these lines in this order, each on its own line, any that do not
+  apply omitted, values only:
+
+  ```
+  SESSION: <session>
+  RAN: <one line, what this run did>
+  MERGED: <PR number, squash sha, one-line title>
+  APPLIED: <migrations applied to production, or none>
+  BRANCH: <branch, PR number, state>
+  ISSUES: <issue numbers filed this run>
+  BLOCKED: <what is stuck and on whom - Anthony, a reviewer, a UI field, a secret>
+  NEXT: <the one thing queued>
+  WATCHING: <what a check-in is armed on, or none>
+  ```
+
+- **Never restate database state**: no entry or pick counts, no dollar
+  figures, no participant names, no queue contents. The readers query the
+  database directly. The body carries only what the database does not: PR
+  numbers, commit shas, branch names, migration names, issue numbers, what a
+  reviewer found, what the session is waiting on.
+- Never an email address other than the To, a phone number, a password, a
+  token, or an anon key. Hyphens only, no em dashes, no emojis, no
+  sign-off, no bold, no tables.
+- **The sweep must always skip it.** The subject carries "Survivor", which
+  the subject sweep matches, and it is always self-sent from the admin's own
+  mailbox, which `strangerMessages` drops (`ADMIN_MAILBOX`,
+  `tests/unit/subject-sweep.test.ts`). If any intake path ever stages a row
+  from a CODE STATUS message, that is a defect: fix the intake, never the
+  subject.
+
 ## Local commands (set 2026-09-08)
 
 Picks stopped being hand-entered on 2026-09-08. The commands live under
