@@ -197,3 +197,22 @@ describe("which status a feed status is", () => {
     expect(statusOf({})).toBe("scheduled");
   });
 });
+
+describe("the command runs behind a proxy", () => {
+  it("sets NODE_USE_ENV_PROXY on the npm script, because Node's fetch ignores HTTPS_PROXY", () => {
+    // Without it a proxied container gets 403 from a direct connection while
+    // curl to the same URL returns 200 - a failure that reads as ESPN
+    // blocking us. The switch is Node's own and is a no-op with no proxy set.
+    const pkg = JSON.parse(readFileSync(path.join(__dirname, "../../package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts.scores).toContain("NODE_USE_ENV_PROXY=1");
+    expect(pkg.scripts.scores).toContain("scripts/scores/cli.ts");
+  });
+
+  it("names the switch in the error, so the 403 is not misread", () => {
+    const src = readFileSync(path.join(__dirname, "../../scripts/scores/cli.ts"), "utf8");
+    expect(src).toContain("NODE_USE_ENV_PROXY");
+    expect(src).toMatch(/HTTPS_PROXY/);
+  });
+});

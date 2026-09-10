@@ -787,6 +787,14 @@ Gmail call dies. Publishing the consent screen is the real fix.
    | `GMAIL_OAUTH_CLIENT_SECRET`| from `.env.local`                           |
    | `GMAIL_OAUTH_TOKEN_JSON`   | the whole file from step 3                  |
 
+   **If the container proxies outbound HTTPS**, `npm run scores` also needs
+   Node to honour it. Node's global `fetch` does NOT read `HTTPS_PROXY` on its
+   own: it goes direct, comes back **403**, and the message reads as though
+   ESPN blocked us while `curl` to the same URL returns 200. The npm script
+   sets `NODE_USE_ENV_PROXY=1`, Node's own switch, which is a no-op where no
+   proxy is set - so run the command through `npm run scores` rather than
+   `tsx scripts/scores/cli.ts`. Found on 2026-09-11 doing exactly that.
+
    `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and
    `ADMIN_EMAIL` come from the committed `.env.production` and are not needed
    here. `NTFY_TOPIC` is optional.

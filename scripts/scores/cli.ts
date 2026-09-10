@@ -52,11 +52,27 @@ function parseArgs(argv: string[]): Args {
   return a;
 }
 
-/** One week of the feed. Throws with the URL on anything but a clean 200. */
+/**
+ * One week of the feed. Throws with the URL on anything but a clean 200.
+ *
+ * BEHIND A PROXY: Node's global fetch does not read HTTPS_PROXY on its own,
+ * so in a proxied container it goes direct and comes back 403 while curl to
+ * the same URL succeeds - which reads as "ESPN blocked us" and is not. The
+ * npm script sets NODE_USE_ENV_PROXY=1, Node's own switch for this; it is a
+ * no-op where no proxy is set. The check below names it rather than leaving
+ * the next person to find it, because the failure looks like the wrong thing.
+ */
 async function fetchWeek(season: number, week: number): Promise<EspnGame[]> {
   const url = espnWeekUrl(season, week);
   const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`ESPN ${res.status} ${res.statusText} for ${url}`);
+  if (!res.ok) {
+    const proxied = process.env.HTTPS_PROXY ?? process.env.https_proxy ?? "";
+    const hint =
+      proxied && process.env.NODE_USE_ENV_PROXY !== "1"
+        ? " - this environment sets HTTPS_PROXY and Node's fetch ignores it unless NODE_USE_ENV_PROXY=1; run through `npm run scores`, which sets it"
+        : "";
+    throw new Error(`ESPN ${res.status} ${res.statusText} for ${url}${hint}`);
+  }
   const payload: unknown = await res.json();
   // The week is checked against every event rather than trusted: a payload
   // answering with another week would write the right scores onto the wrong
