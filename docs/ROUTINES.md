@@ -462,7 +462,7 @@ one line to ntfy when `NTFY_TOPIC` is set, and prints it otherwise.
 | Survivor Lynne Echo Check (Thanksgiving)  | once, Thu 2026-11-26 11:05 AM   | section 5 |            |
 | Survivor Final Sheet Watch                | Tue and Thu 5:05 PM             | section 6 |            |
 | Survivor Venmo Wide Sweep                 | Mon 8:05 AM                     | section 7 |            |
-| Survivor Ops Tick                         | hourly at :43, 7 AM to 10 PM    | section 10 | trig_01W9BrBAoWKBQm9AjJ9FVVKK (paused) |
+| Survivor Ops Tick                         | hourly at :43, 5 AM to 10 PM    | section 10 | trig_01W9BrBAoWKBQm9AjJ9FVVKK (ENABLED) |
 
 ## 10. Ops Tick
 
@@ -470,9 +470,12 @@ Name: **Survivor Ops Tick**
 Cron (America/New_York): `43 5-22 * * *` (every hour at :43, 5 AM to 10 PM)
 Cron stored (UTC): `43 9-23,0-2 * * *`
 Trigger ID: `trig_01W9BrBAoWKBQm9AjJ9FVVKK` (created 2026-09-09 as the Week
-Reminder, renamed and repointed the same day; **paused** until its
-environment carries the variables below - enabling it is Anthony's click,
-never a session's).
+Reminder, renamed and repointed the same day. **It is ENABLED**, verified
+2026-09-10 against the live trigger list; an earlier draft of this file said
+paused and was wrong. Its prompt runs `npm run ops -- tick`, and `tick` is
+still accepted as the old name for `hourly`, so this Routine keeps working
+across the rename and needs no edit. What it still needs is the environment
+variables in section 11c - without them a fire signs in to nothing.
 
 Why: set by Anthony on 2026-09-09. Operations moved into the repo. The
 schedule and every parameter live in `scripts/ops/config.json`, one entry
@@ -603,3 +606,24 @@ is exactly two.
 11d. The six paused reporter triggers are left exactly as they are. They are
      not deleted: their run history is the record of what ran before the
      reporters moved into the repo, and a paused Routine costs nothing.
+
+11e. **What is actually enabled today**, read from the live trigger list on
+     2026-09-10 rather than from this file:
+
+     | Routine                        | State    | Cron (UTC)            |
+     | ------------------------------ | -------- | --------------------- |
+     | Survivor Ops Tick              | ENABLED  | `43 9-23,0-2 * * *`   |
+     | Survivor Gmail Sweep           | ENABLED  | `43 11-23,0-2 * * *`  |
+     | Survivor Pick Gap Check        | paused   | `5 13 * * 1-5`        |
+     | Survivor Deadline Close Check  | paused   | `20 18 * * 2-5`       |
+     | Survivor Lynne Echo Check      | paused   | `5 19 * * 4,6`        |
+     | Survivor Final Sheet Watch     | paused   | `5 21 * * 2,4`        |
+     | Survivor Venmo Wide Sweep      | paused   | `5 12 * * 1`          |
+     | Survivor Lynne Echo (Thanksgiving) | enabled, one-shot | 2026-11-26T16:05:00Z |
+
+     So the hourly half of the two-Routine plan is **already running** under
+     the name "Survivor Ops Tick": its prompt is `npm run ops -- tick`, which
+     the rename keeps working. The Daily is the one that does not exist yet.
+     "Survivor Gmail Sweep" is the older prompt-driven sweep that section 1c
+     describes; it sits beside the tick and is Anthony's to retire once the
+     tick has run clean for a week.
