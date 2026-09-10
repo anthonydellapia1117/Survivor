@@ -18,8 +18,10 @@ describe("cellWeek", () => {
   });
 });
 
-// The pattern lives in three places: this TypeScript copy, lynne_cell_week()
-// in 20260910000065, and the inline regex in v_master_list (20260908224500).
+// The pattern lives in FOUR places: this loader copy, lynne_cell_week() in
+// 20260910000065, the inline regex in v_master_list (20260908224500), and
+// WEEK_KEY in src/lib/master-list.ts, which decides the columns the public
+// page draws.
 // The SQL side is exercised by tests/sql/16_lynne_week_cells.sql; what a SQL
 // suite cannot see is whether the TypeScript copy still says the same thing,
 // which is the seam this holds shut - the same seam
@@ -41,11 +43,32 @@ describe("the week-key pattern, all three copies", () => {
     expect(m![1]).toMatch(pattern);
   });
 
-  it("matches the TypeScript copy", () => {
+  it("matches the loader's TypeScript copy", () => {
     const ts = readFileSync("scripts/lynne/lib/roster-sheet.ts", "utf8");
     const m = /cellWeek[\s\S]{0,200}?exec\(header\)/.exec(ts);
     expect(m).not.toBeNull();
     expect(m![0]).toMatch(/\^\\s\*\(\?:week\|wk\)\\s\*\(\\d\{1,2\}\)\\s\*\$/);
+  });
+
+  it("matches WEEK_KEY in src/lib/master-list.ts, which draws the public columns", () => {
+    // The fourth copy, and the one whose drift is visible: a cell written under
+    // a key this regex does not accept is stored, served by the view, and then
+    // draws no column at all on /master-list.
+    const ts = readFileSync("src/lib/master-list.ts", "utf8");
+    const m = /const WEEK_KEY = \/([^/]+)\//.exec(ts);
+    expect(m, "master-list.ts must declare WEEK_KEY as a literal regex").not.toBeNull();
+    expect(m![1]).toBe("^\\s*(?:week|wk)\\s*(\\d{1,2})\\s*$");
+  });
+
+  it("the key the email path writes is one all four copies accept", () => {
+    // admin_apply_lynne_email_cells invents "Week N" when she has no header for
+    // that week. If any copy stopped accepting that exact string, the cell would
+    // be written and then be invisible.
+    const key = "Week 1";
+    expect(cellWeek(key)).toBe(1);
+    expect(/^\s*(?:week|wk)\s*(\d{1,2})\s*$/i.test(key)).toBe(true);
+    const sql = readFileSync("supabase/migrations/20260910000065_lynne_week_cells.sql", "utf8");
+    expect(sql).toMatch(/v_key := 'Week ' \|\| r\.week;/);
   });
 });
 
