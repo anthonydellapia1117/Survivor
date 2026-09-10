@@ -554,6 +554,16 @@ export function stagedDetail(week: number): string {
   return `week ${week} - /admin/queue`;
 }
 
+/**
+ * The push detail when a run trips the staging ceiling. Two integers and
+ * nothing else: like stagedDetail, it exists so no push can be built by
+ * interpolating message content inline. A ceiling trip carries no week,
+ * because the run stopped before it decided anything about a week.
+ */
+export function ceilingDetail(staged: number, limit: number): string {
+  return `${staged} rows would stage, limit ${limit} - nothing written, see the terminal`;
+}
+
 /** Two-letter team text that names two teams: staged as a question, never dropped as noise. */
 const AMBIGUOUS_TEAM_TEXT = new Set(["la", "ny"]);
 
@@ -626,4 +636,58 @@ export function picksToCarryForward<T>(
     if (itemTeams.get(entryId)?.size === 1) out.set(entryId, row);
   }
   return out;
+}
+
+/**
+ * The unparseable lines of one message that are worth asking about one by
+ * one - and the empty list when the sender resolves to NO live entry.
+ *
+ * Set by Anthony on 2026-09-10. unparsedReason calls any line with three
+ * consecutive letters and no greeting "no team recognised on this line",
+ * which is exactly right for a player's reply and catastrophic for anything
+ * else: a Codex review notification is 149 lines, so it staged 149 rows, and
+ * 65 such messages became 1,951. A sender with nothing to pick for gets ONE
+ * question about the message instead, wherever the caller stages it.
+ */
+export function unparsedLinesToAsk(placed: boolean, lines: string[]): { line: string; reason: string }[] {
+  if (!placed) return [];
+  const out: { line: string; reason: string }[] = [];
+  for (const l of lines) {
+    const reason = unparsedReason(l);
+    if (reason !== null) out.push({ line: l, reason });
+  }
+  return out;
+}
+
+// --------------------------------------------------------- the staging ceiling
+//
+// Set by Anthony on 2026-09-10, the same evening the sweep first ran with
+// credentials and staged 1,951 rows from 65 messages in four minutes. The
+// queue is a staging table so nothing was broken, but 1,951 rows is not
+// reviewable, and the run had no idea it had gone wrong.
+//
+// This has the same shape as the roster count gate on a send: it STOPS the
+// run and prints, it never trims to the limit and it never writes a subset.
+// A sweep over the ceiling is reading the wrong mail; picks written from that
+// same run would be picks chosen out of the wrong mail too.
+
+export interface StagingCeiling {
+  ok: boolean;
+  staged: number;
+  limit: number;
+  /** Who the rows came from, worst first, so the wrong filter names itself. */
+  bySender: { sender: string; rows: number }[];
+}
+
+export function stagingCeiling(senders: (string | null)[], limit: number): StagingCeiling {
+  if (!Number.isInteger(limit) || limit < 1) throw new Error("stagingCeiling: limit must be a positive integer");
+  const counts = new Map<string, number>();
+  for (const s of senders) {
+    const key = (s ?? "").trim().toLowerCase() || "(no sender)";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const bySender = [...counts.entries()]
+    .map(([sender, rows]) => ({ sender, rows }))
+    .sort((a, b) => b.rows - a.rows || a.sender.localeCompare(b.sender));
+  return { ok: senders.length <= limit, staged: senders.length, limit, bySender };
 }

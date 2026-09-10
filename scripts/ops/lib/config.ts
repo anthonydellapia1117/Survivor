@@ -87,10 +87,24 @@ export interface OpsConfig {
    */
   reminderLeadHours: number;
   sweepSubjectTerms: string[];
+  /**
+   * Senders the subject sweep never reads, whatever their subject. Every
+   * GitHub notification on this repo carries "Survivor" in its subject line
+   * ("Re: [anthonydellapia1117/Survivor] ..."), so the pool's own name can
+   * never keep them out - only the address can.
+   */
+  sweepExcludeSenders: string[];
   jobs: Record<JobName, JobConfig>;
 }
 
 export const CONFIG_PATH = fileURLToPath(new URL("../config.json", import.meta.url));
+
+/**
+ * Words too generic to be a subject term on their own. Every one of these
+ * appears in ordinary marketing mail, and "picks" is the one that actually
+ * bit (2026-09-10). A term must be more specific than any of these.
+ */
+export const BARE_TERMS_REFUSED = ["pick", "picks", "pool", "week", "game", "games", "survivors"];
 
 function fail(msg: string): never {
   throw new Error(`scripts/ops/config.json: ${msg}`);
@@ -128,6 +142,18 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
   if (!Number.isInteger(c.expectedRosterAddresses) || (c.expectedRosterAddresses as number) < 1) fail("expectedRosterAddresses must be a positive integer");
   if (!Number.isInteger(c.reminderLeadHours) || (c.reminderLeadHours as number) < 1) fail("reminderLeadHours must be a positive integer");
   if (!Array.isArray(c.sweepSubjectTerms) || c.sweepSubjectTerms.length === 0 || !c.sweepSubjectTerms.every((t) => typeof t === "string" && t.trim())) fail("sweepSubjectTerms must be a non-empty list of words");
+  // A bare generic word is not a filter. "picks" matched "Free stock picks
+  // from MarketBeat", "How to Draft from Picks 1-3", "Meta Picks Slack" and
+  // "great picks for your dog" on 2026-09-10; a phrase does not. Refused by
+  // name here so the word cannot quietly come back as a one-line config edit.
+  for (const t of c.sweepSubjectTerms as string[]) {
+    if (BARE_TERMS_REFUSED.includes(t.trim().toLowerCase())) {
+      fail(`sweepSubjectTerms may not carry the bare word "${t.trim()}" - it matches marketing mail. Use a phrase such as "my picks".`);
+    }
+  }
+  if (!Array.isArray(c.sweepExcludeSenders) || !c.sweepExcludeSenders.every((a) => typeof a === "string" && a.includes("@"))) {
+    fail("sweepExcludeSenders must be a list of addresses (it may be empty)");
+  }
   if (typeof c.jobs !== "object" || c.jobs === null) fail("jobs missing");
   const jobs = c.jobs as Record<string, unknown>;
   for (const name of JOB_NAMES) if (!(name in jobs)) fail(`job ${name} missing`);

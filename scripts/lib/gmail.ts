@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { google, type gmail_v1 } from "googleapis";
 import { requireEnv } from "./env";
+import { SWEEP_WINDOW_DAYS } from "./constants";
 import { assertNoRetiredAddresses } from "./roster";
 
 export const TOKEN_PATH = path.join(os.homedir(), ".config", "survivor", "gmail-token.json");
@@ -128,15 +129,38 @@ function bodyOf(payload: gmail_v1.Schema$MessagePart | undefined): string {
   return "";
 }
 
-/** Every unread message from any of the addresses, whatever its subject or label. */
-export async function listUnreadFrom(gmail: gmail_v1.Gmail, addresses: string[]): Promise<InboundMessage[]> {
+/**
+ * Every unread message from any of the addresses, whatever its subject or
+ * label, inside the window.
+ *
+ * The window is the only thing filtering this path - there is deliberately no
+ * subject test on a known player, because a real reply may carry any subject
+ * at all. That is why an unread newsletter from 27 April, sitting in a roster
+ * player's thread, became a staged question on 2026-09-10: nothing else here
+ * could have stopped it.
+ */
+export async function listUnreadFrom(
+  gmail: gmail_v1.Gmail,
+  addresses: string[],
+  windowDays: number = SWEEP_WINDOW_DAYS,
+): Promise<InboundMessage[]> {
+  return listUnreadByQueries(gmail, unreadFromQueries(addresses, windowDays));
+}
+
+/**
+ * The searches listUnreadFrom runs, as a pure function so the window can be
+ * proved without Gmail. Chunked at 15 addresses because a Gmail query has a
+ * length limit and the roster is 40.
+ */
+export function unreadFromQueries(addresses: string[], windowDays: number = SWEEP_WINDOW_DAYS): string[] {
+  if (!Number.isInteger(windowDays) || windowDays < 1) throw new Error("listUnreadFrom: windowDays must be a positive integer");
   const unique = Array.from(new Set(addresses.map((a) => a.trim().toLowerCase()).filter(Boolean)));
   const queries: string[] = [];
   for (let i = 0; i < unique.length; i += 15) {
     const chunk = unique.slice(i, i + 15);
-    queries.push(`is:unread -in:draft (${chunk.map((a) => `from:${a}`).join(" OR ")})`);
+    queries.push(`is:unread -in:draft newer_than:${windowDays}d (${chunk.map((a) => `from:${a}`).join(" OR ")})`);
   }
-  return listUnreadByQueries(gmail, queries);
+  return queries;
 }
 
 /** Every unread message a Gmail search matches, in full. The subject sweep's reader. */
