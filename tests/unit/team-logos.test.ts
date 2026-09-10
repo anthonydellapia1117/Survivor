@@ -54,7 +54,13 @@ describe("team logos", () => {
     const code = (f: string) => readFileSync(f, "utf8").replace(/(?<!:)\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
     const files = walk(path.join(process.cwd(), "src"));
     const espn = files.filter((f) => /espn[a-z]*\.com/i.test(code(f))).map((f) => path.relative(process.cwd(), f));
-    expect(espn).toEqual(["src/app/admin/actions.ts"]);
+    // EXACTLY ONE file may name the feed's domain, and it is not a logo
+    // fetch: src/lib/nfl/espn.ts builds the scoreboard URL and parses the
+    // reply, and fetches nothing itself. The admin scores prefill used to
+    // carry the URL too and now calls that module, so the domain is written
+    // down once. The assertion below is the one that has always mattered and
+    // is unchanged: nothing anywhere reaches the logo CDN.
+    expect(espn).toEqual(["src/lib/nfl/espn.ts"]);
     expect(files.filter((f) => /espncdn|teamlogos/i.test(code(f)))).toEqual([]);
   });
 

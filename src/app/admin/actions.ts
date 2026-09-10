@@ -5,6 +5,7 @@
 // happens outside these actions.
 
 import { revalidatePath } from "next/cache";
+import { espnWeekUrl, parseScoreboard } from "@/lib/nfl/espn";
 import { getAdminSession } from "@/lib/auth";
 import { getAdminData } from "@/lib/data/admin";
 
@@ -390,40 +391,22 @@ export async function fetchEspnScoresAction(input: { week: number }): Promise<
   }
 > {
   return guarded(async () => {
-    const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=2026&seasontype=2&week=${input.week}`;
-    const res = await fetch(url, { cache: "no-store" });
+    // One reader for the feed, shared with `npm run scores`: the URL, the
+    // team rename and what counts as FINAL are stated once in
+    // src/lib/nfl/espn.ts. This used to carry its own copy, including a JAC
+    // and an LA the 2026 feed never sends - and an alias for a code that is
+    // not sent is a guess waiting to happen (LA is not obviously LAR).
+    const res = await fetch(espnWeekUrl(2026, input.week), { cache: "no-store" });
     if (!res.ok) {
       return { ok: false, error: `ESPN returned HTTP ${res.status}` };
     }
-    const j = (await res.json()) as {
-      events?: {
-        competitions: {
-          status?: { type?: { completed?: boolean } };
-          competitors: {
-            homeAway: string;
-            score?: string;
-            team: { abbreviation: string };
-          }[];
-        }[];
-      }[];
-    };
-    const MAP: Record<string, string> = { WSH: "WAS", JAC: "JAX", LA: "LAR" };
-    const norm = (t: string) => MAP[t] ?? t;
-    const games = (j.events ?? []).map((e) => {
-      const comp = e.competitions[0];
-      const home = comp.competitors.find((c) => c.homeAway === "home")!;
-      const away = comp.competitors.find((c) => c.homeAway === "away")!;
-      const final = comp.status?.type?.completed === true;
-      const num = (v?: string) =>
-        v !== undefined && v !== "" && final ? Number(v) : null;
-      return {
-        home: norm(home.team.abbreviation),
-        away: norm(away.team.abbreviation),
-        homeScore: num(home.score),
-        awayScore: num(away.score),
-        final,
-      };
-    });
+    const games = parseScoreboard(await res.json(), input.week).map((g) => ({
+      home: g.homeTeam,
+      away: g.awayTeam,
+      homeScore: g.status === "final" ? g.homeScore : null,
+      awayScore: g.status === "final" ? g.awayScore : null,
+      final: g.status === "final",
+    }));
     return { ok: true, games };
   });
 }

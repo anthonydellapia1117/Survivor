@@ -54,6 +54,60 @@ export function cronMatches(expr: string, at: Date): boolean {
   );
 }
 
+// ------------------------------------------------------- the same, in ET
+//
+// A schedule written as a fixed UTC cron is a schedule that MOVES when the
+// clock does: 3 AM ET is 07:00 UTC until 2026-11-01 and 08:00 UTC after it, so
+// a cron pinned to either is an hour wrong for half the season. Every slot
+// here is stated on the ET wall clock and read against the ET wall clock, so
+// nothing has to be re-pinned and nothing drifts. It is the same reason
+// nothing in scripts/remind/lib/due.ts knows an hour.
+
+const ET_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const DOW_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/** An instant as the ET wall clock reads it: day-of-week 0-6, hour 0-23, minute. */
+export function etClock(at: Date): { dow: number; hour: number; minute: number } {
+  const p = Object.fromEntries(ET_PARTS.formatToParts(at).map((x) => [x.type, x.value]));
+  const dow = DOW_INDEX[p.weekday as string];
+  if (dow === undefined) throw new Error(`cron: cannot read an ET weekday from ${JSON.stringify(p.weekday)}`);
+  // en-US with hour12:false renders midnight as "24" in some ICU versions.
+  const hour = Number(p.hour) % 24;
+  return { dow, hour, minute: Number(p.minute) };
+}
+
+/**
+ * Whether the expression names this minute on the ET wall clock.
+ *
+ * Day-of-month and month must both be `*`: an ET expression is a weekly
+ * pattern, and a date field would have to be resolved in a zone as well,
+ * which is the ambiguity this exists to remove.
+ */
+export function cronMatchesEt(expr: string, at: Date): boolean {
+  const c = parseCron(expr);
+  if (c.dom.size !== 31 || c.month.size !== 12) {
+    throw new Error(`cron ET: day-of-month and month must both be * ("${expr}")`);
+  }
+  const t = etClock(at);
+  return c.minute.has(t.minute) && c.hour.has(t.hour) && c.dow.has(t.dow);
+}
+
+/** dueInWindow, read against the ET wall clock. */
+export function dueInWindowEt(expr: string, now: Date, windowMinutes: number): boolean {
+  const floor = new Date(now.getTime());
+  floor.setUTCSeconds(0, 0);
+  for (let k = 0; k < windowMinutes; k++) {
+    if (cronMatchesEt(expr, new Date(floor.getTime() - k * 60_000))) return true;
+  }
+  return false;
+}
+
 /**
  * Whether the expression named any minute in the last `windowMinutes`,
  * this minute included. A tick that runs on a coarse clock asks this rather
@@ -129,4 +183,56 @@ export function dueAtEveryTick(jobExpr: string, tickExpr: string, windowMinutes:
 export function missedSlots(jobExpr: string, tickExpr: string, windowMinutes: number): string[] {
   if (dueAtEveryTick(jobExpr, tickExpr, windowMinutes)) return [];
   return unobservedSlots(jobExpr, tickExpr, windowMinutes);
+}
+
+// ------------------------------ does the tick observe an ET-stated schedule?
+//
+// The tick's own cron is UTC, so an ET slot has to be compared in a common
+// frame - and it lands on TWO different UTC minutes across a season, four
+// hours ahead in EDT and five in EST. Both have to be observed or the slot
+// runs for half the year and silently does not for the other half, which is
+// the failure a fixed UTC cron makes certain and this makes visible.
+
+/** The two offsets America/New_York takes, as hours ahead of ET. */
+export const ET_OFFSET_HOURS: ReadonlyArray<{ label: "EDT" | "EST"; hours: number }> = [
+  { label: "EDT", hours: 4 },
+  { label: "EST", hours: 5 },
+];
+
+/** Every minute-of-week an ET weekly expression names, on the ET clock. */
+function etMinutesOfWeek(expr: string, name: string): number[] {
+  const c = parseCron(expr);
+  if (c.dom.size !== 31 || c.month.size !== 12) {
+    throw new Error(`cron ${name}: day-of-month and month must both be * in an ET schedule ("${expr}")`);
+  }
+  const out: number[] = [];
+  for (const d of c.dow) for (const h of c.hour) for (const m of c.minute) out.push(d * 1440 + h * 60 + m);
+  return out.sort((a, b) => a - b);
+}
+
+/** "Sun 22:00 ET = Mon 03:00 UTC (EST)" - both readings, so the shift is visible. */
+export function describeEtSlot(etMinuteOfWeek: number, offset: { label: string; hours: number }): string {
+  const utc = (((etMinuteOfWeek + offset.hours * 60) % MINUTES_PER_WEEK) + MINUTES_PER_WEEK) % MINUTES_PER_WEEK;
+  const et = describeSlot(etMinuteOfWeek).replace(" UTC", " ET");
+  return `${et} = ${describeSlot(utc)} (${offset.label})`;
+}
+
+/**
+ * The slots of an ET-stated schedule that no run of `tickExpr` would observe,
+ * in either offset. Empty means the schedule is safe all year.
+ */
+export function unobservedEtSlots(etExpr: string, tickExpr: string, windowMinutes: number): string[] {
+  if (!Number.isInteger(windowMinutes) || windowMinutes < 1) throw new Error("cron: windowMinutes must be a positive integer");
+  const ticks = minutesOfWeek(tickExpr, "tick");
+  if (ticks.length === 0) throw new Error(`cron tick: "${tickExpr}" names no minute`);
+  const covered = (slot: number): boolean =>
+    ticks.some((t) => (((t - slot) % MINUTES_PER_WEEK) + MINUTES_PER_WEEK) % MINUTES_PER_WEEK <= windowMinutes - 1);
+  const out: string[] = [];
+  for (const slot of etMinutesOfWeek(etExpr, "job")) {
+    for (const off of ET_OFFSET_HOURS) {
+      const utc = (((slot + off.hours * 60) % MINUTES_PER_WEEK) + MINUTES_PER_WEEK) % MINUTES_PER_WEEK;
+      if (!covered(utc)) out.push(describeEtSlot(slot, off));
+    }
+  }
+  return out;
 }

@@ -1,8 +1,8 @@
 {
-  "$comment": "Operations for the Survivor sub-pool, checked in so a schedule or a parameter is a reviewed change. Read by scripts/ops (npm run ops). Crons are UTC, 5 fields. tickSchedule is the Survivor Sweep Routine (npm run ops -- hourly) and dailySchedule is the Survivor Daily Routine (npm run ops -- daily); both are here rather than only in docs/ROUTINES.md so changing one is a reviewed change. reminderLeadHours is no longer read at run time - it is the minimum-notice floor the pick-reminder cron is tested against. Only pick-reminder and chase may send, and only when the environment has REMINDER_AUTOSEND=true; every other job drafts or writes rows and never mails. pick-reminder fires the three morning slots Anthony set on 2026-09-10 - Wednesday, Thursday and Friday at 12:00 UTC, which is 8 AM ET in EDT and 7 AM in EST. reminderLeadHours is no longer what triggers a run: the slot a run belongs to is the ET calendar day (scripts/remind/lib/due.ts) and this cron is the minute the mail goes. It is the notice the two SAME-DAY slots owe - wed names that Wednesday's early deadline, fri names that Friday's late one - and tests/unit/ops.test.ts holds the cron to giving at least that many hours before a 2 PM ET deadline in both EDT and EST, so moving either one alone fails CI.",
+  "$comment": "Operations for the Survivor sub-pool, checked in so a schedule or a parameter is a reviewed change. Read by scripts/ops (npm run ops). Crons are UTC, 5 fields. tickSchedule is the Survivor Sweep Routine (npm run ops -- hourly) and dailySchedule is the Survivor Daily Routine (npm run ops -- daily); both are here rather than only in docs/ROUTINES.md so changing one is a reviewed change. The scores job states its six slots in EASTERN TIME (scheduleEt, one expression per slot) and they are converted on every run: a fixed UTC cron for 3 AM ET would be an hour wrong for half the season. tickSchedule was widened from 9-23,0-2 to 7-23,0-3 on 2026-09-11 so those overnight slots are observed at all - under the old tick nine of the twelve slot-offsets fell in the gap between two ticks and would never have run. reminderLeadHours is no longer read at run time - it is the minimum-notice floor the pick-reminder cron is tested against. Only pick-reminder and chase may send, and only when the environment has REMINDER_AUTOSEND=true; every other job drafts or writes rows and never mails. pick-reminder fires the three morning slots Anthony set on 2026-09-10 - Wednesday, Thursday and Friday at 12:00 UTC, which is 8 AM ET in EDT and 7 AM in EST. reminderLeadHours is no longer what triggers a run: the slot a run belongs to is the ET calendar day (scripts/remind/lib/due.ts) and this cron is the minute the mail goes. It is the notice the two SAME-DAY slots owe - wed names that Wednesday's early deadline, fri names that Friday's late one - and tests/unit/ops.test.ts holds the cron to giving at least that many hours before a 2 PM ET deadline in both EDT and EST, so moving either one alone fails CI.",
   "timezone": "America/New_York",
   "tickWindowMinutes": 60,
-  "tickSchedule": "43 9-23,0-2 * * *",
+  "tickSchedule": "43 7-23,0-3 * * *",
   "dailySchedule": "30 12 * * *",
   "expectedRosterAddresses": 40,
   "reminderLeadHours": 6,
@@ -44,6 +44,20 @@
       "args": ["--yes"],
       "sends": false,
       "what": "Her newest Football xlsx as the last locked week's results through admin_apply_lynne_import, once per sha256, variances reported never resolved."
+    },
+    "scores": {
+      "scheduleEt": [
+        "0 3 * * 5",
+        "0 3 * * 6",
+        "0 17 * * 0",
+        "0 22 * * 0",
+        "0 3 * * 1",
+        "0 3 * * 2"
+      ],
+      "command": "scores",
+      "args": ["--yes"],
+      "sends": false,
+      "what": "Finals from the free ESPN scoreboard onto nfl_games, matched on week and both teams; never creates a game, never overwrites one already final, and touches no other table. Six slots on the ET wall clock - Fri 3 AM, Sat 3 AM, Sun 5 PM, Sun 10 PM, Mon 3 AM, Tue 3 AM - overnight so nothing collides with the reminder jobs, and read against ET on every run so none of them drifts an hour when the clock changes on 2026-11-01."
     },
     "distribute": {
       "schedule": "20 18 * * 5",

@@ -48,8 +48,11 @@
   --color-tie: var(--tie);
   --color-bye: var(--bye);
   --color-pending: var(--pending);
-  /* Game windows on the season grid (2026-09-09): TNF keeps --tie's amber;
-     the other three are derived from existing tokens, see the two blocks below. */
+  /* Game windows on the season grid (2026-09-09). Each has its OWN token,
+     including TNF: it renders the same amber --tie does, but sharing the token
+     meant the broadcast window and the tie RESULT moved together, and a change
+     to one silently repainted the other (2026-09-11). */
+  --color-tnf: var(--tnf);
   --color-snf: var(--snf);
   --color-mnf: var(--mnf);
   --color-wfs: var(--wfs);
@@ -111,6 +114,9 @@
      blue, MNF a primary/loss mix (violet), Wed/Fri/Sat a primary/win mix
      (teal). tests/unit/game-window.test.ts proves none collides with win,
      loss, bye or tie in either theme. */
+  /* TNF is the same amber as --tie and is deliberately its own token: the
+     window vocabulary and the result vocabulary must be separately movable. */
+  --tnf: var(--tie);
   --snf: var(--primary);
   --mnf: color-mix(in srgb, var(--primary) 45%, var(--loss) 55%);
   --wfs: color-mix(in srgb, var(--primary) 55%, var(--win) 45%);
@@ -165,6 +171,9 @@
      blue, MNF a primary/loss mix (violet), Wed/Fri/Sat a primary/win mix
      (teal). tests/unit/game-window.test.ts proves none collides with win,
      loss, bye or tie in either theme. */
+  /* TNF is the same amber as --tie and is deliberately its own token: the
+     window vocabulary and the result vocabulary must be separately movable. */
+  --tnf: var(--tie);
   --snf: var(--primary);
   --mnf: color-mix(in srgb, var(--primary) 45%, var(--loss) 55%);
   --wfs: color-mix(in srgb, var(--primary) 55%, var(--win) 45%);

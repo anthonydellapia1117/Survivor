@@ -39,9 +39,9 @@ import { getAttachment, getMessageMeta, gmailClient, searchMessages, type Messag
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { autosendEnabled } from "../lib/send";
 import { footballAttachment, selectFootballMessage } from "../results/lib/select";
-import { JOB_NAMES, loadOpsConfig, slotBreaches, type JobConfig, type JobName } from "./lib/config";
+import { JOB_NAMES, loadOpsConfig, slotBreaches, type JobConfig, type JobName, jobSchedule} from "./lib/config";
 import { tempSheetName } from "./lib/attachment";
-import { dueInWindow } from "./lib/cron";
+import { dueInWindow, dueInWindowEt } from "./lib/cron";
 import { latestLockedWeek } from "./lib/weeks";
 import { REPORTERS, runDaily } from "./daily";
 
@@ -191,7 +191,16 @@ async function main(): Promise<void> {
 
   const targets: JobName[] =
     args.target === "hourly"
-      ? JOB_NAMES.filter((j) => dueInWindow(config.jobs[j].schedule, now, config.tickWindowMinutes))
+      ? JOB_NAMES.filter((j) => {
+          // Read against the clock the job was written on. An ET schedule is
+          // converted on THIS run, so nothing has to be re-pinned in November.
+          const { exprs, zone } = jobSchedule(config.jobs[j]);
+          return exprs.some((expr) =>
+            zone === "et"
+              ? dueInWindowEt(expr, now, config.tickWindowMinutes)
+              : dueInWindow(expr, now, config.tickWindowMinutes),
+          );
+        })
       : [args.target];
 
   if (args.target === "hourly") {

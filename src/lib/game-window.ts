@@ -43,9 +43,16 @@ export const WINDOW_LABEL: Record<GameWindow, string> = {
   wfs: "Wed/Fri/Sat",
 };
 
-/** The design token each window fills with; TNF keeps the amber the grid already used. */
-export const WINDOW_TOKEN: Record<GameWindow, "tie" | "snf" | "mnf" | "wfs"> = {
-  tnf: "tie",
+/**
+ * The design token each window fills with. Every window has its OWN token,
+ * TNF included: it renders the same amber as --tie, but the broadcast window
+ * and the tie RESULT are different things and sharing a token made them move
+ * together. They are separate surfaces as well - tests/unit/colour-systems.test.ts
+ * holds the window vocabulary to the season grid and its legend, and keeps the
+ * result vocabulary out of both.
+ */
+export const WINDOW_TOKEN: Record<GameWindow, "tnf" | "snf" | "mnf" | "wfs"> = {
+  tnf: "tnf",
   snf: "snf",
   mnf: "mnf",
   wfs: "wfs",
@@ -53,13 +60,13 @@ export const WINDOW_TOKEN: Record<GameWindow, "tie" | "snf" | "mnf" | "wfs"> = {
 
 /** Cell fill and tag text classes per window. Written out in full so Tailwind sees every class. */
 export const WINDOW_CELL_CLASS: Record<GameWindow, string> = {
-  tnf: "bg-tie/25",
+  tnf: "bg-tnf/25",
   snf: "bg-snf/25",
   mnf: "bg-mnf/25",
   wfs: "bg-wfs/25",
 };
 export const WINDOW_TEXT_CLASS: Record<GameWindow, string> = {
-  tnf: "text-tie",
+  tnf: "text-tnf",
   snf: "text-snf",
   mnf: "text-mnf",
   wfs: "text-wfs",

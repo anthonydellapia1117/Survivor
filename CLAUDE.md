@@ -1000,6 +1000,7 @@ in any of them.**
 | `npm run distribute -- --week N`         | After the Friday lock, one BCC draft to every owner and player address with the /grid link and the standings sentence           |
 | `npm run remind [-- --send --yes]`      | The week reminder due now (six hours before a week's early or late deadline) to every live address, exact count gate, drafted or sent |
 | `npm run ops -- <job>` / `-- hourly` / `-- daily` | Operations from the repo: sweep, pick-reminder, lynne-import, chase, results, distribute, each from `scripts/ops/config.json`; `hourly` runs whatever fell due in the last hour (`tick` is its old name and still works); `daily` runs the six reporters |
+| `npm run scores [-- --week N \| --all]`   | Finals from the free ESPN scoreboard onto `nfl_games`, matched on week and both teams; read-only against ESPN, write-only to `nfl_games` |
 | `npm run notify -- "line"`               | One line to ntfy.sh/`NTFY_TOPIC`, printed when the topic is unset                                                               |
 | `npm run gmail:auth`                     | One-time OAuth consent for the Gmail token                                                                                     |
 
@@ -1076,6 +1077,43 @@ in any of them.**
     derives its recipients live and stops unless the count equals
     `expectedRosterAddresses` (40) **exactly** - a range let a wrong count
     through once in another pool.
+- **Game results come from ESPN, and only ever land on `nfl_games`.** Set by
+  Anthony on 2026-09-11. `npm run scores` reads the free public scoreboard - no
+  key, no auth - and writes through `admin_apply_game_results`, which is
+  **write-only to `nfl_games` and names no other table**. A result never
+  touches a pick; what a result COSTS an entry is `picks.result` and the
+  standings view, and **a tie stays a `tie_loss`** - that does not move.
+
+  Four rules, all in the database so they hold for a Routine, a hand run and
+  SQL typed by a person: it **matches and never creates** (a game matching no
+  single `nfl_games` row stops the whole call and names it, and there is no
+  `insert into nfl_games` in the function at all); **a final is never
+  overwritten**; **an unchanged row writes nothing and audits nothing**; and
+  **each write is audited in the same transaction as the write**.
+
+  **The only code that differs is WSH for our WAS**, stated once in
+  `src/lib/nfl/espn.ts` and used by the command, the admin prefill and the logo
+  paths - it was written out three times until this went in. Verified across
+  all eighteen weeks before anything was built: 272 ESPN events, 272
+  `nfl_games` rows, and after that one rename the two sets of
+  `(week, home, away)` matched 272 of 272 with nothing unmatched either way.
+
+  Two traps in the feed the parser is built around. A **cancelled** game is
+  state `post` with `completed` FALSE and both scores the string `"0"` - read
+  as final it writes a 0-0 that never happened, and a final is never
+  rewritten, so only `completed` decides. And **`event.date` is a placeholder**
+  on the 24 flex games of weeks 16-18, so the parser carries no kickoff time
+  at all; the schedule is seeded and this only ever adds a score to a row that
+  already exists.
+
+  **Its six slots are stated in EASTERN TIME** (`scheduleEt` in
+  `scripts/ops/config.json`, one expression per slot) and converted on every
+  run: Fri 3 AM, Sat 3 AM, Sun 5 PM, Sun 10 PM, Mon 3 AM, Tue 3 AM, overnight
+  so nothing collides with the reminder jobs. A fixed UTC cron would be an hour
+  wrong for half the season. The tick was widened from `43 9-23,0-2` to
+  `43 7-23,0-3` for them - under the old one **nine of the twelve slot-offsets**
+  (six slots x EDT and EST) fell between two ticks and would never have run.
+
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
   Anthony's to choose and is never invented.
