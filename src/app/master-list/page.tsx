@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { getData } from "@/lib/data";
 import { LOCKED_TEAM } from "@/lib/data/types";
 import { MASTER_POOL } from "@/lib/site-copy";
-import { countVariance, mergeWeekColumns, weekColumns } from "@/lib/master-list";
+import { countVariance, mergeWeekColumns, poolAsEntries, teamResults, weekColumns } from "@/lib/master-list";
+import { rowTone, type RowTone } from "@/lib/result-colour";
 import { formatEtDate } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { MasterListTable, type OurCell } from "@/components/master-list/master-list-table";
@@ -13,11 +14,12 @@ export const dynamic = "force-dynamic";
 
 export default async function MasterListPage() {
   const data = getData();
-  const [master, pot, cells, imports] = await Promise.all([
+  const [master, pot, cells, imports, games] = await Promise.all([
     data.getMasterList(),
     data.getPot(),
     data.getGridCells(),
     data.getLynneImports(),
+    data.getSchedule(),
   ]);
 
   // Her four figures moved to the dashboard, where they open the site.
@@ -33,6 +35,21 @@ export default async function MasterListPage() {
     weekColumns(master.rows),
     [...new Set(ourCells.map((c) => c.week))],
   );
+
+  // The colours, from the STORED result and nothing else. Her cells arrive
+  // here already masked by v_master_list's reveal gate, so a week she has
+  // published but whose game has not kicked off carries no cell to colour -
+  // the gate decides what is visible, this only decides what a visible cell
+  // looks like. Scored through poolAsEntries, the same call the Grid makes,
+  // so a row reads the same on both pages.
+  const results = Object.fromEntries(teamResults(games));
+  const scored = poolAsEntries(master, games);
+  const toneById = new Map(scored.entries.map((e) => [e.id, rowTone(e)]));
+  const rowTones: Record<number, RowTone> = {};
+  for (const r of master.rows) {
+    const tone = toneById.get(r.entryId ?? `pool-${r.no}`);
+    if (tone !== undefined && tone !== "clean") rowTones[r.no] = tone;
+  }
 
   return (
     <div className="space-y-6">
@@ -66,6 +83,8 @@ export default async function MasterListPage() {
           columns={columns}
           ourCells={ourCells}
           ourCount={ourIds.size}
+          results={results}
+          rowTones={rowTones}
         />
       )}
 

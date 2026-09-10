@@ -307,6 +307,46 @@ the public views, not merely hidden in the UI).
 The **pool-wide prize pot** from Lynne's whole pool is the one dollar figure
 that is public by design.
 
+### What the colours mean
+
+Set by Anthony on 2026-09-10, once game results were being stored. **One
+scheme, on the Grid, the Master List and the Teams table alike:**
+
+| State                | Reads as                                     |
+| -------------------- | -------------------------------------------- |
+| Won                  | subtle green                                 |
+| Lost                 | yellow, and yellow on the entry name          |
+| Two losses           | the whole row red and struck through          |
+| No stored result     | no fill at all                                |
+
+So **red means OUT and yellow means damaged-but-alive.** That is a shift from
+the older scheme, where a single loss was already red and nothing was left to
+say an entry was finished. A **tie and a missed week are losses** and take the
+yellow, the same way `v_entry_public` counts them in `losses`.
+
+**A colour comes off the STORED result and nothing else.** A game that is not
+final contributes nothing - `teamResults` leaves both its teams absent - so a
+part-scored Sunday afternoon shows no colour rather than a colour that will
+move. And **her cells obey the reveal gate before any of this**: `v_master_list`
+decides what is visible, the colour only decides what a visible cell looks
+like, so no fill can imply a pick the reader cannot see.
+
+`src/lib/result-colour.ts` is the only place a result class is written.
+**This is the RESULT vocabulary and it must never meet the WINDOW vocabulary**
+(`src/lib/game-window.ts`, the broadcast windows on the season grid) on one
+screen - `tests/unit/colour-systems.test.ts` holds them apart, and
+`tests/unit/result-colour.test.ts` holds the scheme itself. The Master List's
+variance chip is deliberately outside both, neutral and high contrast: it was
+amber, which is now what a losing pick is filled with.
+
+**The Teams page counts, it no longer filters.** The per-entry picker and the
+teams-in-hand grid were removed with the same change: the question that page
+answers is what the POOL did, and one entry at a time cannot answer it. What
+is there is the count of entries that picked each team each week, **over
+finished games only** - a week still in play carries no number - green where
+that team won and yellow where it lost. **Never red on that page:** a team
+losing is a fact about a game, not an elimination.
+
 ### The Master List is the public default
 
 Set by Anthony on 2026-09-08. **His group is interested in every entry in
@@ -323,7 +363,7 @@ whole pool, so the public site defaults to it.
   result files (`lynne_imports`) sit below it. `/official` and `/lynne`
   redirect there.
 - **Public stats default to the whole pool.** The dashboard's pick
-  distribution and Team Availability read her sheet's week cells for every
+  distribution and the Teams table read her sheet's week cells for every
   entry when she has published them, with "Our group" as the other setting;
   until she publishes a week, our group stands in and says so.
 - **Her four figures are public as she publishes them:** Total in Pool,
@@ -1250,6 +1290,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Free-entry mint (DB-enforced)       | `mint_free_entries` trigger                  |
 | Lynne import / roster / numbers     | `src/lib/lynne/`                             |
 | Entry-name collision detection      | `src/lib/names.ts`                           |
+| Result colours, the one place       | `src/lib/result-colour.ts`                   |
 | Audit rendering                     | `src/lib/audit-format.ts`, `/admin/audit`    |
 | Data backup (one-step restore)      | `src/lib/backup.ts`, `/api/admin/backup`     |
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |

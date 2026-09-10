@@ -35,6 +35,13 @@ vi.mock("../../src/lib/data", () => ({
       { entryId: "e-1089", week: 2, team: "BUF", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
       { entryId: "someone-else", week: 7, team: "KC", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
     ],
+    // Week 1 is final and Dallas lost it; Week 2 has not been played. Both
+    // shapes matter: the first is what a colour is allowed to come from, the
+    // second is what must stay unfilled.
+    getSchedule: async () => [
+      { id: "g1", week: 1, kickoffAt: "2026-09-13T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "DAL", homeTeam: "PHI", homeScore: 24, awayScore: 17, status: "final", revealOverride: null, network: "FOX" },
+      { id: "g2", week: 2, kickoffAt: "2026-09-20T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "BUF", homeTeam: "NYJ", homeScore: null, awayScore: null, status: "scheduled", revealOverride: null, network: "CBS" },
+    ],
     getLynneImports: async () => [
       {
         id: "im-2",
@@ -120,6 +127,26 @@ describe("Master List, signed out", () => {
     expect(html).toContain("Week 2");
     expect(html).toContain("W1");
     expect(html).toContain("E.A.T.");
+  });
+
+  it("colours a cell only where a result is stored, and the reveal gate still decides what is there to colour", async () => {
+    // Week 1 is final and Dallas lost it; Week 2 is not played. Two rows show
+    // Dallas (hers at NO. 1 and the variance cell at 983), so exactly two
+    // cells may carry the losing fill and nothing may carry a winning one.
+    const html = renderToStaticMarkup(await MasterListPage());
+    expect((html.match(/bg-tie\/20/g) ?? []).length, "one fill per revealed, scored cell").toBe(2);
+    expect(html, "nothing in this fixture won").not.toContain("bg-win/15");
+    // Week 2 is scheduled: our BUF sits in its cell with no fill behind it.
+    expect(html).toMatch(/<td class="border-b border-border\/60 px-2 py-1 whitespace-nowrap"[^>]*>[^<]*<span[^>]*>ours BUF<\/span>/);
+    // 1005's pick is masked by the public view, so there is no cell to colour
+    // and no colour can leak the pick. A fill would be a leak by itself: it
+    // would say a scored game sits behind a cell the reader cannot see.
+    expect(html).not.toContain("ours SEA");
+    // One loss puts yellow on the entry name; nothing here is out, so no row
+    // is red or struck.
+    expect(html).toContain("text-tie");
+    expect(html).not.toContain("line-through");
+    expect(html).not.toContain("bg-loss/10");
   });
 
   it("lists every row verbatim, marks ours, matches our pick against her cell and never reveals a masked pick", async () => {

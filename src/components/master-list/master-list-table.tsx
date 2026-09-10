@@ -13,10 +13,20 @@ import type { MasterListRow } from "@/lib/data/types";
 import {
   filterRows,
   herCell,
+  herTeam,
   matchPick,
   type PickMatch,
+  type TeamResult,
   type WeekColumn,
 } from "@/lib/master-list";
+import {
+  cellPaints,
+  ROW_CLASS,
+  ROW_NAME_CLASS,
+  toneOfTeamResult,
+  TONE_FILL_CLASS,
+  type RowTone,
+} from "@/lib/result-colour";
 import { SKIP_WEEK } from "@/lib/standing";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -32,6 +42,13 @@ interface Props {
   columns: WeekColumn[];
   ourCells: OurCell[];
   ourCount: number;
+  /**
+   * `week:TEAM` -> that team's result, from the stored score only. A team
+   * whose game is not final is absent, which is what leaves its cell unfilled.
+   */
+  results: Record<string, TeamResult>;
+  /** Her NO. -> the row's tone, for the rows that are not clean. */
+  rowTones: Record<number, RowTone>;
 }
 
 function teamLabel(team: string): string {
@@ -55,8 +72,13 @@ function CellView({ cell, m }: { cell: string | undefined; m: PickMatch }) {
       return (
         <>
           <span>{cell}</span>
+          {/* Deliberately OUTSIDE the result vocabulary. This chip used to be
+              amber, which since 2026-09-10 is what a losing pick is filled
+              with - so a variance chip sat inside a cell of the same colour
+              and meant something else entirely. Neutral and high contrast
+              instead: it stands out from green, yellow and red alike. */}
           <span
-            className="ml-1.5 rounded-sm bg-tie/20 px-1 py-0.5 text-[10px] font-semibold text-tie"
+            className="ml-1.5 rounded-sm bg-foreground/85 px-1 py-0.5 text-[10px] font-semibold text-background no-underline"
             title={`Published: ${cell}. Our record: ${teamLabel(m.ours)}. Reported, not changed.`}
           >
             ours {teamLabel(m.ours)}
@@ -73,7 +95,7 @@ function CellView({ cell, m }: { cell: string | undefined; m: PickMatch }) {
   }
 }
 
-export function MasterListTable({ rows, columns, ourCells, ourCount }: Props) {
+export function MasterListTable({ rows, columns, ourCells, ourCount, results, rowTones }: Props) {
   const [query, setQuery] = useState("");
   const [oursOnly, setOursOnly] = useState(false);
 
@@ -159,12 +181,16 @@ export function MasterListTable({ rows, columns, ourCells, ourCount }: Props) {
             {shown.map((r) => {
               const ours = r.entryId ? ourByEntry.get(r.entryId) : undefined;
               const isOurs = r.entryId !== null;
+              // Won green, lost yellow, two losses the whole row red and
+              // struck (Anthony, 2026-09-10). A row with nothing scored yet
+              // is "clean" and carries no fill at all.
+              const row: RowTone = rowTones[r.no] ?? "clean";
               return (
-                <tr key={r.no} className={cn(isOurs && "bg-primary/5")}>
+                <tr key={r.no} className={cn(isOurs && "bg-primary/5", ROW_CLASS[row])}>
                   <td className="sticky left-0 z-10 border-b border-r border-border/60 bg-surface px-2 py-1 text-right tabular-nums">
                     {r.no}
                   </td>
-                  <td className={cn("border-b border-border/60 px-2 py-1 whitespace-pre", isOurs && "font-medium")}>
+                  <td className={cn("border-b border-border/60 px-2 py-1 whitespace-pre", isOurs && "font-medium", ROW_NAME_CLASS[row])}>
                     {r.names}
                     {isOurs ? (
                       <span className="ml-2 rounded-sm bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
@@ -175,8 +201,20 @@ export function MasterListTable({ rows, columns, ourCells, ourCount }: Props) {
                   {columns.map((col) => {
                     const cell = herCell(r, col);
                     const m = matchPick(cell, ours?.get(col.week));
+                    // The tone comes off the STORED result for the team she
+                    // published, never off her text: a cell that is not a
+                    // team name, and a team whose game is not final, are both
+                    // absent from `results` and get no fill.
+                    const team = herTeam(cell);
+                    const tone = team === null ? "none" : toneOfTeamResult(results[`${col.week}:${team}`]);
                     return (
-                      <td key={col.week} className="border-b border-border/60 px-2 py-1 whitespace-nowrap">
+                      <td
+                        key={col.week}
+                        className={cn(
+                          "border-b border-border/60 px-2 py-1 whitespace-nowrap",
+                          cellPaints(row) && TONE_FILL_CLASS[tone],
+                        )}
+                      >
                         <CellView cell={cell} m={m} />
                       </td>
                     );

@@ -24,10 +24,11 @@ export default async function TeamsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl">Team Availability</h1>
+        <h1 className="text-2xl">Teams</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Which teams each entry still has in hand, across the whole master
-          pool or just our group. Plan against future matchups on the{" "}
+          How many entries picked each team each week, across the whole master
+          pool or just our group, counting only finished games. Plan against
+          future matchups on the{" "}
           <Link href="/schedule" className="text-primary underline-offset-2 hover:underline">
             full 2026 schedule
           </Link>
@@ -37,7 +38,7 @@ export default async function TeamsPage() {
       {entries.length === 0 && pool.entries.length === 0 ? (
         <EmptyState
           title="No entries yet"
-          detail="Per-entry team availability appears here once the roster is seeded."
+          detail="Team pick counts appear here once the roster is seeded."
         />
       ) : (
         <TeamsSource

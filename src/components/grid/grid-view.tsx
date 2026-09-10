@@ -4,7 +4,6 @@ import { useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type {
   EntrySummary,
-  EntryStatus,
   GridCell,
   WeekRow,
 } from "@/lib/data/types";
@@ -29,6 +28,16 @@ import {
   type StandingFilter,
 } from "@/lib/master-list";
 import { formatEtDateTime } from "@/lib/format";
+import {
+  cellPaints,
+  OUT_SWATCH_CLASS,
+  ROW_CLASS,
+  ROW_NAME_CLASS,
+  rowTone,
+  toneOfResult,
+  TONE_CELL_CLASS,
+  TONE_SWATCH_CLASS,
+} from "@/lib/result-colour";
 import {
   Select,
   SelectContent,
@@ -102,14 +111,9 @@ function PoolRowName({
   );
 }
 
-const RESULT_CELL: Record<string, string> = {
-  win: "bg-win/20 text-win border-win/40",
-  loss: "bg-loss/20 text-loss border-loss/40",
-  tie_loss: "bg-tie/20 text-tie border-tie/40",
-  bye: "bg-bye/25 text-foreground/70 border-bye/40",
-  pending: "bg-transparent text-muted-foreground border-border",
-  missed: "text-loss border-loss/40 cell-hatched",
-};
+// A missed week is a loss like any other and takes the loss tone; the hatch
+// is what still says "no pick was made" rather than a colour of its own.
+const MISSED_EXTRA = "cell-hatched";
 
 export function GridView({
   entries,
@@ -385,26 +389,27 @@ export function GridView({
         <p className="text-xs text-muted-foreground">{poolNote}</p>
       ) : null}
 
+      {/* The legend reads off the same map the cells do, so a swatch cannot
+          drift from what it stands for. Yellow is every kind of loss - a tie
+          and a missed week are losses in this pool - and red is reserved for
+          the row that is finished. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-[2px] bg-win/70" /> Win
+          <span className={cn("size-2.5 rounded-[2px]", TONE_SWATCH_CLASS.won)} /> Win
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-[2px] bg-loss/70" /> Loss
+          <span className={cn("size-2.5 rounded-[2px]", TONE_SWATCH_CLASS.lost)} /> Loss, tie or missed
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-[2px] bg-tie/70" /> Tie-loss
+          <span className={cn("size-2.5 rounded-[2px]", TONE_SWATCH_CLASS.bye)} /> Bye
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-[2px] bg-bye/70" /> Bye
+          <span className={cn("size-2.5 rounded-[2px]", TONE_SWATCH_CLASS.none)} />{" "}
+          No result yet
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-[2px] border border-border" />{" "}
-          Pending
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-[2px] cell-hatched border border-loss/40" />{" "}
-          Missed
+          <span className={cn("size-2.5 rounded-[2px]", OUT_SWATCH_CLASS)} />{" "}
+          <span className="line-through">Out</span>
         </span>
         <span className="flex items-center gap-1.5" title="A locked pick is not in the page data at all until its game starts">
           <span aria-hidden>🔒</span> Picks unlock when each game kicks off
@@ -439,13 +444,18 @@ export function GridView({
             </tr>
           </thead>
           <tbody>
-            {visible.map((e) => (
-              <tr key={e.id} className="group">
+            {visible.map((e) => {
+              // Anthony, 2026-09-10: a loss is yellow and reaches the entry
+              // name; two losses turn the WHOLE row red and strike it, and its
+              // cells stop painting their own tone so the row reads as one
+              // finished thing.
+              const row = rowTone(e);
+              return (
+              <tr key={e.id} className={cn("group", ROW_CLASS[row])}>
                 <td
                   className={cn(
                     "sticky left-0 z-10 max-w-[9.5rem] border-b border-r border-border bg-surface px-3 sm:max-w-[12rem]",
                     "h-11",
-                    e.status === "eliminated" && "opacity-55",
                   )}
                 >
                   {/* A row of her sheet that is not one of ours has no entry
@@ -454,7 +464,7 @@ export function GridView({
                       404. Rows that ARE ours carry their real id and link. */}
                   <PoolRowName entry={e}>
                     <StatusDot status={e.status} className="shrink-0" />
-                    <span className="truncate font-medium">{e.entryName}</span>
+                    <span className={cn("truncate font-medium", ROW_NAME_CLASS[row])}>{e.entryName}</span>
                     {e.status === "eliminated" ? (
                       <span className="ml-auto shrink-0 rounded bg-loss/15 px-1 text-[10px] font-semibold text-loss">
                         OUT{elimWeekById.get(e.id) ? ` · WK ${elimWeekById.get(e.id)}` : ""}
@@ -507,8 +517,10 @@ export function GridView({
                       <span
                         className={cn(
                           "flex h-full min-h-10 w-full flex-col items-center justify-center rounded-sm border text-xs font-semibold transition-colors duration-150 ease-out",
-                          RESULT_CELL[isBye ? "bye" : resultKey],
-                          killing && "bg-loss/40 text-white ring-1 ring-loss",
+                          cellPaints(row) && TONE_CELL_CLASS[isBye ? "bye" : toneOfResult(cell.result)],
+                          !cellPaints(row) && "border-loss/30",
+                          resultKey === "missed" && MISSED_EXTRA,
+                          killing && "bg-loss/40 text-white ring-1 ring-loss no-underline",
                         )}
                         title={killing ? "The killing pick - this loss ended the entry" : undefined}
                       >
@@ -524,7 +536,8 @@ export function GridView({
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
             {visible.length === 0 ? (
               <tr>
                 <td

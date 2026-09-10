@@ -74,8 +74,11 @@ describe("team logos", () => {
   });
 
   it("is what the Teams page renders each team with", () => {
+    // One place, not two: the per-entry availability grid was removed on
+    // 2026-09-10 with the entry filter, so the week table's row label is the
+    // only team name the page renders.
     const src = readFileSync(path.join(process.cwd(), "src/components/teams/teams-client.tsx"), "utf8");
     expect(src).toContain('from "@/components/team-label"');
-    expect((src.match(/<TeamLabel abbr=\{t\.abbr\}/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((src.match(/<TeamLabel abbr=\{t\.abbr\}/g) ?? []).length).toBe(1);
   });
 });
