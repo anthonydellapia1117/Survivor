@@ -42,7 +42,9 @@ describe("lynne:roster wiring", () => {
   it("reads the prior sheet a page at a time, never in one capped range", () => {
     const c = code(CLI);
     expect(c).not.toMatch(/\.range\(\s*\d+\s*,\s*\d+\s*\)/);
-    expect(c).toMatch(/fetchAllPages<[^>]*>\(async \(from, to\)/);
+    // Non-greedy across the type argument, not [^>]*: the row type now carries
+    // her cells as Record<string, string>, whose own > ended the old match.
+    expect(c).toMatch(/fetchAllPages<[\s\S]*?>\(async \(from, to\)/);
     expect(c).toMatch(/\.range\(from, to\)/);
   });
 
