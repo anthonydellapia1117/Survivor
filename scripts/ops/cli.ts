@@ -1,5 +1,14 @@
 // npm run ops -- <job> [--dry-run]        run one job now
-// npm run ops -- tick [--dry-run]         run every job whose schedule fell in the last window
+// npm run ops -- hourly [--dry-run]       every job whose schedule fell in the last window
+// npm run ops -- tick [--dry-run]         the old name for hourly, still accepted
+// npm run ops -- daily                    the six reporters, once a day
+//
+// TWO ENTRY POINTS, and the split is about what is hour-sensitive. `hourly`
+// carries the picks intake (a reply at 1:15 has to be recorded before a 2:00
+// deadline) and the two boundary-tied sending jobs. `daily` carries the six
+// reporters that replaced the claude.ai Routines of docs/ROUTINES.md sections
+// 3-7: reporting is not hour-sensitive, and running it once a day is the
+// difference between a report someone reads and twenty-four nobody does.
 //
 // Operations for the Survivor sub-pool, from the repo, driven by
 // scripts/ops/config.json (Anthony, 2026-09-09). One entry point per job:
@@ -15,8 +24,10 @@
 // that switch is off this dispatcher does not start a sending job at all: it
 // prints the one line the Routine reports.
 //
-// The claude.ai Routine that drives this is one line: run `npm run ops --
-// tick` and report the output. Nothing else.
+// The claude.ai Routines that drive this are one line each: "Survivor Sweep"
+// runs `npm run ops -- hourly`, "Survivor Daily" runs `npm run ops -- daily`,
+// and both report the output. Nothing else. Two Routines, because those are
+// the two cadences the work actually has.
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -32,21 +43,26 @@ import { JOB_NAMES, loadOpsConfig, slotBreaches, type JobConfig, type JobName } 
 import { tempSheetName } from "./lib/attachment";
 import { dueInWindow } from "./lib/cron";
 import { latestLockedWeek } from "./lib/weeks";
+import { REPORTERS, runDaily } from "./daily";
 
 interface Args {
-  target: JobName | "tick";
+  target: JobName | "hourly" | "daily";
   dryRun: boolean;
 }
+
+/** `tick` is what `hourly` was called until 2026-09-10; the old name still runs. */
+const TICK_ALIAS = "tick";
 
 function parseArgs(argv: string[]): Args {
   let target: Args["target"] | null = null;
   let dryRun = false;
   for (const x of argv) {
     if (x === "--dry-run") dryRun = true;
-    else if (x === "tick" || (JOB_NAMES as readonly string[]).includes(x)) target = x as Args["target"];
-    else throw new Error(`Unknown argument ${x}. Jobs: ${JOB_NAMES.join(", ")}, or tick.`);
+    else if (x === TICK_ALIAS) target = "hourly";
+    else if (x === "hourly" || x === "daily" || (JOB_NAMES as readonly string[]).includes(x)) target = x as Args["target"];
+    else throw new Error(`Unknown argument ${x}. Jobs: ${JOB_NAMES.join(", ")}, or hourly, or daily.`);
   }
-  if (!target) throw new Error(`Name a job (${JOB_NAMES.join(", ")}) or tick.`);
+  if (!target) throw new Error(`Name a job (${JOB_NAMES.join(", ")}), or hourly, or daily.`);
   return { target, dryRun };
 }
 
@@ -123,6 +139,41 @@ async function runJob(job: JobName, cfg: JobConfig, dryRun: boolean): Promise<Jo
   return { job, kind: "ran", detail: line, exitCode: code };
 }
 
+/**
+ * The six reporters against one read of the roster.
+ *
+ * Gmail is optional here and its absence is REPORTED rather than swallowed:
+ * without it the sheet watch cannot see whether a newer sheet of hers is
+ * waiting, and a run that quietly said nothing would read as "nothing is
+ * waiting" (ops issue #40, the same shape).
+ */
+async function runDailyReport(now: Date, dryRun: boolean): Promise<void> {
+  if (dryRun) {
+    console.log(`daily at ${now.toISOString()}: would run ${REPORTERS.map((r) => r.name).join(", ")}. Nothing read, nothing written.`);
+    return;
+  }
+  const { client } = await adminClient();
+  let gmail: ReturnType<typeof gmailClient> | null = null;
+  try {
+    gmail = gmailClient();
+  } catch (e: unknown) {
+    console.log(`daily: Gmail is not configured for this run (${e instanceof Error ? e.message : String(e)}); the sheet watch will say so.`);
+  }
+  const result = await runDaily({ client, gmail, now });
+  for (const line of result.lines) console.log(line);
+  const summary = result.outcomes.map((o) => o.summary).join("; ");
+  if (result.failed > 0) {
+    await notify(needsAnthonyLine("ops daily", "a reporter failure", summary), { tags: "warning" });
+    process.exitCode = 1;
+    return;
+  }
+  if (result.needsAnthony > 0) {
+    await notify(needsAnthonyLine("ops daily", "items to decide", summary), { tags: "warning" });
+    return;
+  }
+  await notify(finishedLine("ops daily", summary));
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const config = loadOpsConfig();
@@ -133,15 +184,20 @@ async function main(): Promise<void> {
   if (breaches.length) throw new Error(`scripts/ops/config.json: a job would lose a run to the tick\n  ${breaches.join("\n  ")}`);
   const now = new Date();
 
+  if (args.target === "daily") {
+    await runDailyReport(now, args.dryRun);
+    return;
+  }
+
   const targets: JobName[] =
-    args.target === "tick"
+    args.target === "hourly"
       ? JOB_NAMES.filter((j) => dueInWindow(config.jobs[j].schedule, now, config.tickWindowMinutes))
       : [args.target];
 
-  if (args.target === "tick") {
-    console.log(`tick at ${now.toISOString()}, window ${config.tickWindowMinutes} min: ${targets.length ? targets.join(", ") : "nothing due"}`);
+  if (args.target === "hourly") {
+    console.log(`hourly at ${now.toISOString()}, window ${config.tickWindowMinutes} min: ${targets.length ? targets.join(", ") : "nothing due"}`);
     if (targets.length === 0) {
-      await notify(finishedLine("ops", "tick: nothing due"));
+      await notify(finishedLine("ops", "hourly: nothing due"));
       return;
     }
   }

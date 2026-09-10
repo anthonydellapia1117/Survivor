@@ -14,9 +14,13 @@ export const ADMIN_MAILBOX = "anthonydellapia@gmail.com";
  * whole-roster message (the week reminder, the distribute draft): every
  * owner address and every player_email on a live entry, lowercased, once
  * each, Anthony's own included. Read from scripts/ops/config.json
- * (expectedRosterAddresses), set by Anthony on 2026-09-09 at 39. A derived
- * count that is not this number stops the run before any draft or send; a
- * range would let a wrong count through, which is what happened once in
- * another pool. Changing it is a reviewed change to the config, never a flag.
+ * (expectedRosterAddresses), set by Anthony on 2026-09-09 at 39 and moved to
+ * 40 on 2026-09-10 when Alexa became the player on AAA #3, #6 and #9: her
+ * address is a player_email like any other, so the derived set carries it.
+ * A derived count that is not this number stops the run before any draft or
+ * send; a range would let a wrong count through, which is what happened once
+ * in another pool. Changing it is a reviewed change to the config, never a
+ * flag - and the change is only ever made to MATCH a roster that moved, never
+ * to make a failing run pass.
  */
 export const EXPECTED_ROSTER_ADDRESSES = loadOpsConfig().expectedRosterAddresses;

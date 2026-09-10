@@ -1,8 +1,9 @@
 -- Section 3 locked rules that live in the database, each asserted.
 -- (Pricing, remittance, free entries, naming are covered in 01 + vitest.)
 
--- Deadline windows: EVERY week 1-18 carries a Wednesday-noon early window
--- and a Friday-noon late window derived from the verified schedule, with
+-- Deadline windows: EVERY week 1-18 carries a Wednesday 2:00 PM ET early
+-- window and a Friday 2:00 PM ET late window derived from the verified
+-- schedule, with
 -- deadline_at kept as the late (full-lock) boundary. Week 1 is in the loop
 -- deliberately -- it used to be excluded, seeded early = late = Tuesday
 -- 2026-09-08 as a special case, and there is no such rule. Its Tuesday
@@ -14,11 +15,11 @@ declare
   r record;
 begin
   for r in select * from weeks where week between 1 and 18 loop
-    if to_char(r.early_deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Wed 12:00' then
-      raise exception 'week % early deadline must be Wednesday noon ET, got %', r.week, r.early_deadline_at;
+    if to_char(r.early_deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Wed 14:00' then
+      raise exception 'week % early deadline must be Wednesday 2:00 PM ET, got %', r.week, r.early_deadline_at;
     end if;
-    if to_char(r.late_deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Fri 12:00' then
-      raise exception 'week % late deadline must be Friday noon ET, got %', r.week, r.late_deadline_at;
+    if to_char(r.late_deadline_at at time zone 'America/New_York', 'Dy HH24:MI') <> 'Fri 14:00' then
+      raise exception 'week % late deadline must be Friday 2:00 PM ET, got %', r.week, r.late_deadline_at;
     end if;
     if r.late_deadline_at <> r.early_deadline_at + interval '2 days' then
       raise exception 'week % windows are not the same game week', r.week;

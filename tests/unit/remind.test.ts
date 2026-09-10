@@ -65,7 +65,7 @@ describe("who the reminder goes to", () => {
   });
 
   it("the expected count is the one Anthony set", () => {
-    expect(EXPECTED_ROSTER_ADDRESSES).toBe(39);
+    expect(EXPECTED_ROSTER_ADDRESSES).toBe(40);
   });
 });
 

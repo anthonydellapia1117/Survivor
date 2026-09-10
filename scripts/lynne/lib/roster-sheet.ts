@@ -162,6 +162,78 @@ export function diffRoster(prev: { no: number; names: string }[], next: { no: nu
   return { added: added.sort(byNo), removed: removed.sort(byNo), renamed: renamed.sort(byNo), unchanged };
 }
 
+/** The week a header names, or null. Mirrors lynne_cell_week() in SQL and the pattern in v_master_list. */
+export function cellWeek(header: string): number | null {
+  const m = /^\s*(?:week|wk)\s*(\d{1,2})\s*$/i.exec(header);
+  return m ? Number(m[1]) : null;
+}
+
+export interface WeekCellChange {
+  no: number;
+  week: number;
+  before: string | null;
+  after: string | null;
+}
+
+export interface WeekCellDiff {
+  /** A week she had not filled for this NO. and now has. */
+  added: WeekCellChange[];
+  /** A week she had filled and now leaves blank - reported, never acted on. */
+  cleared: WeekCellChange[];
+  /** A week whose value changed. Her correction, and the line worth reading. */
+  changed: WeekCellChange[];
+  unchanged: number;
+}
+
+/**
+ * Her week cells, new sheet against prior, by NO. and week.
+ *
+ * Printed BEFORE anything is written, because a sheet of hers is loaded once
+ * and never rewritten: if a week's column came back different, that is the
+ * moment to look. Comparison is case-insensitive on a trimmed copy -- she
+ * types "Seattle" and "SEATTLE" on different weeks and neither is a change --
+ * while the value stored stays exactly what she wrote.
+ *
+ * A NO. only the prior sheet carries produces nothing here. Her sheet shrinks
+ * as she deletes eliminated entries, and CLAUDE.md is explicit that a missing
+ * entry is not a data error; the row diff already reports it as removed.
+ */
+export function diffWeekCells(
+  prev: { no: number; cells: Record<string, string> }[],
+  next: { no: number; cells: Record<string, string> }[],
+): WeekCellDiff {
+  const byWeek = (cells: Record<string, string>): Map<number, string> => {
+    const out = new Map<number, string>();
+    for (const [k, v] of Object.entries(cells)) {
+      const w = cellWeek(k);
+      if (w !== null && v.trim() !== "") out.set(w, v);
+    }
+    return out;
+  };
+  const before = new Map(prev.map((r) => [r.no, byWeek(r.cells)]));
+  const added: WeekCellChange[] = [];
+  const cleared: WeekCellChange[] = [];
+  const changed: WeekCellChange[] = [];
+  let unchanged = 0;
+  for (const r of next) {
+    const b = before.get(r.no);
+    if (b === undefined) continue; // a NO. she has just added; the row diff has it
+    const a = byWeek(r.cells);
+    for (const w of new Set([...b.keys(), ...a.keys()])) {
+      const bv = b.get(w) ?? null;
+      const av = a.get(w) ?? null;
+      if (bv === null && av !== null) added.push({ no: r.no, week: w, before: null, after: av });
+      else if (bv !== null && av === null) cleared.push({ no: r.no, week: w, before: bv, after: null });
+      else if (bv !== null && av !== null) {
+        if (bv.trim().toLowerCase() === av.trim().toLowerCase()) unchanged++;
+        else changed.push({ no: r.no, week: w, before: bv, after: av });
+      }
+    }
+  }
+  const order = (x: WeekCellChange, y: WeekCellChange) => x.no - y.no || x.week - y.week;
+  return { added: added.sort(order), cleared: cleared.sort(order), changed: changed.sort(order), unchanged };
+}
+
 /** The rows the RPC takes: no, names verbatim, row, cells. */
 export function rowsPayload(rows: RosterRow[]): { no: number; names: string; row: number; cells: Record<string, string> }[] {
   return rows.map((r) => ({ no: r.no, names: r.names, row: r.row, cells: r.cells }));

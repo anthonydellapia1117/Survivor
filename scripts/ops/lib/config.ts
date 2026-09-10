@@ -34,6 +34,18 @@ export interface OpsConfig {
    * observed, and the validator below refuses a config where one is.
    */
   tickSchedule: string;
+  /**
+   * The cron the "Survivor Daily" Routine fires on, UTC: `npm run ops --
+   * daily`, the six reporters. Checked in for the same reason tickSchedule is
+   * - a schedule that lives only in a Routine's UI is a setting nobody can
+   * review, and docs/ROUTINES.md would drift from what actually runs.
+   *
+   * It is deliberately NOT compared against the jobs' schedules the way
+   * tickSchedule is: the reporters have no slots of their own to lose. They
+   * read the whole roster on every run and report what they find, so a daily
+   * run misses nothing whenever it lands.
+   */
+  dailySchedule: string;
   expectedRosterAddresses: number;
   reminderLeadHours: number;
   sweepSubjectTerms: string[];
@@ -68,6 +80,13 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
   if (!Number.isInteger(c.tickWindowMinutes) || (c.tickWindowMinutes as number) < 1 || (c.tickWindowMinutes as number) > 1440) fail("tickWindowMinutes must be 1-1440");
   if (typeof c.tickSchedule !== "string" || c.tickSchedule.trim().split(/\s+/).length !== 5) fail("tickSchedule must be 5 cron fields");
   checkCron("tickSchedule", () => parseCron(c.tickSchedule as string));
+  if (typeof c.dailySchedule !== "string" || c.dailySchedule.trim().split(/\s+/).length !== 5) fail("dailySchedule must be 5 cron fields");
+  checkCron("dailySchedule", () => parseCron(c.dailySchedule as string));
+  // Once a day, not more: the reporters are for a person to read, and a
+  // schedule naming several hours would send several identical reports.
+  if (parseCron(c.dailySchedule as string).hour.size !== 1 || parseCron(c.dailySchedule as string).minute.size !== 1) {
+    fail("dailySchedule must name one minute of one hour - the daily report is read by a person");
+  }
   if (!Number.isInteger(c.expectedRosterAddresses) || (c.expectedRosterAddresses as number) < 1) fail("expectedRosterAddresses must be a positive integer");
   if (!Number.isInteger(c.reminderLeadHours) || (c.reminderLeadHours as number) < 1) fail("reminderLeadHours must be a positive integer");
   if (!Array.isArray(c.sweepSubjectTerms) || c.sweepSubjectTerms.length === 0 || !c.sweepSubjectTerms.every((t) => typeof t === "string" && t.trim())) fail("sweepSubjectTerms must be a non-empty list of words");

@@ -12,6 +12,7 @@
     "picks": "tsx scripts/picks/cli.ts",
     "lynne": "tsx scripts/lynne/cli.ts",
     "lynne:roster": "tsx scripts/lynne/roster.ts",
+    "lynne:picks": "tsx scripts/lynne/picks-email.ts",
     "gmail:auth": "tsx scripts/picks/gmail-auth.ts",
     "chase": "tsx scripts/chase/cli.ts",
     "results": "tsx scripts/results/cli.ts",
