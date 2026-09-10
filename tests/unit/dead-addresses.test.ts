@@ -1,7 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import type { gmail_v1 } from "googleapis";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+// send.ts writes its claim row through recordAudit and reads prior sends
+// through loadAuditByAction; both are faked so the guard is exercised without
+// a database. roster.ts imports db.ts for TYPES only, so this mock does not
+// reach the derivation under test.
+vi.mock("../../scripts/lib/db", () => ({
+  recordAudit: vi.fn(),
+  loadAuditByAction: vi.fn(),
+}));
+
+import { loadAuditByAction, recordAudit } from "../../scripts/lib/db";
 import type { EntryRow, OwnerRow } from "../../scripts/lib/db";
+import { createDraft, createDraftReply, encodeRaw } from "../../scripts/lib/gmail";
+import { sendAllowlisted, sendWeekReminder, type SendRequest, type WeekReminderRequest } from "../../scripts/lib/send";
 import {
   assertNoRetiredAddresses,
   isRetiredAddress,
@@ -163,5 +178,171 @@ describe("the live roster derivation in scripts/remind/lib/recipients.ts", () =>
     expect(derived).toContain(DEAD);
     expect(retiredAddressesIn(derived)).toEqual([DEAD]);
     expect(() => assertNoRetiredAddresses(derived, "week reminder")).toThrow(/ernie706@gmail\.com/);
+  });
+});
+
+// ------------------------------------------------- the send path itself
+//
+// Everything above proves the GUARD works. None of it proves the guard is
+// CALLED, which is the whole of the finding Copilot raised on #54: the derived
+// list was clean, the assert existed, and nothing on the way to Gmail ran it.
+// These exercise the real functions, with a poisoned list, and check three
+// things every time - it throws, Gmail is never called, and NO audit row is
+// written. The last one matters most: a claim row written before the throw
+// would consume the slot or the recipient's lock day for good, and the
+// reminder that never went would never be sent by any later run either.
+
+describe("the send path refuses a retired address", () => {
+  const audit = vi.mocked(recordAudit);
+  const loadAudit = vi.mocked(loadAuditByAction);
+  const client = {} as SupabaseClient;
+  const original = process.env.REMINDER_AUTOSEND;
+
+  function fakeGmail() {
+    const send = vi.fn(async () => ({ data: { id: "gmail-msg-1" } }));
+    const create = vi.fn(async () => ({ data: { id: "draft-1", message: { id: "m1" } } }));
+    return {
+      gmail: { users: { messages: { send }, drafts: { create } } } as unknown as gmail_v1.Gmail,
+      send,
+      create,
+    };
+  }
+
+  const weekReq: WeekReminderRequest = {
+    template: "week_reminder",
+    to: "anthonydellapia@gmail.com",
+    bcc: ["chas.flaster@gmail.com", LIVE, "jmvas731@msn.com"],
+    subject: "Survivor Week 1 - picks due tomorrow at 2 PM",
+    body: "Week 1 is here.",
+    week: 1,
+    boundary: "late",
+    slot: "thu",
+    deadlineIso: "2026-09-11T18:00:00+00:00",
+    expectedRecipients: 3,
+    actor: "anthonydellapia@gmail.com",
+  };
+
+  const pickReq: SendRequest = {
+    template: "pick_reminder",
+    to: "chas.flaster@gmail.com",
+    subject: "Survivor - Week 1 picks needed",
+    body: "Chas,",
+    week: 1,
+    deadlineIso: "2026-09-11T18:00:00+00:00",
+    entryNames: ["Chas Flaster #1"],
+    actor: "anthonydellapia@gmail.com",
+  };
+
+  beforeEach(() => {
+    process.env.REMINDER_AUTOSEND = "true";
+    audit.mockReset();
+    loadAudit.mockReset();
+    loadAudit.mockResolvedValue([]);
+    let n = 0;
+    audit.mockImplementation(async () => ++n);
+  });
+  afterEach(() => {
+    if (original === undefined) delete process.env.REMINDER_AUTOSEND;
+    else process.env.REMINDER_AUTOSEND = original;
+  });
+
+  it("sendWeekReminder throws on a poisoned Bcc, sends nothing and claims nothing", async () => {
+    const { gmail, send } = fakeGmail();
+    const poisoned = { ...weekReq, bcc: [...weekReq.bcc, DEAD], expectedRecipients: 4 };
+    await expect(sendWeekReminder(gmail, client, poisoned)).rejects.toThrow(RetiredAddressError);
+    await expect(sendWeekReminder(gmail, client, poisoned)).rejects.toThrow(/ernie706@gmail\.com/);
+    expect(send).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("sendWeekReminder throws even when the count gate is satisfied", async () => {
+    // The list is EXACTLY the expected length and still wrong: the dead
+    // address replaced a live one, which is what a mistyped roster row does.
+    const { gmail, send } = fakeGmail();
+    const swapped = { ...weekReq, bcc: ["chas.flaster@gmail.com", DEAD, "jmvas731@msn.com"] };
+    expect(swapped.bcc.length).toBe(swapped.expectedRecipients);
+    await expect(sendWeekReminder(gmail, client, swapped)).rejects.toThrow(RetiredAddressError);
+    expect(send).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("sendWeekReminder throws when the dead address is the To", async () => {
+    const { gmail, send } = fakeGmail();
+    await expect(sendWeekReminder(gmail, client, { ...weekReq, to: DEAD })).rejects.toThrow(RetiredAddressError);
+    expect(send).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("sendWeekReminder still sends a clean list", async () => {
+    const { gmail, send } = fakeGmail();
+    const out = await sendWeekReminder(gmail, client, weekReq);
+    expect(out.kind).toBe("sent");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("sendAllowlisted throws on a retired recipient, sends nothing and claims nothing", async () => {
+    const { gmail, send } = fakeGmail();
+    await expect(sendAllowlisted(gmail, client, [], { ...pickReq, to: "Ernie706@Gmail.com" })).rejects.toThrow(RetiredAddressError);
+    expect(send).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  // The backstop. send.ts checks first and fails with better words; these
+  // prove a caller that never went near send.ts cannot get a message out
+  // either - which is the exact shape of the hand-built list that bounced.
+  it("encodeRaw refuses to build a message carrying a retired address", () => {
+    expect(() => encodeRaw({ to: [DEAD], subject: "Survivor", body: "x" })).toThrow(RetiredAddressError);
+    expect(() => encodeRaw({ to: ["a@b.com"], bcc: [LIVE, "  ERNIE706@gmail.com "], subject: "Survivor", body: "x" })).toThrow(RetiredAddressError);
+    expect(() => encodeRaw({ to: ["a@b.com"], bcc: [LIVE], subject: "Survivor", body: "x" })).not.toThrow();
+  });
+
+  it("createDraft refuses one too - a Bcc draft is one click from a send", async () => {
+    const { gmail, create } = fakeGmail();
+    await expect(createDraft(gmail, { to: ["a@b.com"], bcc: [DEAD], subject: "Survivor", body: "x" })).rejects.toThrow(RetiredAddressError);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("createDraftReply refuses one, and it builds its own MIME so it needs its own check", async () => {
+    const { gmail, create } = fakeGmail();
+    const tail = { threadId: "t1", messageIdHeader: "<m@x>", references: "", from: DEAD, subject: "Survivor" };
+    await expect(
+      createDraftReply(gmail, { tail: tail as never, to: DEAD, subject: "Survivor - re", body: "x" }),
+    ).rejects.toThrow(RetiredAddressError);
+    expect(create).not.toHaveBeenCalled();
+  });
+});
+
+// ------------------------------------------- the command, in the right order
+//
+// The count gate and the retired check answer different questions, and the
+// order matters. Counting cannot see a SWAP: a dead address typed onto an
+// owner replaces that owner's live one, so the derived list is still exactly
+// 40 and the count gate passes while the person it was corrected for hears
+// nothing. So the read runs first, and a source scan is what holds it there -
+// there is no way to unit-test a CLI's statement order from the outside.
+
+describe("scripts/remind/cli.ts wires the guard in ahead of the gate", () => {
+  const src = readFileSync(path.join(__dirname, "../../scripts/remind/cli.ts"), "utf8");
+
+  it("calls assertNoRetiredAddresses on the derived Bcc", () => {
+    expect(src).toContain('assertNoRetiredAddresses(bcc, "week reminder Bcc")');
+  });
+
+  it("calls it BEFORE the count gate, and before anything is drafted or sent", () => {
+    const guard = src.indexOf("assertNoRetiredAddresses(bcc");
+    const gate = src.indexOf("countGate(EXPECTED_ROSTER_ADDRESSES");
+    const send = src.indexOf("sendWeekReminder(");
+    const draft = src.indexOf("await createDraft(");
+    for (const [what, at] of [["count gate", gate], ["send", send], ["draft", draft]] as const) {
+      expect(at, `${what} not found in the CLI`).toBeGreaterThan(-1);
+      expect(guard, `the guard must run before the ${what}`).toBeLessThan(at);
+    }
+  });
+
+  it("derives the list rather than naming anyone: no address literal in the CLI", () => {
+    // The same rule recipients.ts is held to. A literal here is the hand-built
+    // list coming back one file over.
+    const literals = src.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? [];
+    expect(literals).toEqual([]);
   });
 });

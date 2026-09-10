@@ -35,6 +35,7 @@ export const NOT_THE_APP = "You do not make picks in the app. It is there to loo
 export const SIGNOFF = "- Anthony";
 
 const ET_WEEKDAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long" });
+const ET_LONG_DATE = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long", month: "long", day: "numeric" });
 const ET_CLOCK = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true });
 
 function at(iso: string): number {
@@ -54,6 +55,27 @@ export function clockTime(iso: string): string {
   const p = Object.fromEntries(ET_CLOCK.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
   if (p.hour === "12" && p.minute === "00" && p.dayPeriod === "PM") return "noon";
   return p.minute === "00" ? `${p.hour} ${p.dayPeriod}` : `${p.hour}:${p.minute} ${p.dayPeriod}`;
+}
+
+/** "Friday September 11": the deadline's own date in ET, no comma after the day. */
+export function longDate(iso: string): string {
+  const p = Object.fromEntries(ET_LONG_DATE.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  return `${p.weekday} ${p.month} ${p.day}`;
+}
+
+/**
+ * When a deadline falls, as a sentence says it: "tomorrow, Friday September 11,"
+ * on the two days a relative word is clearer than a date, and the plain date
+ * otherwise. The relative word alone is what this used to say, and it is what
+ * a reminder read at the wrong hour gets wrong - "tomorrow" in a message
+ * somebody opens on Friday morning points at Saturday. The date is derived
+ * from the stored boundary like everything else here; no day name is written
+ * down anywhere.
+ */
+export function whenPhrase(deadlineIso: string, now: Date): string {
+  const rel = relativeDay(deadlineIso, now);
+  const date = longDate(deadlineIso);
+  return rel === "today" || rel === "tomorrow" ? `${rel}, ${date},` : date;
 }
 
 /** "A and B"; three or more read "A, B and C". */
@@ -83,7 +105,7 @@ export function deadlineSentences(tiers: Tier[], bounds: WeekBounds, games: Game
     if (t.teams.length === 0 || at(t.deadlineIso) >= late) continue;
     const many = t.teams.length > 2;
     const what = t.gameDay ? `${t.gameDay}'s game${many ? "s" : ""}` : joinOr(t.teams.map(fullTeamName));
-    out.push(`${what} close${many || !t.gameDay ? "" : "s"} ${relativeDay(t.deadlineIso, now)} at ${clockTime(t.deadlineIso)} ET.`);
+    out.push(`${what} close${many || !t.gameDay ? "" : "s"} ${whenPhrase(t.deadlineIso, now)} at ${clockTime(t.deadlineIso)} ET.`);
   }
   if (now.getTime() < late) {
     const lateTier = tiers.find((t) => at(t.deadlineIso) === late);
@@ -91,19 +113,36 @@ export function deadlineSentences(tiers: Tier[], bounds: WeekBounds, games: Game
       ? DAY_ORDER.filter((d) => games.some((g) => g.week === bounds.week && g.dayOfWeek === d && (lateTier.teams.includes(g.homeTeam) || lateTier.teams.includes(g.awayTeam))))
       : [];
     const what = days.length ? `${joinAnd(days)} games close` : "Everything else closes";
-    out.push(`${what} ${relativeDay(bounds.lateDeadlineAt, now)} at ${clockTime(bounds.lateDeadlineAt)} ET.`);
+    out.push(`${what} ${whenPhrase(bounds.lateDeadlineAt, now)} at ${clockTime(bounds.lateDeadlineAt)} ET.`);
   }
   return out;
 }
 
-export function reminderBody(b: ReminderTarget, bounds: WeekBounds, games: GameLite[], now: Date): string {
+/**
+ * The numbers a reminder states, derived on the run and never stored. There is
+ * one today; it is an object rather than another positional argument so the
+ * next fact cannot be added as an optional one that silently defaults to off.
+ */
+export interface ReminderFacts {
+  /** Live entries with no current pick for this week. 0 prints no line. */
+  outstanding: number;
+}
+
+export function reminderBody(b: ReminderTarget, bounds: WeekBounds, games: GameLite[], now: Date, facts: ReminderFacts): string {
   const tiers = openTiers(games, bounds, now);
   const deadlines = deadlineSentences(tiers, bounds, games, now).join(" ");
+  // Naming the number is the nudge: somebody who has picked reads it as news,
+  // somebody who has not reads it as a crowd they are standing in. It is
+  // counted on the run, so it is right or it is absent - never a stale figure.
+  const outstanding = facts.outstanding > 0
+    ? [`${facts.outstanding} ${facts.outstanding === 1 ? "entry" : "entries"} still ${facts.outstanding === 1 ? "has" : "have"} no Week ${b.week} pick.`, ""]
+    : [];
   return [
     b.slot === "fri" ? `Week ${b.week} - ${FINAL_CALL}.` : `Week ${b.week} is here.`,
     "",
     `${deadlines} No pick in by the deadline and you are out.`,
     "",
+    ...outstanding,
     `Reply to this email with your team - reply to me, not reply all. Or text ${CONTACT_PHONE}. Email is better.`,
     "",
     "More than one entry means one team for each.",

@@ -141,6 +141,7 @@ const weekReq: WeekReminderRequest = {
   body: "Week 1 is here.\n",
   week: 1,
   boundary: "early",
+  slot: "wed",
   deadlineIso: "2026-09-09T18:00:00+00:00",
   expectedRecipients: 3,
   actor: "anthonydellapia@gmail.com",
@@ -183,20 +184,21 @@ describe("sendWeekReminder", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("sends a boundary once: a claim or a sent row on its key skips it", async () => {
+  it("sends a slot once: a claim or a sent row on its key skips it", async () => {
     const { gmail, send } = fakeGmail();
     loadAudit.mockImplementation(async (_c, action) =>
       action === WEEK_REMINDER_CLAIM_ACTION
-        ? [{ id: 9, at: "2026-09-09T12:00:00Z", actor: "a", action, target_id: "week:1:early", after: { boundary_key: "week:1:early" } }]
+        ? [{ id: 9, at: "2026-09-09T12:00:00Z", actor: "a", action, target_id: "week:1:wed", after: { boundary_key: "week:1:wed" } }]
         : [],
     );
     const out = await sendWeekReminder(gmail, client, weekReq);
-    expect(out).toMatchObject({ kind: "already_sent", key: "week:1:early" });
+    expect(out).toMatchObject({ kind: "already_sent", key: "week:1:wed" });
     expect(send).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();
-    // A different boundary of the same week is its own send.
-    const late = await sendWeekReminder(gmail, client, { ...weekReq, boundary: "late" });
-    expect(late.kind).toBe("sent");
+    // A different SLOT of the same week is its own send - and the boundary it
+    // names is not what makes it one, which is why thu and fri both go.
+    const thu = await sendWeekReminder(gmail, client, { ...weekReq, slot: "thu", boundary: "late" });
+    expect(thu).toMatchObject({ kind: "sent", key: "week:1:thu" });
   });
 
   it("writes the claim before the Gmail call and the sent row with the message id and the Bcc after it", async () => {
@@ -212,13 +214,13 @@ describe("sendWeekReminder", () => {
     });
     const out = await sendWeekReminder(gmail, client, weekReq);
     expect(order).toEqual([WEEK_REMINDER_CLAIM_ACTION, "gmail", WEEK_REMINDER_SENT_ACTION]);
-    expect(out).toEqual({ kind: "sent", messageId: "gmail-msg-7", auditId: 3, key: "week:1:early" });
+    expect(out).toEqual({ kind: "sent", messageId: "gmail-msg-7", auditId: 3, key: "week:1:wed" });
     const claim = audit.mock.calls[0][1];
-    expect(claim.targetId).toBe("week:1:early");
-    expect(claim.after).toMatchObject({ boundary_key: "week:1:early", recipient_count: 3, recipients: ["a@example.com", "b@example.com", "c@example.com"] });
+    expect(claim.targetId).toBe("week:1:wed");
+    expect(claim.after).toMatchObject({ boundary_key: "week:1:wed", recipient_count: 3, recipients: ["a@example.com", "b@example.com", "c@example.com"] });
     const sentRow = audit.mock.calls[1][1];
     expect(sentRow.targetId).toBe("gmail-msg-7");
-    expect(sentRow.after).toMatchObject({ boundary_key: "week:1:early", message_id: "gmail-msg-7", week: 1, boundary: "early", template: "week_reminder" });
+    expect(sentRow.after).toMatchObject({ boundary_key: "week:1:wed", message_id: "gmail-msg-7", week: 1, boundary: "early", template: "week_reminder" });
     // The raw message carries To and every Bcc, lowercased.
     const call = (send.mock.calls as unknown as [{ requestBody: { raw: string } }][])[0][0];
     const raw = Buffer.from(call.requestBody.raw, "base64url").toString("utf8");

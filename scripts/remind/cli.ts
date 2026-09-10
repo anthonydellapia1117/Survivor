@@ -16,12 +16,13 @@
 //   npm run remind -- --send --yes           send instead of draft (REMINDER_AUTOSEND=true only); the Routine's form
 //   --dry-run prints the message and stops. --yes skips the y/N prompt.
 
-import { adminClient, loadGames, loadLiveEntries, loadOwners, loadWeeks } from "../lib/db";
+import { adminClient, loadCurrentPicks, loadGames, loadLiveEntries, loadOwners, loadStandings, loadWeeks } from "../lib/db";
 import { ADMIN_MAILBOX, EXPECTED_ROSTER_ADDRESSES } from "../lib/constants";
 import { createDraft, gmailClient } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
 import { autosendEnabled, sendWeekReminder } from "../lib/send";
+import { assertNoRetiredAddresses, entriesOfConfirmedOwners, unpickedEntries } from "../lib/roster";
 import { formatEt, type GameLite, type WeekBounds } from "../picks/lib/deadline";
 import { dueSlot, findSlot, isSlotName, slotKey, SLOT_NAMES, type ReminderSlot, type SlotName } from "./lib/due";
 import { reminderBody, reminderSubject } from "./lib/message";
@@ -90,8 +91,14 @@ async function main(): Promise<void> {
   const key = slotKey(b);
   console.log(`${key}: the ${b.slot} reminder, naming the ${b.kind} deadline ${formatEt(b.deadlineIso)}.`);
 
-  // ---- who: derived live, then the exact count gate
+  // ---- who: derived live, then the retired check, then the exact count gate
   const bcc = reminderAddresses(owners, entries);
+  // The retired check runs BEFORE the count gate, because the count gate can
+  // pass while the list is wrong: a dead address typed back onto an owner
+  // REPLACES that owner's live one, so the derived total is still 40 and the
+  // message reaches everyone except the person it was corrected for. Counting
+  // is not reading. This throws by name and stops the run.
+  assertNoRetiredAddresses(bcc, "week reminder Bcc");
   const gate = countGate(EXPECTED_ROSTER_ADDRESSES, bcc);
   for (const line of gate.lines) console.log(line);
   if (!gate.ok) {
@@ -107,8 +114,19 @@ async function main(): Promise<void> {
   if (!weekRow) throw new Error(`Week ${b.week} not found.`);
   const bounds: WeekBounds = { week: b.week, earlyDeadlineAt: weekRow.early_deadline_at, lateDeadlineAt: weekRow.late_deadline_at };
   const games: GameLite[] = (await loadGames(client, b.week)).map((g) => ({ week: g.week, dayOfWeek: g.day_of_week, homeTeam: g.home_team, awayTeam: g.away_team }));
+  // The one number the message states, counted on this run from the same
+  // roster the recipients came from: live entries of confirmed owners, still
+  // alive, with no current pick for the week. Never stored, never carried
+  // over from a previous run.
+  const [picks, standings] = await Promise.all([loadCurrentPicks(client, b.week), loadStandings(client)]);
+  const outstanding = unpickedEntries(
+    entriesOfConfirmedOwners(owners, entries),
+    picks.map((p) => p.entry_id),
+    standings,
+  ).length;
+  console.log(`${outstanding} of ${entriesOfConfirmedOwners(owners, entries).length} entries have no Week ${b.week} pick.`);
   const subject = reminderSubject(b, now);
-  const body = reminderBody(b, bounds, games, now);
+  const body = reminderBody(b, bounds, games, now, { outstanding });
 
   console.log(`\nTo: ${ADMIN_MAILBOX}\nBcc: ${bcc.length} recipients\nSubject: ${subject}\n\n${body}\n`);
 

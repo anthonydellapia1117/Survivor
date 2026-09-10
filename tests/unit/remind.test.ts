@@ -177,17 +177,51 @@ describe("the reminder's words", () => {
   it("derives the deadline sentences from the games and the boundaries, leaving out a tier that has closed", () => {
     // Wednesday 8 AM ET: the Wednesday game closed Tuesday and is not
     // described; the Thursday game closes today; the weekend closes Friday.
-    const early = reminderBody(EARLY, BOUNDS, GAMES, WED_8AM);
-    expect(early).toContain("Thursday's game closes today at 2 PM ET. Sunday and Monday games close Friday at 2 PM ET. No pick in by the deadline and you are out.");
-    expect(early).not.toContain("Wednesday");
+    const early = reminderBody(EARLY, BOUNDS, GAMES, WED_8AM, { outstanding: 0 });
+    expect(early).toContain("Thursday's game closes today, Wednesday September 9, at 2 PM ET. Sunday and Monday games close Friday September 11 at 2 PM ET. No pick in by the deadline and you are out.");
+    // The closed tier is not DESCRIBED. The word "Wednesday" itself now appears
+    // in the date of the deadline that is open, so the assertion names the
+    // phrase that would mean the closed tier came back, not the day name.
+    expect(early).not.toContain("Wednesday's game");
     // Friday 8 AM ET: only the lock is ahead.
-    const late = reminderBody(FINAL, BOUNDS, GAMES, FRI_8AM);
-    expect(late).toContain("Sunday and Monday games close today at 2 PM ET. No pick in by the deadline and you are out.");
+    const late = reminderBody(FINAL, BOUNDS, GAMES, FRI_8AM, { outstanding: 0 });
+    expect(late).toContain("Sunday and Monday games close today, Friday September 11, at 2 PM ET. No pick in by the deadline and you are out.");
     expect(late).not.toContain("Thursday");
   });
 
+  it("states how many entries are still unpicked, counted on the run, and says nothing when none are", () => {
+    // The number is derived every run and passed in; there is nowhere to store
+    // it, so it cannot go stale. It is a nudge, not a report: at zero the line
+    // is absent rather than reading "0 entries".
+    const many = reminderBody(EARLY, BOUNDS, GAMES, WED_8AM, { outstanding: 59 });
+    expect(many).toContain("59 entries still have no Week 1 pick.");
+    // One entry gets singular verbs, or the line reads like a machine wrote it.
+    const one = reminderBody(EARLY, BOUNDS, GAMES, WED_8AM, { outstanding: 1 });
+    expect(one).toContain("1 entry still has no Week 1 pick.");
+    expect(one).not.toContain("entries still have");
+    // Zero prints no line at all, and leaves no double blank behind it.
+    const none = reminderBody(EARLY, BOUNDS, GAMES, WED_8AM, { outstanding: 0 });
+    expect(none).not.toMatch(/no Week 1 pick/);
+    expect(none).not.toContain("\n\n\n");
+    // It sits between the deadlines and the how-to-reply line, which is where
+    // somebody reading on a phone meets it before they are told what to do.
+    const lines = many.split("\n").filter((l) => l !== "");
+    expect(lines[2]).toBe("59 entries still have no Week 1 pick.");
+    expect(lines[3]).toMatch(/^Reply to this email/);
+  });
+
+  it("names the DATE of every deadline, not only the relative day", () => {
+    // "tomorrow" in a message somebody opens the next morning points at the
+    // wrong day. The date comes from the stored boundary; no day is hardcoded.
+    const early = reminderBody(EARLY, BOUNDS, GAMES, WED_8AM, { outstanding: 0 });
+    expect(early).toContain("closes today, Wednesday September 9, at 2 PM ET");
+    expect(early).toContain("close Friday September 11 at 2 PM ET");
+    const final = reminderBody(FINAL, BOUNDS, GAMES, FRI_8AM, { outstanding: 0 });
+    expect(final).toContain("close today, Friday September 11, at 2 PM ET");
+  });
+
   it("carries the whole of Anthony's text: reply to me, the number, one team per entry, the link only on the not-the-app line", () => {
-    const body = reminderBody(EARLY, BOUNDS, GAMES, WED_8AM);
+    const body = reminderBody(EARLY, BOUNDS, GAMES, WED_8AM, { outstanding: 0 });
     const lines = body.split("\n");
     expect(lines[0]).toBe("Week 1 is here.");
     expect(body).toContain("Reply to this email with your team - reply to me, not reply all. Or text 215-384-8335. Email is better.");

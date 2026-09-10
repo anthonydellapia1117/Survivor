@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { google, type gmail_v1 } from "googleapis";
 import { requireEnv } from "./env";
+import { assertNoRetiredAddresses } from "./roster";
 
 export const TOKEN_PATH = path.join(os.homedir(), ".config", "survivor", "gmail-token.json");
 const SCOPES = ["https://www.googleapis.com/auth/gmail.modify"];
@@ -326,8 +327,18 @@ export interface OutboundMessage {
   references?: string;
 }
 
-/** RFC 822 text, base64url, the shape drafts.create and messages.send take. */
+/**
+ * RFC 822 text, base64url, the shape drafts.create and messages.send take.
+ *
+ * EVERY message this project sends and every Bcc draft it leaves is encoded
+ * here, so this is the narrowest place a retired address can be stopped. The
+ * named paths in send.ts check first and fail with better words; this is the
+ * backstop that a NEW caller cannot forget, which is the whole shape of the
+ * bug that produced the 550 5.1.1 bounce - a hand-built list that never went
+ * near the derivation or its guard.
+ */
 export function encodeRaw(m: OutboundMessage): string {
+  assertNoRetiredAddresses([...(m.to ?? []), ...(m.bcc ?? [])], `message "${m.subject}"`);
   const lines = [
     m.to && m.to.length ? `To: ${m.to.join(", ")}` : "",
     m.bcc && m.bcc.length ? `Bcc: ${m.bcc.join(", ")}` : "",
@@ -424,6 +435,9 @@ export async function createDraftReply(
   gmail: gmail_v1.Gmail,
   p: { tail: ThreadTail; to: string; subject: string; body: string },
 ): Promise<string> {
+  // This one builds its own RFC 822 text and never reaches encodeRaw, so the
+  // backstop there does not cover it.
+  assertNoRetiredAddresses([p.to], `reply draft "${p.subject}"`);
   const refs = [p.tail.references, p.tail.messageIdHeader].filter(Boolean).join(" ");
   const lines = [
     `To: ${p.to}`,

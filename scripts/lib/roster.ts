@@ -284,6 +284,31 @@ export class RetiredAddressError extends Error {
  *
  * withoutRetiredAddresses is the filter for the places that want one - a
  * report, a preview, anything that is not a send. A send calls this.
+ *
+ * WHERE IT IS CALLED, and why those places (added 2026-09-10, after Copilot
+ * and Codex both raised on #54 that the guard existed and nothing ran it):
+ *
+ *   scripts/lib/gmail.ts   encodeRaw          the narrowest point there is.
+ *                                             Every messages.send in the repo
+ *                                             takes raw: encodeRaw(m), and so
+ *                                             does createDraft, so no caller
+ *                                             can get a message out past it.
+ *   scripts/lib/gmail.ts   createDraftReply   builds its own RFC 822 text and
+ *                                             never reaches encodeRaw, so the
+ *                                             backstop does not cover it.
+ *   scripts/lib/send.ts    sendWeekReminder   BEFORE the claim row, so a
+ *   scripts/lib/send.ts    sendAllowlisted    refusal cannot consume the slot
+ *                                             or the recipient's lock day.
+ *   scripts/remind/cli.ts  main               BEFORE the count gate, because
+ *                                             counting cannot see a SWAP: a
+ *                                             dead address typed onto an owner
+ *                                             replaces that owner's live one
+ *                                             and the total is still 40.
+ *
+ * The chase and distribute Bcc lists are covered by the encodeRaw backstop
+ * alone and deliberately have no call of their own. Two checks on one list is
+ * a second thing to keep in step; the backstop cannot be forgotten, which is
+ * the property that matters.
  */
 export function assertNoRetiredAddresses(
   addresses: Iterable<string>,

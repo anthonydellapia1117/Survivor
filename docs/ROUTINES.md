@@ -554,9 +554,9 @@ drafts only, nothing started") and the others fail at sign-in and say so - as
 never ran is not the tick working (issue #40). `npm run ops -- tick --dry-run`
 reaches nothing at all and prints a placeholder for each derived argument, so
 it runs without credentials.
-Nothing in this repo holds or requests a secret; the Routine's session config
-also came back with no repository source, so confirming the repo and the
-environment in the claude.ai Routines UI is Anthony's step before enabling.
+Nothing in this repo holds or requests a secret. The Routine's session config
+came back with **no repository source at all**, which stopped being a caution
+on 2026-09-10 and became the incident in 10a.
 
 Prompt, pasted whole into the Routine (already set by `update_trigger`):
 
@@ -568,6 +568,96 @@ Once the tick is enabled with its environment, the hourly **Survivor Gmail
 Sweep** Routine (section 1c) covers the same mail read through the connector;
 pausing it then is Anthony's call. The reporters in sections 3 to 7 stay as
 they are: they read and never write.
+
+## 10a. 2026-09-10: the tick fired with no checkout
+
+**The Thursday 8 AM reminder did not go.** The Ops Tick fired on schedule at
+12:43 UTC, the session started, and `npm run ops -- tick` failed with **"no git
+repository"** - there was no clone to run it in. `week:1:thu` was sent by hand
+instead (Gmail `1a08b8674c5d0995`, To Anthony, 40 on Bcc derived live and gated
+at exactly 40), and its `week_reminder_claim` and `week_reminder_sent` rows -
+`audit_log` 679 and 680, one transaction - **say in their notes that it was a
+hand send and not `npm run remind`**, because an actor string that names a
+command which did not run is the same lie as a migration that does not exist
+(CLAUDE.md, Working rules). `week:1:fri` was deliberately left unclaimed, so
+the Friday final call still goes.
+
+**The cause is one empty field.** Read from the live trigger record for
+`trig_01W9BrBAoWKBQm9AjJ9FVVKK`:
+
+| Field                                   | Value                          |
+| --------------------------------------- | ------------------------------ |
+| `session_request.config.sources`        | `[]` - **empty. This is it.**  |
+| `session_request.environment_variables` | `{}` - empty                   |
+| `session_request.environment_id`        | `env_01E2ghUxXKj19qoDX3bTxf3p` |
+| `mcp_connections`                       | `[]`                           |
+| `created_via`                           | `meta_mcp`                     |
+
+`created_via: meta_mcp` is the whole story. This Routine was made through the
+API, and **the API stores no source**: the environment came across, the prompt
+came across, the repository did not. That is 11a, written as a warning in
+advance and now an incident.
+
+**The control is in the same list.** `Survivor Gmail Sweep` is the one Survivor
+Routine created outside that path (`created_via: http_api`), and it is the one
+that carries a checkout:
+
+    sources: [{ "git_repository": { "url": "https://github.com/anthonydellapia1117/Survivor" } }]
+    mcp_connections: 2   (Gmail, Supabase)
+
+Every `meta_mcp` Routine here - Ops Tick, Venmo Wide Sweep, Final Sheet Watch,
+both Lynne Echo Checks, Deadline Close Check, Pick Gap Check - has
+`sources: []`. That is the only field that differs, and it differs exactly
+along the line 11a drew.
+
+**The environment is not the cause**, which rules out a broken image or a
+container with no git. This session runs in the *same* `env_01E2ghUxXKj19qoDX3bTxf3p`
+and has a working clone, because its own `session_context.sources` is
+populated. Nothing in this repo emits "no git repository" either - the string
+appears nowhere in it, and the only child process `scripts/ops/cli.ts` spawns
+is `npm` (line 137). The message is upstream of any code here.
+
+**`last_run` reads SUCCEEDED.** The session started, ran and reported; the
+command inside it failed. A Routine's run status says the session finished, it
+never says the work happened - so nothing alerted, and the miss was found by
+Anthony rather than by us. There is no check in this repo that would have
+caught it, because a tick that cannot start cannot report.
+
+**The one field to set, and it is UI-only:**
+
+    claude.ai > Settings > Routines > Survivor Ops Tick > Edit
+      > Source repo:  anthonydellapia1117/Survivor       branch  main
+      > Save
+
+It cannot be set from a session. `update_trigger` accepts `name`,
+`cron_expression`, `enabled`, `model`, `prompt` and `run_once_at`; `create_trigger`
+accepts an `environment_id` but no source either. There is **no MCP path to a
+checkout at all**, which is why sessions get repos (`create_session` does take
+`source_url`) and API-made Routines do not. Nothing was changed on the trigger
+from this session.
+
+**If the Edit form does not offer Source repo on this Routine** - 11a says an
+API-made Routine cannot be repaired, only replaced - then create it fresh by
+the 11b click path as **`Survivor Sweep`**, enable that, and **pause** the Ops
+Tick rather than deleting it, so its run history survives (11d). Either way the
+prompt is unchanged: `npm run ops -- hourly`, with `tick` still accepted.
+
+After the repo is set the tick still needs 11c's environment variables, or it
+reaches the Supabase sign-in and fails there. That failure is loud (`failed`,
+counted with the nonzero exits, never `skipped` - issue #40), which the missing
+checkout was not.
+
+**Leave it enabled meanwhile.** A tick with no checkout does nothing and costs
+nothing, and the moment the field is set it starts working on the next hour.
+Its first run will find `week:1:thu` already claimed and skip it, which is what
+the audit rows above are for. It has gone on firing hourly and failing the same
+way - 13:43:06 UTC, session `cse_01NaxXkuU2e6fGoXghCrCJPh`, 30 seconds,
+SUCCEEDED - which is what a Routine that cannot start looks like from outside.
+
+**One thing to watch after the repo is set, unverified:** `npm run ops` needs
+`tsx`, a devDependency, so a fresh checkout with no `node_modules` and no
+install step would fail at the first command. Whether the environment snapshot
+supplies them is not established here; the first real fire will say.
 
 ## 11. The two Routines, and the clicks that make them
 

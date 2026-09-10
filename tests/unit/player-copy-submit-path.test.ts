@@ -120,9 +120,9 @@ const REMIND_GAMES: GameLite[] = [
   { week: 1, dayOfWeek: "Sunday", homeTeam: "PHI", awayTeam: "DAL" },
 ];
 const remindEarly = () =>
-  reminderBody({ week: 1, kind: "early", deadlineIso: WEEK1.earlyDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-09T10:00:00Z"));
+  reminderBody({ week: 1, kind: "early", deadlineIso: WEEK1.earlyDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-09T10:00:00Z"), { outstanding: 7 });
 const remindLate = () =>
-  reminderBody({ week: 1, kind: "late", deadlineIso: WEEK1.lateDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-11T10:00:00Z"));
+  reminderBody({ week: 1, kind: "late", deadlineIso: WEEK1.lateDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-11T10:00:00Z"), { outstanding: 7 });
 const chaseInput = (entryNames: string[]) => ({
   week: 1,
   greetingName: "Tom",

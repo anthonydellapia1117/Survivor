@@ -150,20 +150,22 @@ describe("the words each slot carries", () => {
     for (const [s, now] of [[wed, WED_AM], [thu, THU_AM], [fri, FRI_AM]] as const) {
       expect(reminderSubject(s, now)).toMatch(/^Survivor\b/);
     }
-    expect(reminderBody(fri, BOUNDS, GAMES, FRI_AM).split("\n")[0]).toBe("Week 1 - FINAL CALL.");
-    expect(reminderBody(thu, BOUNDS, GAMES, THU_AM).split("\n")[0]).toBe("Week 1 is here.");
+    expect(reminderBody(fri, BOUNDS, GAMES, FRI_AM, { outstanding: 0 }).split("\n")[0]).toBe("Week 1 - FINAL CALL.");
+    expect(reminderBody(thu, BOUNDS, GAMES, THU_AM, { outstanding: 0 }).split("\n")[0]).toBe("Week 1 is here.");
   });
 
   it("tells each morning what is still open, and never a window that has closed", () => {
-    expect(reminderBody(wed, BOUNDS, GAMES, WED_AM)).toContain("Thursday's game closes today at 2 PM ET. Sunday and Monday games close Friday at 2 PM ET.");
-    expect(reminderBody(thu, BOUNDS, GAMES, THU_AM)).toContain("Sunday and Monday games close tomorrow at 2 PM ET.");
-    expect(reminderBody(thu, BOUNDS, GAMES, THU_AM)).not.toContain("Thursday's game");
-    expect(reminderBody(fri, BOUNDS, GAMES, FRI_AM)).toContain("Sunday and Monday games close today at 2 PM ET.");
+    // Every deadline names its date as well as its relative day: "tomorrow" in
+    // a message somebody opens the next morning points at the wrong day.
+    expect(reminderBody(wed, BOUNDS, GAMES, WED_AM, { outstanding: 0 })).toContain("Thursday's game closes today, Wednesday September 9, at 2 PM ET. Sunday and Monday games close Friday September 11 at 2 PM ET.");
+    expect(reminderBody(thu, BOUNDS, GAMES, THU_AM, { outstanding: 0 })).toContain("Sunday and Monday games close tomorrow, Friday September 11, at 2 PM ET.");
+    expect(reminderBody(thu, BOUNDS, GAMES, THU_AM, { outstanding: 0 })).not.toContain("Thursday's game");
+    expect(reminderBody(fri, BOUNDS, GAMES, FRI_AM, { outstanding: 0 })).toContain("Sunday and Monday games close today, Friday September 11, at 2 PM ET.");
   });
 
   it("says reply or text on every slot, and links the site only on the line that denies it", () => {
     for (const [s, now] of [[wed, WED_AM], [thu, THU_AM], [fri, FRI_AM]] as const) {
-      const body = reminderBody(s, BOUNDS, GAMES, now);
+      const body = reminderBody(s, BOUNDS, GAMES, now, { outstanding: 0 });
       expect(body).toContain("Reply to this email with your team - reply to me, not reply all.");
       expect(body).toContain("Or text 215-384-8335.");
       const linked = body.split("\n").filter((l) => l.includes("ad-26-survivor.vercel.app"));
@@ -222,6 +224,21 @@ describe("sending a slot", () => {
     expect(out).toMatchObject({ kind: "sent", key: "week:1:fri" });
     expect(weekReminderKey(1, "fri")).toBe("week:1:fri");
     expect(audit.mock.calls[0][1]).toMatchObject({ targetId: "week:1:fri", after: { boundary_key: "week:1:fri", slot: "fri", boundary: "late" } });
+  });
+
+  it("requires the slot: there is no boundary left to fall back to", () => {
+    // This one is checked by `npx tsc --noEmit`, not at run time, and that is
+    // the point: the degrade Copilot named on #54 was a TYPE hole, not a
+    // runtime branch. `slot` was optional and the key read `req.slot ??
+    // req.boundary`, so a caller that simply left it out got week:1:late for
+    // BOTH Thursday and Friday and lost the final call. If either signature
+    // ever loosens again, @ts-expect-error stops being satisfied and the
+    // typecheck fails - which is the only place a hole like this shows up.
+    // @ts-expect-error slot is required on WeekReminderRequest
+    const noSlot: WeekReminderRequest = { ...req, slot: undefined };
+    expect(noSlot.week).toBe(1);
+    // @ts-expect-error weekReminderKey takes a slot; a boundary name is not one
+    expect(weekReminderKey(1, "late")).toBe("week:1:late");
   });
 
   it("refuses a second run for the same week and slot", async () => {
