@@ -421,24 +421,32 @@ const FINAL_RESULTS = new Set(["win", "loss", "tie_loss", "missed"]);
  *     change after the lock is Anthony's call
  * A first pick after the lock is not blocked here; it is written with its
  * late flag, which is what the flag is for.
+ *
+ * The `code` says WHICH of the three fired, because that decides where a
+ * refused row can go. `admin_approve_pending` refuses a scored current pick
+ * and a reply older than the current one outright, so a row staged as a
+ * `pick` for either of those reasons could never be approved - it would sit
+ * open forever behind a button that always errors.
  */
+export type OverrideRefusal = "scored" | "stale" | "after_lock";
+
 export function overrideDecision(
   existing: ExistingPick | null,
   madeAt: Date,
   lateDeadlineIso: string,
-): { ok: true } | { ok: false; reason: string } {
+): { ok: true } | { ok: false; reason: string; code: OverrideRefusal } {
   if (!existing) return { ok: true };
   if (existing.result && FINAL_RESULTS.has(existing.result)) {
-    return { ok: false, reason: `already scored (${existing.team} ${existing.result}); a change needs Anthony` };
+    return { ok: false, code: "scored", reason: `already scored (${existing.team} ${existing.result}); a change needs Anthony` };
   }
   if (new Date(existing.submitted_at).getTime() > madeAt.getTime()) {
-    return { ok: false, reason: `older than the current pick (${existing.team}, made later); Anthony decides` };
+    return { ok: false, code: "stale", reason: `older than the current pick (${existing.team}, made later); Anthony decides` };
   }
   // Judged at the moment the message arrived (madeAt), never at the moment
   // the command happened to run: a correction that beat the lock stays a
   // correction however long it waited to be read.
   if (madeAt.getTime() > new Date(lateDeadlineIso).getTime()) {
-    return { ok: false, reason: `after the lock with ${existing.team} already on file; a change needs Anthony` };
+    return { ok: false, code: "after_lock", reason: `after the lock with ${existing.team} already on file; a change needs Anthony` };
   }
   return { ok: true };
 }

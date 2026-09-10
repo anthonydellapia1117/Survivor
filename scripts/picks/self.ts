@@ -41,6 +41,7 @@ import { effectiveSubmitTime, stripQuotedReply, weekOfMessage } from "./lib/reso
 import {
   conflictingSelfRows,
   guardSelfRows,
+  stageKindFor,
   isSelfPickSubject,
   parseSelfPickEmail,
   SELF_PICK_SUBJECT_TERM,
@@ -164,6 +165,7 @@ async function main(): Promise<void> {
             ok: false as const,
             line: r.line,
             reason: "this entry is given two different teams in this message",
+            stageAs: stageKindFor("conflict"),
             entryId: r.entryId,
             entryName: r.entryName,
             team: r.team,
@@ -175,12 +177,15 @@ async function main(): Promise<void> {
     // the same transaction as the applies. A row that resolved to an entry and
     // a team is kind "pick", where approving writes the pick he dictated; a
     // line that never resolved is a question.
+    // A no-op is neither: the team named is already the current pick, so
+    // there is nothing to write and nothing for Anthony to decide.
+    const noops = final.filter((r): r is Extract<SelfPickRow, { ok: false }> => !r.ok && r.noop === true);
     const toStage = final
-      .filter((r): r is Extract<SelfPickRow, { ok: false }> => !r.ok)
+      .filter((r): r is Extract<SelfPickRow, { ok: false }> => !r.ok && r.noop !== true)
       .map((r) =>
         r.entryId && r.team
           ? {
-              kind: "pick",
+              kind: r.stageAs ?? "pick",
               entry_id: r.entryId,
               entry_name: r.entryName,
               week,
@@ -189,7 +194,10 @@ async function main(): Promise<void> {
               received_at: m.receivedAt,
               line: r.line,
               reason: r.reason,
-              question: `Record this pick anyway? ${r.reason}. Approve writes it; dismiss leaves the entry as it is.`,
+              question:
+                (r.stageAs ?? "pick") === "pick"
+                  ? `Record this pick anyway? ${r.reason}. Approve writes it; dismiss leaves the entry as it is.`
+                  : `Change this on /admin/entries if you want it: ${r.reason}. Approve cannot write this one - the queue refuses a scored or superseded pick - so dismiss the row once you have.`,
             }
           : {
               kind: "player_question",
@@ -202,12 +210,18 @@ async function main(): Promise<void> {
 
     console.log(`\n${m.subject}  (week ${week}, ${m.id})`);
     for (const r of final) {
-      console.log(r.ok ? `  apply  ${r.lynneNumber ?? r.entryName}  ${r.team}` : `  stage  ${r.line}  - ${r.reason}`);
+      if (r.ok) console.log(`  apply  ${r.lynneNumber ?? r.entryName}  ${r.team}`);
+      else console.log(`  ${r.noop ? "no-op" : "stage"}  ${r.line}  - ${r.reason}`);
     }
     if (args.dryRun) continue;
     if (!toWrite.length && !toStage.length) {
-      console.log("Nothing to write from this message.");
-      await notify(needsAnthonyLine("picks:self", "nothing applied", `week ${week} - see the terminal`), { tags: "warning" });
+      console.log(`Nothing to write or stage from this message (${noops.length} already on file).`);
+      // FILED EVEN SO. Left unread, the same message is read, reported and
+      // notified on again every run, for as long as it sits in the mailbox.
+      await fileMessage(m.id);
+      if (!noops.length) {
+        await notify(needsAnthonyLine("picks:self", "nothing applied", `week ${week} - see the terminal`), { tags: "warning" });
+      }
       continue;
     }
     if (!args.yes && !(await confirm(`Apply ${toWrite.length} pick(s) and stage ${toStage.length}? (y/N) `))) {
@@ -241,7 +255,7 @@ async function main(): Promise<void> {
       await fileMessage(m.id);
       continue;
     }
-    console.log(`${result.applied} written, ${result.staged} staged.`);
+    console.log(`${result.applied} written, ${result.staged} staged, ${noops.length} already on file.`);
 
     const reply = selfPickReply(final, week);
     const d = await createDraft(gmail, { to: [ADMIN_MAILBOX], subject: `Re: ${m.subject}`, body: reply }, m.threadId);
