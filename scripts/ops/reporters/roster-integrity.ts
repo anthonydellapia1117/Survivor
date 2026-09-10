@@ -176,7 +176,7 @@ function lynneNumberItems(s: OpsSnapshot, lock: string): ReportItem[] {
 
   // Free entries are counted in too: they still get Lynne numbers and still
   // appear in the roster export, they just do not bill (CLAUDE.md).
-  const missing = s.entries.filter(() => true);
+  const missing = s.entries.filter((e) => e.lynneNumber === null);
   if (missing.length > 0) {
     const names = missing.map(label);
     out.push({

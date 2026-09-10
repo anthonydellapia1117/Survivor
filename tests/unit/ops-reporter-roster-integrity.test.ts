@@ -370,10 +370,15 @@ describe("roster-integrity: the output contract", () => {
     const lines = renderReport(r);
     expect(lines).toHaveLength(12);
     expect(lines[0]).toBe("NEEDS ANTHONY");
-    // Every entry in the folded tail survives into the collapsed line.
+    // Every entry in the folded tail survives into the collapsed line. The
+    // labels are spelled out from the fixture, never read back off the items'
+    // own names[] - an item that carried no names would make that loop assert
+    // nothing and pass while the names were being dropped.
     const collapsed = lines[lines.length - 1];
-    for (const e of r.items.slice(9).flatMap((i) => i.names ?? [])) {
-      expect(collapsed).toContain(e);
+    expect(collapsed.startsWith("3 more: ")).toBe(true);
+    for (const n of [10, 11, 12]) {
+      expect(collapsed).toContain(`Owner ${n} #1 (Tom Bradshaw)`);
+      expect(collapsed).toContain(`Owner ${n} #2 (Tom Bradshaw)`);
     }
   });
 
