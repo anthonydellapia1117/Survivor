@@ -16,7 +16,7 @@ import { adminClient } from "../lib/db";
 import { finishedLine, notify } from "../lib/notify";
 import { fetchAllPages } from "../lib/paged";
 import { confirm } from "../lib/prompt";
-import { diffRoster, duplicateNames, parseRosterSheet, rowsPayload } from "./lib/roster-sheet";
+import { diffRoster, diffWeekCells, duplicateNames, parseRosterSheet, rowsPayload } from "./lib/roster-sheet";
 
 interface Args {
   file: string;
@@ -100,14 +100,14 @@ async function main(): Promise<void> {
   if (newestErr) throw new Error(`lynne_roster (prior): ${newestErr.message}`);
   const prior = newestRows?.[0] ?? null;
   if (prior) {
-    const priorRows = await fetchAllPages<{ row_no: number; names: string }>(async (from, to) => {
+    const priorRows = await fetchAllPages<{ row_no: number; names: string; cells: Record<string, string> }>(async (from, to) => {
       const { data, error } = await client
         .from("lynne_roster")
-        .select("row_no, names")
+        .select("row_no, names, cells")
         .eq("sheet_sha256", prior.sheet_sha256)
         .order("row_no", { ascending: true })
         .range(from, to)
-        .returns<{ row_no: number; names: string }[]>();
+        .returns<{ row_no: number; names: string; cells: Record<string, string> }[]>();
       if (error) throw new Error(`lynne_roster (prior rows): ${error.message}`);
       return data ?? [];
     });
@@ -128,6 +128,24 @@ async function main(): Promise<void> {
     for (const a of d.added) console.log(`  + ${a.no}  ${JSON.stringify(a.names)}`);
     for (const r of d.removed) console.log(`  - ${r.no}  ${JSON.stringify(r.names)}`);
     for (const r of d.renamed) console.log(`  ~ ${r.no}  ${JSON.stringify(r.before)} -> ${JSON.stringify(r.after)}`);
+
+    // Her week columns, NO. by NO. and week by week. A sheet is loaded once
+    // and never rewritten, so a week that came back different is read here,
+    // before the write, or not at all.
+    const w = diffWeekCells(
+      priorRows.map((r) => ({ no: r.row_no, cells: r.cells ?? {} })),
+      sheet.rows.map((r) => ({ no: r.no, cells: r.cells })),
+    );
+    console.log(`  week cells: ${w.added.length} newly filled, ${w.changed.length} changed, ${w.cleared.length} cleared, ${w.unchanged} unchanged`);
+    for (const c of w.changed) console.log(`  ~ ${c.no} week ${c.week}: ${JSON.stringify(c.before)} -> ${JSON.stringify(c.after)}`);
+    for (const c of w.cleared) console.log(`  - ${c.no} week ${c.week}: ${JSON.stringify(c.before)} is now blank`);
+    if (w.added.length) {
+      const byWeek = new Map<number, number[]>();
+      for (const c of w.added) byWeek.set(c.week, [...(byWeek.get(c.week) ?? []), c.no]);
+      for (const [week, nos] of [...byWeek].sort((a, b) => a[0] - b[0])) {
+        console.log(`  + week ${week}: ${nos.length} newly filled (${nos.slice(0, 12).join(", ")}${nos.length > 12 ? `, +${nos.length - 12} more` : ""})`);
+      }
+    }
   } else {
     console.log("\nNo prior sheet is loaded; this is the first.");
   }
@@ -152,9 +170,21 @@ async function main(): Promise<void> {
     p_actor: actor,
   });
   if (error) throw new Error(`admin_load_lynne_roster: ${error.message}`);
-  const result = data as { rows: number; duplicate_names: number };
+  const result = data as {
+    rows: number;
+    duplicate_names: number;
+    carried_forward?: { no: number; week: number; team: string; ref: string }[];
+  };
   console.log(`\nLoaded ${result.rows} rows (${result.duplicate_names} duplicate names kept as-is). Owners and entries untouched.`);
-  await notify(finishedLine("lynne:roster", `${filename}: ${result.rows} rows loaded, ${result.duplicate_names} duplicate names kept`));
+  const carried = result.carried_forward ?? [];
+  if (carried.length) {
+    // A week she stated by email and has not yet typed onto a sheet. The cell
+    // moves across with the message id that carried it, so its provenance
+    // survives the sheet that superseded it.
+    console.log(`Carried ${carried.length} email-stated cell(s) into weeks this sheet leaves blank:`);
+    for (const c of carried) console.log(`  #${c.no} week ${c.week}: ${JSON.stringify(c.team)} (from ${c.ref})`);
+  }
+  await notify(finishedLine("lynne:roster", `${filename}: ${result.rows} rows loaded, ${result.duplicate_names} duplicate names kept, ${carried.length} email cell(s) carried`));
 }
 
 main().catch((e: unknown) => {

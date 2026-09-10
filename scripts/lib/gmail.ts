@@ -176,6 +176,64 @@ async function listUnreadByQueries(gmail: gmail_v1.Gmail, queries: string[]): Pr
   return out;
 }
 
+/**
+ * One message, in full, whatever its read state or label.
+ *
+ * The unread listers above are the sweep's readers and only ever see
+ * `is:unread`. A message named by its id -- her pick email, quoted back by
+ * Anthony or found by hand -- has usually been read already, so it needs a
+ * reader of its own rather than a search that would silently return nothing.
+ */
+export async function getMessageFull(gmail: gmail_v1.Gmail, id: string): Promise<InboundMessage> {
+  const res = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+  const headers = res.data.payload?.headers;
+  const from = header(headers, "From");
+  const internal = Number(res.data.internalDate ?? 0);
+  const dateHeader = header(headers, "Date");
+  return {
+    id,
+    threadId: res.data.threadId ?? "",
+    from,
+    fromAddress: addressOf(from),
+    subject: header(headers, "Subject"),
+    date: dateHeader,
+    receivedAt: internal > 0 ? new Date(internal).toISOString() : new Date(dateHeader).toISOString(),
+    body: bodyOf(res.data.payload),
+  };
+}
+
+/**
+ * Every message of a thread, in full, oldest first.
+ *
+ * CLAUDE.md: fetch threads in full, never rely on search previews, which
+ * return only the oldest few messages with no truncation marker. Her
+ * corrections arrive as replies on the same thread, so reading one message of
+ * it and stopping is how a correction gets missed.
+ */
+export async function getThreadFull(gmail: gmail_v1.Gmail, threadId: string): Promise<InboundMessage[]> {
+  const res = await gmail.users.threads.get({ userId: "me", id: threadId, format: "full" });
+  const out: InboundMessage[] = [];
+  for (const m of res.data.messages ?? []) {
+    if (!m.id) continue;
+    const headers = m.payload?.headers;
+    const from = header(headers, "From");
+    const internal = Number(m.internalDate ?? 0);
+    const dateHeader = header(headers, "Date");
+    out.push({
+      id: m.id,
+      threadId: m.threadId ?? threadId,
+      from,
+      fromAddress: addressOf(from),
+      subject: header(headers, "Subject"),
+      date: dateHeader,
+      receivedAt: internal > 0 ? new Date(internal).toISOString() : new Date(dateHeader).toISOString(),
+      body: bodyOf(m.payload),
+    });
+  }
+  out.sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime());
+  return out;
+}
+
 /** The address the token belongs to: the sender of every draft. */
 export async function profileAddress(gmail: gmail_v1.Gmail): Promise<string> {
   const res = await gmail.users.getProfile({ userId: "me" });
