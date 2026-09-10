@@ -605,17 +605,36 @@ that carries a checkout:
     sources: [{ "git_repository": { "url": "https://github.com/anthonydellapia1117/Survivor" } }]
     mcp_connections: 2   (Gmail, Supabase)
 
-Every `meta_mcp` Routine here - Ops Tick, Venmo Wide Sweep, Final Sheet Watch,
-both Lynne Echo Checks, Deadline Close Check, Pick Gap Check - has
-`sources: []`. That is the only field that differs, and it differs exactly
-along the line 11a drew.
+Read the whole list rather than those two, because the shapes are not uniform:
+
+| Routine                    | created_via | `config` block | `sources` | connectors |
+| -------------------------- | ----------- | -------------- | --------- | ---------- |
+| Survivor Gmail Sweep       | `http_api`  | yes            | **1**     | 2          |
+| Survivor Ops Tick          | `meta_mcp`  | yes            | **0**     | **0**      |
+| the six paused reporters   | `meta_mcp`  | **none**       | absent    | 1 each     |
+
+So the Ops Tick is the only Survivor Routine with a `config` block whose
+`sources` is **empty**, and the only one carrying **no connector at all**. The
+six reporters are an older record shape with no `config` object whatsoever, so
+they are not evidence about how the API stores a source; the pair worth
+comparing is the top two rows.
+
+**`sources` is not the only field that differs** between those two - so do not
+read this as one field being magic. `allowed_tools`, `outcomes`,
+`autofix_on_pr_create`, `mcp_connections` and the cron all differ too. What
+makes `sources` the cause is what each field DOES: an empty `allowed_tools` or
+a missing connector changes what a session may reach, and none of them can
+produce "no git repository" - only the absent checkout can. The connector gap
+is real and separate, and it matters for the older prompt-driven Routines
+rather than for `npm run ops`, which reads Gmail through `GMAIL_OAUTH_*`.
 
 **The environment is not the cause**, which rules out a broken image or a
 container with no git. This session runs in the *same* `env_01E2ghUxXKj19qoDX3bTxf3p`
 and has a working clone, because its own `session_context.sources` is
-populated. Nothing in this repo emits "no git repository" either - the string
-appears nowhere in it, and the only child process `scripts/ops/cli.ts` spawns
-is `npm` (line 137). The message is upstream of any code here.
+populated. Nor does the message come from here: **no code in this repo emits
+it** - the only occurrences of that string anywhere are in this section, which
+is prose about it - and the only child process `scripts/ops/cli.ts` spawns is
+`npm` (line 137). The message is upstream of any code here.
 
 **`last_run` reads SUCCEEDED.** The session started, ran and reported; the
 command inside it failed. A Routine's run status says the session finished, it
