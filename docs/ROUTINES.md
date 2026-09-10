@@ -678,6 +678,65 @@ SUCCEEDED - which is what a Routine that cannot start looks like from outside.
 install step would fail at the first command. Whether the environment snapshot
 supplies them is not established here; the first real fire will say.
 
+## 10b. 2026-09-10 15:12 UTC: the repo is attached, the credentials are not
+
+**Anthony attached the repository.** The Ops Tick trigger record now reads:
+
+| Field                                   | Then      | Now                                   |
+| --------------------------------------- | --------- | ------------------------------------- |
+| `session_request.config.sources`        | `[]`      | **the git_repository, populated**     |
+| `mcp_connections`                       | `0`       | **3** (Gmail, Supabase, one more)     |
+| `allowed_tools`                         | `[]`      | populated                             |
+| `session_request.environment_variables` | `{}`      | **`{}` - still empty**                |
+
+So the checkout is fixed and the credentials are not. **The environment carries
+none of them either**, which is not inference: this session runs in the same
+`env_01E2ghUxXKj19qoDX3bTxf3p`, its container started at 15:10 UTC - after the
+repo was attached - and `env` in it shows no `SUPABASE`, `GMAIL`, `ADMIN`,
+`REMINDER` or `NTFY` variable at all.
+
+**Will tomorrow's 8 AM fire send? No. It will not draft either.** Run in that
+same container, the two commands fail at the first gate each:
+
+    $ npx tsx scripts/remind/cli.ts --week 1 --slot fri --send --yes
+    REMINDER_AUTOSEND is not true: drafts only.            exit 1
+
+    $ npx tsx scripts/remind/cli.ts --week 1 --slot fri --dry-run
+    A hidden prompt needs a terminal. Set SURVIVOR_ADMIN_PASSWORD in the
+    environment for a non-interactive run.                 exit 1
+
+And upstream of both, `scripts/ops/cli.ts:128` never spawns it: a job the
+config marks `sends` with autosend off returns `skipped`,
+`"REMINDER_AUTOSEND is not true: drafts only, nothing started"`. So the
+pick-reminder job produces **no message of any kind** - not a send, not a
+draft, not a staged row. The tick will report `skipped` and exit 0, which
+reads as the tick working.
+
+**Three variables, and only three.** `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` and `ADMIN_EMAIL` already come from the
+committed `.env.production`, so they are not the gap:
+
+| Variable                                        | Without it                                    |
+| ----------------------------------------------- | --------------------------------------------- |
+| `REMINDER_AUTOSEND=true`                        | the sending jobs never start                  |
+| `SURVIVOR_ADMIN_PASSWORD`                       | no command reaches the database at all        |
+| `GMAIL_OAUTH_CLIENT_ID` / `_SECRET` / `_TOKEN_JSON` | no command reaches Gmail                  |
+
+**Everything downstream of the credentials is sound**, exercised end to end on
+this run against the live roster and stopped at the point of dispatch: the
+slot resolves to `week:1:fri` (send date 2026-09-11, naming the late boundary
+2026-09-11T18:00:00Z), the retired-address guard passes, the count gate reads
+40 of 40 with delta 0, the subject begins `Survivor` and carries FINAL CALL,
+the body names the date and the 59 outstanding, and `sendWeekReminder` clears
+every gate and reaches the Gmail call - which was a stub that threw instead of
+sending. `week:1:fri` has no `audit_log` row, so the slot is still open.
+
+**The Gmail connector does not cover for the missing OAuth variables.**
+`npm run ops` reaches Gmail through googleapis and `GMAIL_OAUTH_*`; there is no
+MCP client in `scripts/`. The connector belongs to the agent, not to the
+command - see `docs/PICKS_INTAKE.md` section 11c, and 11e for what the agent
+did instead on the 10:46 fire.
+
 ## 11. The two Routines, and the clicks that make them
 
 Set by Anthony on 2026-09-10. Sections 3 to 9 above describe seven triggers.
