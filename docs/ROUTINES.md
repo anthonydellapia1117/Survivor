@@ -1,26 +1,50 @@
 # Routines
 
-TLDR: five scheduled jobs run this pool beyond the hourly Gmail sweep, plus
-one Thanksgiving one-shot. All but the Ops Tick (section 10) are read-only
-reporters. Each fires a fresh
-session on this repo with the Gmail connector and nothing else, reads
-CLAUDE.md first, and ends with either a NEEDS ANTHONY section or the two
-words NO ACTION. None writes, sends, labels, marks Paid, resolves an
-identity, or touches another pool.
+TLDR, as of 2026-09-10: **there are two Routines, and everything they run is
+code in this repo.**
 
-Set by Anthony on 2026-09-04. CLAUDE.md is the rulebook; this file is the
-schedule. If a prompt here and CLAUDE.md disagree, CLAUDE.md wins and the
-prompt is a bug.
+| Routine             | Cron (UTC)            | Runs                    |
+| ------------------- | --------------------- | ----------------------- |
+| **Survivor Sweep**  | `43 9-23,0-2 * * *`   | `npm run ops -- hourly` |
+| **Survivor Daily**  | `30 12 * * *`         | `npm run ops -- daily`  |
+
+`hourly` is what section 10 called the Ops Tick: every job in
+`scripts/ops/config.json` whose cron fell in the last hour. It is renamed for
+what it does and `tick` is still accepted. `daily` is new: the six reporters
+in `scripts/ops/reporters`, which replace the six claude.ai Routines that
+sections 3 to 7 of this file describe.
+
+**Sections 3 to 7 are now history, not schedule.** Each of those Routines was
+a prompt: a fresh session with Gmail, this repo and no database at all
+(section 1b), working the roster out of mail. The same six checks now read the
+live roster through the admin's own RLS session, and they are pure functions
+with tests. The prompts are kept below because they are the specification the
+code was written from, and because the reasoning in them - why Friday names
+every recipient, why a variance carries both values, why the Venmo sweep never
+pairs a sender with an owner - is the reasoning the code keeps. **Where a
+prompt below and the code disagree, the code is what runs.** The old triggers
+are paused and stay paused; nothing here deletes one.
+
+The split is about what is hour-sensitive. A reply that lands at 1:15 has to
+be recorded before a 2:00 deadline, and the two sending jobs fire six hours
+before a boundary - so those need the hour. Reporting does not: once a day is
+the difference between a report someone reads and twenty-four nobody does.
+
+Set by Anthony on 2026-09-04, reshaped 2026-09-10. CLAUDE.md is the rulebook;
+this file is the schedule. If a prompt here and CLAUDE.md disagree, CLAUDE.md
+wins and the prompt is a bug.
 
 ## 1. How they run
 
-1a. Mechanism: Routines (scheduled triggers), the same thing as the existing
-    "Survivor Gmail Sweep". Fresh session per fire, environment
-    `env_01E2ghUxXKj19qoDX3bTxf3p`, source repo `anthonydellapia1117/Survivor`,
-    connector grant: Gmail only. They are created in the claude.ai Routines
-    UI, not from a session: in this org the API path cannot attach a
-    connector, and a Routine created that way on 2026-09-04 came back with no
-    Gmail and no repo source, so it was deleted. Section 9d is the checklist.
+1a. Mechanism: Routines (scheduled triggers). Fresh session per fire,
+    environment `env_01E2ghUxXKj19qoDX3bTxf3p`, source repo
+    `anthonydellapia1117/Survivor`, connector grant: Gmail only. **They are
+    created in the claude.ai Routines UI, never from a session or the API:**
+    in this org the API path cannot attach a connector, and a Routine created
+    that way on 2026-09-04 came back with no Gmail and no repo source, so it
+    was deleted. The repo and the environment are UI-only fields, which is
+    why creating one from a session produces a Routine that runs and does
+    nothing. Section 9d is the checklist and section 10 has the click path.
 
 1b. What a run can see: Gmail (full threads, never previews), this repo, and
     the real clock. There is no database connection, no admin login and no
@@ -509,7 +533,7 @@ now:
   `scripts/lib/send.ts` with `REMINDER_AUTOSEND=true`; the loader refuses a
   config that marks any other job as sending or hands it `--send`. Every
   whole-roster message (reminder, distribute) derives its recipients live and
-  stops unless the count equals `expectedRosterAddresses` (39) exactly.
+  stops unless the count equals `expectedRosterAddresses` (40) exactly.
 
 Environment the tick needs to do anything but report: `ADMIN_EMAIL`,
 `SURVIVOR_ADMIN_PASSWORD`, `GMAIL_OAUTH_CLIENT_ID`,
@@ -535,3 +559,47 @@ Once the tick is enabled with its environment, the hourly **Survivor Gmail
 Sweep** Routine (section 1c) covers the same mail read through the connector;
 pausing it then is Anthony's call. The reporters in sections 3 to 7 stay as
 they are: they read and never write.
+
+## 11. The two Routines, and the clicks that make them
+
+Set by Anthony on 2026-09-10. Sections 3 to 9 above describe seven triggers.
+Six of them are the reporters that are now `scripts/ops/reporters`, and they
+stay **paused**; the seventh is the Ops Tick, renamed. What should be enabled
+is exactly two.
+
+11a. **A Routine cannot be created from a session, and this is not a
+     preference.** The repo source and the environment are UI-only fields on
+     the Routine form; the API accepts a name, a cron and a prompt and stores
+     no source and no connector grant. A Routine made that way fires a session
+     with no repo to run `npm run ops` in and no Gmail to read, so it succeeds
+     and does nothing - which is worse than failing. One was created that way
+     on 2026-09-04 and had to be deleted (section 1a). **Do not create these
+     from the API, and do not "fix" one that was.**
+
+11b. The click path, once per Routine:
+
+     1. claude.ai > Settings > Routines > **New Routine**.
+     2. Name: `Survivor Sweep` (or `Survivor Daily`).
+     3. Environment: `env_01E2ghUxXKj19qoDX3bTxf3p`.
+     4. Source repo: `anthonydellapia1117/Survivor`, branch `main`.
+     5. Connectors: **Gmail only**. Nothing else is granted.
+     6. Schedule (UTC): `43 9-23,0-2 * * *` for the Sweep,
+        `30 12 * * *` for the Daily.
+     7. Prompt, one line and nothing else:
+        - Sweep: `Run npm run ops -- hourly and report exactly what it printed.`
+        - Daily: `Run npm run ops -- daily and report exactly what it printed.`
+     8. Save, then **Enable**.
+
+11c. The environment has to carry the variables the commands read, or a fire
+     signs in to nothing: `NEXT_PUBLIC_SUPABASE_URL`,
+     `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ADMIN_EMAIL`,
+     `SURVIVOR_ADMIN_PASSWORD`, `GMAIL_OAUTH_CLIENT_ID`,
+     `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_TOKEN_JSON`, and optionally
+     `NTFY_TOPIC`. `REMINDER_AUTOSEND=true` is the separate switch that lets
+     the two sending jobs send; without it they draft, and `hourly` does not
+     start them at all. **These are Anthony's to set and are never printed,
+     pasted or invented here.**
+
+11d. The six paused reporter triggers are left exactly as they are. They are
+     not deleted: their run history is the record of what ran before the
+     reporters moved into the repo, and a paused Routine costs nothing.

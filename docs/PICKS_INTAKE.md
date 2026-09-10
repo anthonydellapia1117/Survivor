@@ -131,7 +131,7 @@ names are never touched by any of this.
 npm run lynne -- --week 1 --deadline fri
 ```
 
-`--deadline` is the noon ET lock day: tue closes the Wednesday game, wed the
+`--deadline` is the 2:00 PM ET lock day: tue closes the Wednesday game, wed the
 Thursday games, thu the Friday games, fri Saturday, Sunday and Monday. It
 refuses to run before that tier has closed (the list is not final until
 then; `--before-lock` overrides), prints `<number>  <label>  -  <team>` in
@@ -247,13 +247,74 @@ was. `--dry-run` prints and stops; `--yes` skips the prompt. You should see
 `Loaded <n> rows (<d> duplicate names kept as-is). Owners and entries
 untouched.`
 
+## 5b. Her picks by email, when there is no sheet
+
+She does not always send a sheet. Before the Wednesday and Thursday games of
+Week 1 she sent a plain-text message with no attachment at all - Gmail
+`1a08631cab24c4ce`, "Wednesday and Thursday Games", 2026-09-09 8:43 AM ET -
+shaped as a heading naming a team, then one line per entry:
+
+```
+npm run lynne:picks -- --message-id 1a08631cab24c4ce
+```
+
+You should see the message's sender and subject, the week it derived, a line
+per team with the NO.s under it, and then `Wrote 8 cell(s)`. Use `--find` in
+place of `--message-id` to take her newest message with no attachment; it
+prints which one it took before writing anything, and `--dry-run` stops before
+the write.
+
+Her format:
+
+```
+The following people are picking Seattle:
+#144-Chris Mierzwa 11
+#573- Judy Manzi
+
+The following is taking the LA Rams:
+#1200-Brett
+```
+
+5c. **This never writes to `picks`.** `picks` is this group's record of what
+its own 121 chose; her statement about her whole pool goes into her own rows,
+`lynne_roster.cells`, beside the cells her sheets carry. The two are compared
+and never merged.
+
+5d. **What stops the run, before anything is written.** A heading that maps to
+none of her team names, or to more than one ("Seattle over Miami"), is printed
+and nothing is written - "New York" is neither NY Giants nor NY Jets, and that
+is exactly where a guess puts a pick on the wrong team. So is a NO. she states
+under two different teams: that one is hers to settle. So is a line like
+`1005 - E.A.T.` with no `#`, which is simply not read as an entry - missing a
+row she stated is safe and reported, inventing one is not.
+
+5e. **The week comes from the weeks table**, never from her subject line,
+which names no week. It is the first week whose late deadline had not passed
+when the message arrived. `--week N` overrides it and the derived value is
+printed either way, so an override is visible.
+
+5f. **A variance stops that row and nothing else.** Where she names one of the
+121 and her team differs from the pick this group holds, the line carries both
+values and the cell is left alone. Same where her email contradicts a cell of
+her own sheet. Neither side is corrected. On the Week 1 load the only overlap
+was her NO. 1005, `E.A.T.` on Seattle, which matched.
+
+5g. **Run it twice and the second run writes nothing.** The guard is an
+`audit_log` row keyed on the Gmail message id, so it holds for a re-run, for a
+second ops run in the same window, and for SQL applied by hand.
+
+5h. **The reveal rule is the site's, not this command's.** A cell is stored the
+moment she states it; `/master-list` serves it only once that team's game has
+kicked off. On 2026-09-10 the seven Seattle cells were public and the LA Rams
+cell was still masked, because that game had not started.
+
 ## 6. The week's picks, after the lock
 
 ```
 npm run distribute -- --week 1
 ```
 
-Refuses before the week's Friday noon lock. After it, one draft, To
+Refuses before the week's Friday 2:00 PM lock. After it, one draft, To
 yourself, BCC every owner address and every player address on a live entry
 (the same list as the All filter on /admin/emails), saying the picks are
 locked and post on the grid as each game kicks off, with the /grid link and
@@ -323,11 +384,11 @@ for a hand run (a boundary that has passed is refused). `--dry-run` prints
 the message and stops. `--yes` skips the y prompt.
 
 9a. **The count gate.** The derived recipient count must equal
-`EXPECTED_ROSTER_ADDRESSES` in `scripts/lib/constants.ts` (39)
+`EXPECTED_ROSTER_ADDRESSES` in `scripts/lib/constants.ts` (40)
 exactly. Anything else prints the whole list and the delta, pushes a NEEDS
 ANTHONY line, and stops before any draft or send. Not a range: a range let a
 wrong count through once. When an address is corrected the count usually
-stays 39; when it does not, the constant changes in a reviewed PR.
+stays 40; when it does not, the constant changes in a reviewed PR.
 
 9b. **Sending.** `--send` mails the `week_reminder` template instead of
 drafting, only when the environment has `REMINDER_AUTOSEND=true`, only once
@@ -345,22 +406,44 @@ at:". That line is the only place any pick-asking message may carry the
 link, and `tests/unit/player-copy-submit-path.test.ts` holds it there.
 
 9d. **The schedule** is a Routine, documented in `docs/ROUTINES.md`
-section 10.
+sections 10 and 11. A Routine is created in the claude.ai UI and never from a
+session or the API: the repo source and the environment are UI-only fields, so
+an API-made Routine fires with nothing to run and reports success.
 
 ## 10. Operations from the repo
 
 ```
-npm run ops -- tick
+npm run ops -- hourly
+npm run ops -- daily
 npm run ops -- sweep | pick-reminder | lynne-import | chase | results | distribute
 ```
 
-Set by Anthony on 2026-09-09. `scripts/ops/config.json` holds every schedule
-(5-field cron, UTC) and parameter; `scripts/ops/cli.ts` runs a job by
-spawning the same npm script a hand run uses, with the config's arguments,
-so nothing here is a second code path. `tick` runs every job whose cron fell
+Set by Anthony on 2026-09-09, extended 2026-09-10. `scripts/ops/config.json`
+holds every schedule (5-field cron, UTC) and parameter; `scripts/ops/cli.ts`
+runs a job by spawning the same npm script a hand run uses, with the config's
+arguments, so nothing here is a second code path.
+
+**Two entry points, two Routines.** `hourly` runs every job whose cron fell
 inside the last `tickWindowMinutes` (60) and prints one line per job; the
-jobs' own once-only guards make a second tick in the same hour a no-op. `--dry-run`
-prints what a tick would run and starts nothing.
+jobs' own once-only guards make a second run in the same hour a no-op. It was
+called `tick` and that name still works. `daily` runs the six reporters in
+`scripts/ops/reporters` against one read of the roster. `--dry-run` prints
+what would run and starts nothing - it reaches no database and no Gmail.
+
+The split is about what is hour-sensitive: a reply landing at 1:15 has to be
+recorded before a 2:00 deadline, and the two sending jobs fire six hours
+before a boundary, so those need the hour. Reporting does not.
+
+10-0. **The reporters write nothing.** No send, no draft, no label, no mark,
+no identity resolved, no variance resolved. Each prints twelve lines or fewer:
+a `NEEDS ANTHONY` section, or the two words `NO ACTION`. When a list would
+pass the cap it collapses into one line that keeps **every** name - the cap
+yields to completeness, never the other way round. They replace the six
+claude.ai Routines of `docs/ROUTINES.md` sections 3-7, which had Gmail and no
+database and worked the roster out of mail; these read it. Gmail is optional
+for a daily run, and its absence is reported rather than swallowed: without it
+the sheet watch cannot see whether a newer sheet of hers is waiting, and
+silence would read as "nothing is waiting".
 
 10a. `sweep` is `npm run picks -- --yes`: every unread message from a known
 player address whatever its subject or label, plus unread mail from anyone
@@ -385,7 +468,7 @@ it is one imported for another week - then her sheet for this week has not
 arrived, and reporting the run as finished would leave the week's standings
 stale.
 
-10d. `expectedRosterAddresses` (39) is the exact count every whole-roster
+10d. `expectedRosterAddresses` (40) is the exact count every whole-roster
 message gates on - the reminder and the distribute draft both stop on any
 other number and print the list. A distribute run that stops earlier, because
 the week is already drafted, does not reach that gate; `--dry-run` does.

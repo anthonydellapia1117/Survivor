@@ -52,35 +52,46 @@ Two consequences that have bitten before:
 **A pick's deadline depends on the day its team plays — in every week,
 Week 1 included.** There is no special Week 1 rule.
 
-| Game day               | Picks close           |
-| ---------------------- | --------------------- |
-| Wednesday              | Tuesday 12:00 PM ET   |
-| Thursday               | Wednesday 12:00 PM ET |
-| Friday                 | Thursday 12:00 PM ET  |
-| Saturday/Sunday/Monday | Friday 12:00 PM ET    |
+| Game day               | Picks close          |
+| ---------------------- | -------------------- |
+| Wednesday              | Tuesday 2:00 PM ET   |
+| Thursday               | Wednesday 2:00 PM ET |
+| Friday                 | Thursday 2:00 PM ET  |
+| Saturday/Sunday/Monday | Friday 2:00 PM ET    |
 
 Saturday, Sunday and Monday share **one** window deliberately: that is where
 the volume is and it needs a single cutoff.
 
-So a deadline day is not a lock on the week. **Tuesday 2026-09-08 noon closes
+**The hour was noon until 2026-09-09 and is 2:00 PM ET from then on**, on
+every tier of all eighteen weeks. Anthony's change; the shape of the rule did
+not move, only the time of day. It is recorded here rather than only in the
+database because this file is the contract and a reader who finds noon here
+and 2 PM in production cannot tell which is the bug. The migration that
+carries it is `20260909000064_all_deadlines_2pm_et`, written after the fact —
+see [migrations go in attended](#working-rules), which that change is the
+reason for.
+
+So a deadline day is not a lock on the week. **Tuesday 2026-09-08 2 PM closes
 only the entries that picked the Wednesday game** (Patriots at Seahawks, Wed
-09-09). The Thursday game (49ers at Rams, 09-10) closes Wednesday noon, and
-everything from Saturday 09-12 on closes Friday 09-11 noon. The week is fully
-locked at the **late** deadline — Friday noon — which is also the sweep
+09-09). The Thursday game (49ers at Rams, 09-10) closes Wednesday 2 PM, and
+everything from Saturday 09-12 on closes Friday 09-11 2 PM. The week is fully
+locked at the **late** deadline — Friday 2 PM — which is also the sweep
 boundary.
 
-Every tier is noon ET on the day before its window opens. Anthony confirmed
+Every tier is 2:00 PM ET on the day before its window opens. Anthony confirmed
 the Friday tier on 2026-09-03, on that reasoning: it gives a clean escalation
-through Thanksgiving week — **Thursday games due Wednesday noon, the Black
-Friday game due Thursday noon, the weekend due Friday noon.** It governs six
-games (Week 12 Black Friday, Week 16 Christmas Day).
+through Thanksgiving week — **Thursday games due Wednesday, the Black Friday
+game due Thursday, the weekend due Friday.** It governs six games (Week 12
+Black Friday, Week 16 Christmas Day).
 
 The derivation is `pick_deadline(week, team)` in SQL, mirrored for display by
 `pickDeadlineIso` in `src/lib/deadlines.ts`. Only two boundaries are stored per
-week — `early_deadline_at` (Wednesday noon) and `late_deadline_at` (Friday
-noon); the Wednesday and Friday tiers derive one day either side of `early`, so
+week — `early_deadline_at` (Wednesday 2 PM) and `late_deadline_at` (Friday
+2 PM); the Wednesday and Friday tiers derive one day either side of `early`, so
 editing a week's early deadline moves them with it. A bye, `SKIP_WEEK`, or a
-team with no game that week takes the late boundary.
+team with no game that week takes the late boundary. **Neither derivation
+hardcodes the hour** — both read the stored boundaries — which is why moving
+all eighteen weeks was a data change and not a code change.
 
 ## Money
 
@@ -314,6 +325,63 @@ whole pool, so the public site defaults to it.
   file names and Gmail ids still never do. Reversing this means excluding
   the row by an explicit admin-recorded rule, never by matching a name.
 
+## Her picks arrive in two shapes
+
+Set by Anthony on 2026-09-10. She publishes a week's picks two ways, and both
+are her data, so both land in the same place: **`lynne_roster.cells`, never
+`picks`.** `picks` is this group's record of what its own 121 chose;
+`lynne_roster` is her sheet as she published it. The two are compared and
+never merged.
+
+- **Shape A, the weekly sheet.** A Football `.xlsx` with the week columns
+  filled, Saturday or Sunday. It arrives as a new sha256 and a new set of rows
+  through `admin_load_lynne_roster` (`npm run lynne:roster`), which prints the
+  row diff **and now the week-cell diff** - which NO.'s week changed, which is
+  newly filled, which she blanked - before anything is written. A sheet is
+  loaded once and never rewritten, so that diff is read then or not at all.
+- **Shape B, a plain-text email with no attachment.** A heading naming a team,
+  then lines of `#<NO.>-<name>`. The first was Gmail `1a08631cab24c4ce`,
+  "Wednesday and Thursday Games", 2026-09-09 8:43 AM ET. Applied by
+  `admin_apply_lynne_email_cells` (`npm run lynne:picks -- --message-id <id>`).
+
+Five rules govern both, and they are enforced in the database rather than in
+the script that calls it:
+
+- **Her list is PARTIAL.** A NO. she does not name has no pick recorded and is
+  **not eliminated**. Only what she states is stored. There is no default, no
+  fill-down and nothing inferred from silence — which is the same rule as
+  [her sheet shrinking](#who-is-the-authority-on-what), read the other way.
+- **Match on her NO., never on a name.** Her NAMES text is free-form, it
+  repeats (Ian Lubin twice), and it carries her own typos. The name after the
+  dash is read and carried for the report only.
+- **Her word is stored VERBATIM** — `"Seattle"`, not `SEA`. The public view
+  matches her vocabulary on that text to decide the reveal, so storing our
+  code would fall through to the every-game-kicked-off branch and show a pick
+  early. The mapped code is used for the variance check and recorded beside
+  the cell in `cell_sources`; it is never what the cell holds. **A word that
+  does not map exactly stops the run and is printed** — "New York" is neither
+  NY Giants nor NY Jets, and that is exactly where a guess puts a pick on the
+  wrong team.
+- **A variance stops that row.** Where she names one of the 121 and her team
+  differs from the pick this group holds, the row is reported with both values
+  and **not written**. Same where her email contradicts a cell of her own.
+  Neither side is corrected and neither is assumed wrong.
+- **Idempotent on the message.** A second run on the same Gmail message writes
+  nothing at all. The guard is an `audit_log` row, so it holds for a re-run, a
+  second ops run in the same window, and SQL applied by hand.
+
+**The reveal gate is the view's and is untouched.** `v_master_list` already
+serves a cell naming one of her teams only once `pick_is_public` says that
+team's game has kicked off. Nothing in the ingestion decides what is public.
+
+`cell_sources` records, per cell, which shape wrote it and what it came from —
+a sheet's sha256 or a Gmail message id. It is **admin-only**: `v_master_list`
+still exposes exactly five columns and provenance is not one of them. It also
+does one job nothing else can: when a new sheet arrives, an email-written cell
+for a week **the new sheet leaves blank** is carried across with its message
+id, and a week the sheet **does** state is hers as published and wins. Without
+that, Saturday's sheet would silently drop Wednesday's email.
+
 ## Names
 
 Entry names are stored **verbatim** — never normalized, cased, or trimmed by
@@ -415,6 +483,40 @@ that person has to pick, is the same "work out which half is yours" problem
 read the other way round. Neither case is in the roster today; both are one
 gift away.
 
+### Alexa plays three of the free entries
+
+Set by Anthony on 2026-09-10. **`AAA #3` (974), `AAA #6` (977) and `AAA #9`
+(980) carry `player_email = alexaragozzino@yahoo.com`.** Alexa is the player
+on those three; Anthony is still the owner. Their entry names do not change.
+
+This is the ordinary [gift](#gifted-entries) shape — `is_gifted` with an
+address — pointed at the free entries, and every consequence of that shape
+holds and no other:
+
+- **They are still free entries.** The free count stays **11** and the
+  entitlement is unchanged: the ratio counts recruited entries, and a gift
+  moves who plays, never who owns or what bills. Remittance stays
+  **110 × $25**. A gift has never touched money and does not start here.
+- **Her reply settles the week for that entry.** When she replies with a pick
+  for one of the three, that pick is hers and it overrides whatever default
+  or standing choice would otherwise have stood — the giftee owns the pick,
+  the same as Chas Flaster and John Vassallo. When she does not reply, the
+  default stands and nothing is chased on her behalf beyond the ordinary
+  reminder.
+- **Her address is a `player_email` like any other, so it is in the derived
+  recipient set.** That set is **40**, not 39, and `expectedRosterAddresses`
+  in `scripts/ops/config.json` was moved to 40 to match. Every count gate
+  reads that one number, so there is nothing else to change — and the number
+  is only ever moved to match a roster that moved, never to make a failing
+  run pass.
+- She is on the **All** filter of `/admin/emails` and off the money filters,
+  like every giftee: she hears announcements, she is not BCC'd on a note
+  about a balance.
+
+Three entries, one person, one message: `recipientsForPicks` buckets by the
+PERSON, so Alexa gets one request listing her three. Anthony's request lists
+the other eight `AAA` entries and not hers.
+
 ### An alias is not a giftee
 
 Set by Anthony on 2026-09-04, after the app got this wrong.
@@ -462,6 +564,22 @@ pick request.
 
 These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
+
+**As of 2026-09-10 (Thursday of Week 1):** 121 entries = 110 recruited + 11
+free, Lynne numbers 972-1092 contiguous, `audit_log` max 666 before this
+session. **Every deadline of all 18 weeks reads 2:00 PM ET** (above); Friday
+2026-09-11 2:00 PM is Week 1's hard lock and the sweep boundary. Week 1: 57
+current picks in, 64 outstanding. The derived recipient set is **40**
+addresses - it moved from 39 when
+[Alexa took three of the free entries](#alexa-plays-three-of-the-free-entries).
+`lynne_roster` holds her `Football 2026-3.xlsx` (sha `cc7a987c`), 1,319 rows;
+her later `Football 2026-4.xlsx` (sha `817d0f17`) was read to confirm the
+numbering but is **not loaded**, so a load of it is still owed and the week
+cells it carries would arrive with it. Her Week 1 Wednesday/Thursday picks came
+by email, not sheet - Gmail `1a08631cab24c4ce`, 8 NO.s - and are in her week
+cells under [the two shapes](#her-picks-arrive-in-two-shapes). The one overlap
+with our 121 is her NO. 1005, `E.A.T.`, on Seattle, which matches the pick this
+group holds. The block below is kept for the history it carries.
 
 **As of 2026-09-08 (Tuesday of Week 1):** 110 recruited + 11 free =
 **121 entries**, and **the pool is closed** - the season opens Wednesday
@@ -713,6 +831,42 @@ Two standing facts that are NOT snapshots and must survive:
   Lynne number or label - those go through `admin_update_entry`, as the
   2026-09-08 load did - and it never touches money. Set 2026-09-08.
 
+- **EVERY production change is attended, not only a migration in a PR.**
+  Set 2026-09-10, after the one that was not. On 2026-09-09 at 19:03 UTC all
+  eighteen weeks' deadlines were moved from noon to 2:00 PM ET by raw SQL
+  against production: no file in `supabase/migrations`, no smoke check at a
+  savepoint, no row in `supabase_migrations.schema_migrations`. The change
+  itself is Anthony's and is correct. **The way it went in is the breach**, and
+  it is a breach precisely because the change was right — a wrong one applied
+  the same way would have had nothing to roll back to.
+
+  Two things it cost, both silent until looked for. `ci` builds a fresh
+  database from `supabase/migrations` and runs the SQL suites against it, so
+  for a day that database held noon while production held 2 PM: the deadline
+  every suite turns on differed between them, and neither side could tell.
+  And the only trace the change left was `audit_log` id 653, whose actor
+  string names a migration — `migration:20260909000064_all_deadlines_2pm_et` —
+  that did not exist. **An actor string is not a migration.** The file was
+  written afterwards, deliberately idempotent so it could be, and applied and
+  recorded attended; that is the repair, not the pattern.
+
+  So the rule, stated once and covering the whole surface: **a change to
+  production schema or to seeded data — a migration, a bulk UPDATE, a
+  backfill, a column default, anything applied outside an audited admin RPC —
+  is a file in `supabase/migrations`, applied by hand in one transaction with
+  the smoke check at a savepoint, with its tracking row, in the same sitting.**
+  Writing SQL straight at production is the one shape this project does not
+  do, whatever the hurry: it is the same class as an unattended migrate job,
+  which was deleted on 2026-09-09 for exactly this reason. Ad-hoc SQL that
+  only READS is fine and needs none of this.
+
+  **Write the file so it can be applied after the fact.** A migration that
+  asserts the state it wants — re-asserting 2:00 PM rather than adding two
+  hours to whatever it finds — is a no-op against a production that already
+  has it and still corrects a fresh database. A migration that shifts by a
+  delta cannot be added afterwards at all, because running it against
+  production would move the hour twice.
+
 - **Migrations go in attended, with the code, on merge day.** Migrations
   60-62 applied ahead of their code on 2026-09-04 broke entry saves for
   hours. A migration file in a PR is not applied until that PR merges, and
@@ -776,12 +930,14 @@ in any of them.**
 | Command                                  | What it does                                                                                                                   |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `npm run picks`                          | Unread mail from any roster address, or pasted text, into a proposed table; writes through `admin_submit_pick` after `y`       |
-| `npm run lynne -- --week N --deadline d` | The entries that locked at that noon in her numbering, printed and left as a draft in the Entry List thread                     |
+| `npm run lynne -- --week N --deadline d` | The entries that locked at that deadline in her numbering, printed and left as a draft in the Entry List thread                  |
+| `npm run lynne:roster -- --file f`      | Her newest Football xlsx into `lynne_roster`, once per sha256; prints the row diff and the week-cell diff before writing              |
+| `npm run lynne:picks -- --message-id m` | Shape B: her plain-text pick email into her own week cells, matched on her NO., idempotent on the message, variances reported          |
 | `npm run chase -- --week N [--bcc]`      | One draft per recipient with no pick (or one BCC draft) naming their entries and the earliest deadline still open               |
 | `npm run results -- --week N`            | Her newest Football xlsx from Gmail through `admin_apply_lynne_import`; refuses a sha256 seen before; prints the variance table |
 | `npm run distribute -- --week N`         | After the Friday lock, one BCC draft to every owner and player address with the /grid link and the standings sentence           |
 | `npm run remind [-- --send --yes]`      | The week reminder due now (six hours before a week's early or late deadline) to every live address, exact count gate, drafted or sent |
-| `npm run ops -- <job>` / `npm run ops -- tick` | Operations from the repo: sweep, pick-reminder, lynne-import, chase, results, distribute, each from `scripts/ops/config.json`; `tick` runs whatever fell due in the last hour |
+| `npm run ops -- <job>` / `-- hourly` / `-- daily` | Operations from the repo: sweep, pick-reminder, lynne-import, chase, results, distribute, each from `scripts/ops/config.json`; `hourly` runs whatever fell due in the last hour (`tick` is its old name and still works); `daily` runs the six reporters |
 | `npm run notify -- "line"`               | One line to ntfy.sh/`NTFY_TOPIC`, printed when the topic is unset                                                               |
 | `npm run gmail:auth`                     | One-time OAuth consent for the Gmail token                                                                                     |
 
@@ -810,22 +966,42 @@ in any of them.**
     `week_reminder_sent` on the key `week:N:early|late`). Recipients are
     derived on the run - every owner address and every `player_email` on
     a live entry, lowercased, once each - and **the count must equal
-    `EXPECTED_ROSTER_ADDRESSES` (39) exactly or the run stops**
+    `EXPECTED_ROSTER_ADDRESSES` (40) exactly or the run stops**
     with the list and the delta printed; a range is what let a wrong
     count through once in another pool. Subject begins `Survivor` so
     replies hit the filter. The body is his Week 1 text with the deadline
     sentences derived from the games. Changing the count is a reviewed
     change to the constant, never a flag.
   Adding a template is a reviewed change to the allowlist, never a flag.
-- **Operations run from the repo (set 2026-09-09).** `scripts/ops` holds one
-  entry point per job - sweep, pick-reminder, lynne-import, chase, results,
-  distribute - and every schedule and parameter comes from the checked-in
-  `scripts/ops/config.json`, so changing one is a reviewed change and never a
-  pasted prompt or a Gmail setting. `npm run ops -- tick` runs whatever fell
-  due in the last hour; the claude.ai Routine that drives it is one line
-  (docs/ROUTINES.md section 10) and is paused until its environment carries
-  the variables it needs. Three rules that used to live in a Routine prompt
-  or a Gmail filter are code:
+- **Operations run from the repo (set 2026-09-09, extended 2026-09-10).**
+  `scripts/ops` holds one entry point per job - sweep, pick-reminder,
+  lynne-import, chase, results, distribute - and every schedule and parameter
+  comes from the checked-in `scripts/ops/config.json`, so changing one is a
+  reviewed change and never a pasted prompt or a Gmail setting.
+
+  **There are TWO entry points and TWO Routines, and the split is about what
+  is hour-sensitive.** `npm run ops -- hourly` runs whatever fell due in the
+  last hour: the picks intake, because a reply landing at 1:15 has to be
+  recorded before a 2:00 deadline, and the two sending jobs, which fire six
+  hours before a boundary. `tick` is its old name and still runs.
+  `npm run ops -- daily` runs the six reporters in `scripts/ops/reporters`,
+  which replaced the six claude.ai Routines of docs/ROUTINES.md sections 3-7:
+  each of those was a prompt with Gmail, this repo and **no database at all**,
+  working the roster out of mail; these read it, through the admin's own RLS
+  session, and they are pure functions with tests. Reporting is not
+  hour-sensitive, and once a day is the difference between a report someone
+  reads and twenty-four nobody does. **The reporters write nothing** - no
+  send, no label, no mark, no identity resolved, no variance resolved.
+
+  **A Routine is created in the claude.ai UI, never from a session or the
+  API.** The repo source and the environment are UI-only fields, so a Routine
+  made through the API fires a session with no repo to run `npm run ops` in
+  and no Gmail to read: it succeeds and does nothing, which is worse than
+  failing. One was created that way on 2026-09-04 and had to be deleted. The
+  click path and the environment variables are docs/ROUTINES.md section 11.
+
+  Three rules that used to live in a Routine prompt or a Gmail filter are
+  code:
   - The sweep reads unread mail from **every owner address and every
     `player_email` on a live entry, whatever its subject or label**, plus
     unread mail from anyone else whose subject carries `survivor` or `picks`
@@ -836,7 +1012,7 @@ in any of them.**
   - **Only pick-reminder and chase may send**; the config loader refuses any
     other job marked as sending or handed `--send`. Every whole-roster message
     derives its recipients live and stops unless the count equals
-    `expectedRosterAddresses` (39) **exactly** - a range let a wrong count
+    `expectedRosterAddresses` (40) **exactly** - a range let a wrong count
     through once in another pool.
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
@@ -928,6 +1104,8 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |
 | Her master sheet, read-only         | `lynne_roster` table, `scripts/lynne/roster.ts` |
+| Her picks by email (Shape B)        | `src/lib/lynne/pick-email.ts`, `scripts/lynne/picks-email.ts` |
+| The daily reporters                 | `scripts/ops/reporters/`, `scripts/ops/daily.ts` |
 | The Master List, public             | `src/app/master-list/`, `src/lib/master-list.ts`, `v_master_list` |
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |

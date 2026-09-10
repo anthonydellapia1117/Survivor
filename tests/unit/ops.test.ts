@@ -59,8 +59,8 @@ describe("the ops config", () => {
   });
 
   it("carries the exact roster count the whole-roster messages gate on", () => {
-    expect(loadOpsConfig().expectedRosterAddresses).toBe(39);
-    expect(EXPECTED_ROSTER_ADDRESSES).toBe(39);
+    expect(loadOpsConfig().expectedRosterAddresses).toBe(40);
+    expect(EXPECTED_ROSTER_ADDRESSES).toBe(40);
     expect(loadOpsConfig().reminderLeadHours).toBe(6);
     expect(loadOpsConfig().sweepSubjectTerms).toEqual(["survivor", "picks"]);
   });
