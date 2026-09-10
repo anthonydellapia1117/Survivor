@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EXPECTED_ROSTER_ADDRESSES } from "../../scripts/lib/constants";
-import { CONFIG_PATH, JOB_NAMES, loadOpsConfig, SEND_JOBS, slotBreaches, validateOpsConfig } from "../../scripts/ops/lib/config";
-import { cronMatches, describeSlot, dueAtEveryTick, dueInWindow, missedSlots, parseCron, unobservedSlots } from "../../scripts/ops/lib/cron";
+import { CONFIG_PATH, JOB_NAMES, loadOpsConfig, SEND_JOBS, slotBreaches, validateOpsConfig, jobSchedule} from "../../scripts/ops/lib/config";
+import { cronMatches, describeSlot, dueAtEveryTick, dueInWindow, missedSlots, parseCron, unobservedSlots, unobservedEtSlots} from "../../scripts/ops/lib/cron";
 import { dueSlot } from "../../scripts/remind/lib/due";
 import { tempSheetName } from "../../scripts/ops/lib/attachment";
 import { latestLockedWeek } from "../../scripts/ops/lib/weeks";
@@ -22,13 +22,13 @@ const withJob = (name: string, patch: Record<string, unknown>) => {
 };
 
 describe("the ops config", () => {
-  it("loads, names the six jobs and nothing else, and every command is an npm script", () => {
+  it("loads, names the seven jobs and nothing else, and every command is an npm script", () => {
     const c = loadOpsConfig();
     expect(Object.keys(c.jobs).sort()).toEqual([...JOB_NAMES].sort());
     const scripts = (JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> }).scripts;
     for (const j of JOB_NAMES) {
       expect({ job: j, script: c.jobs[j].command, known: c.jobs[j].command in scripts }).toEqual({ job: j, script: c.jobs[j].command, known: true });
-      expect(() => parseCron(c.jobs[j].schedule)).not.toThrow();
+      for (const expr of jobSchedule(c.jobs[j]).exprs) expect(() => parseCron(expr)).not.toThrow();
     }
     expect("ops" in scripts).toBe(true);
   });
@@ -102,7 +102,7 @@ describe("the cron matcher", () => {
     // Anthony's three slots, set 2026-09-10: one message each morning, the
     // Friday one the final call. The cron is the minute they go; which slot a
     // run belongs to is the ET calendar (scripts/remind/lib/due.ts).
-    const { schedule } = loadOpsConfig().jobs["pick-reminder"];
+    const schedule = jobSchedule(loadOpsConfig().jobs["pick-reminder"]).exprs[0];
     expect(dueInWindow(schedule, new Date("2026-09-09T12:43:00Z"), 60)).toBe(true); // Wednesday
     expect(dueInWindow(schedule, new Date("2026-09-10T12:43:00Z"), 60)).toBe(true); // Thursday
     expect(dueInWindow(schedule, new Date("2026-09-11T12:43:00Z"), 60)).toBe(true); // Friday
@@ -150,7 +150,11 @@ describe("the wiring the dispatcher and the commands keep", () => {
 });
 
 describe("the tick that observes the schedules", () => {
-  const TICK = "43 9-23,0-2 * * *";
+  // Widened from 9-23,0-2 on 2026-09-11 for the scores job: its six ET slots
+  // are overnight, and under the old tick nine of the twelve slot-offsets
+  // (six slots x EDT and EST) fell in the gap between two ticks and would
+  // never have run. 07, 08 and 03 UTC are the hours that close that gap.
+  const TICK = "43 7-23,0-3 * * *";
 
   it("is checked in beside the jobs, because a schedule means nothing without it", () => {
     const c = loadOpsConfig();
@@ -166,8 +170,14 @@ describe("the tick that observes the schedules", () => {
     const doc = readFileSync("docs/ROUTINES.md", "utf8");
     expect(doc).toMatch(new RegExp(`Cron stored \\(UTC\\): \`${c.tickSchedule.replace(/\*/g, "\\*")}\``));
     for (const j of JOB_NAMES) {
-      const row = new RegExp(`\\|\\s${j}\\s*\\|\\s*\`${c.jobs[j].schedule.replace(/\*/g, "\\*")}\``);
-      expect({ job: j, inDoc: row.test(doc) }).toEqual({ job: j, inDoc: true });
+      const { exprs, zone } = jobSchedule(c.jobs[j]);
+      // An ET job's table cell names its slots in ET, one per line, rather
+      // than a UTC expression the doc would have to re-pin every November.
+      const cell = zone === "et" ? exprs.map((e) => `\`${e}\` ET`) : exprs.map((e) => `\`${e}\``);
+      for (const want of cell) {
+        const row = new RegExp(`\\|\\s${j}\\s[\\s\\S]{0,400}?${want.replace(/[*|\\`]/g, (m) => "\\" + m)}`);
+        expect({ job: j, want, inDoc: row.test(doc) }).toEqual({ job: j, want, inDoc: true });
+      }
     }
   });
 
@@ -188,23 +198,35 @@ describe("the tick that observes the schedules", () => {
     // slot is observed" - which the raw check would fail it on.
     expect(dueAtEveryTick("43 * * * *", TICK, 60)).toBe(true);
     expect(missedSlots("43 * * * *", TICK, 60)).toEqual([]);
-    expect(unobservedSlots("43 * * * *", TICK, 60).length).toBe(42);
+    // 21 tick hours a day leaves three unobserved: 04, 05 and 06 UTC.
+    expect(unobservedSlots("43 * * * *", TICK, 60).length).toBe(21);
     expect(dueAtEveryTick("0 10,11,12 * * 3,5", TICK, 60)).toBe(false);
   });
 
   it("loses nothing on any job as the config stands, and refuses a config that would", () => {
     const c = loadOpsConfig();
     for (const j of JOB_NAMES) {
-      expect({ job: j, missed: missedSlots(c.jobs[j].schedule, c.tickSchedule, c.tickWindowMinutes) }).toEqual({ job: j, missed: [] });
+      const { exprs, zone } = jobSchedule(c.jobs[j]);
+      const missed = exprs.flatMap((e) =>
+        zone === "et"
+          ? unobservedEtSlots(e, c.tickSchedule, c.tickWindowMinutes)
+          : missedSlots(e, c.tickSchedule, c.tickWindowMinutes),
+      );
+      expect({ job: j, missed }).toEqual({ job: j, missed: [] });
     }
     // A schedule an hour before the first tick of the day is named.
-    expect(slotBreaches(validateOpsConfig(withJob("distribute", { schedule: "20 8 * * 5" })))).toEqual([
-      expect.stringMatching(/^distribute: Fri 08:20 UTC falls outside/),
+    expect(slotBreaches(validateOpsConfig(withJob("distribute", { schedule: "20 5 * * 5" })))).toEqual([
+      expect.stringMatching(/^distribute: Fri 05:20 UTC falls outside/),
     ]);
     // So is a tick that stops observing a schedule that used to be fine: a
     // Routine starting at 13:43 UTC would never see the three morning slots.
     expect(slotBreaches(validateOpsConfig({ ...raw(), tickSchedule: "43 13-23,0-2 * * *" }))).toEqual([
       expect.stringMatching(/^pick-reminder: Wed 12:00 UTC, Thu 12:00 UTC, Fri 12:00 UTC falls outside/),
+      // The scores job is named in BOTH offsets, which is the whole point of
+      // stating it in ET: a tick that observes an ET slot in EDT but not in
+      // EST runs the job for half the season and silently not for the other
+      // half, and the breach has to say so rather than showing one line.
+      expect.stringMatching(/^scores: Fri 03:00 ET = Fri 07:00 UTC \(EDT\)[\s\S]*Tue 03:00 ET = Tue 08:00 UTC \(EST\) falls outside/),
     ]);
   });
 
@@ -213,7 +235,7 @@ describe("the tick that observes the schedules", () => {
     // EXPECTED_ROSTER_ADDRESSES, and picks, chase, remind, distribute, lynne
     // and results all import it. If the loader refused a job/tick mismatch,
     // one bad cron would kill the Week 1 mail intake, not just the tick.
-    const bad = withJob("distribute", { schedule: "20 8 * * 5" });
+    const bad = withJob("distribute", { schedule: "20 5 * * 5" });
     expect(() => validateOpsConfig(bad)).not.toThrow();
     expect(slotBreaches(validateOpsConfig(bad)).length).toBe(1);
     // The dispatcher is where it refuses, and it names the job.
@@ -231,7 +253,7 @@ describe("the tick that observes the schedules", () => {
     // cron's days and the slots' days are the same three, and at the tick
     // that follows each firing the right slot is due.
     const c = loadOpsConfig();
-    const cron = c.jobs["pick-reminder"].schedule;
+    const cron = jobSchedule(c.jobs["pick-reminder"]).exprs[0];
     expect([...parseCron(cron).dow].sort((a, b) => a - b)).toEqual([3, 4, 5]);
     const weeks = [{ week: 1, early_deadline_at: "2026-09-09T18:00:00Z", late_deadline_at: "2026-09-11T18:00:00Z" }];
     const fired = ["2026-09-09T12:43:00Z", "2026-09-10T12:43:00Z", "2026-09-11T12:43:00Z"].map((t) =>

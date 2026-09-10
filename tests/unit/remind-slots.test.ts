@@ -7,7 +7,7 @@ import { sendWeekReminder, weekReminderKey, WEEK_REMINDER_CLAIM_ACTION, type Wee
 import { dueSlot, etDateKey, findSlot, isSlotName, slotKey, slotsOf, SLOT_NAMES } from "../../scripts/remind/lib/due";
 import { reminderBody, reminderSubject } from "../../scripts/remind/lib/message";
 import type { GameLite, WeekBounds } from "../../scripts/picks/lib/deadline";
-import { loadOpsConfig } from "../../scripts/ops/lib/config";
+import { loadOpsConfig, jobSchedule} from "../../scripts/ops/lib/config";
 import { dueInWindow, parseCron } from "../../scripts/ops/lib/cron";
 
 // THREE reminders a week, each sent in the morning. Set by Anthony on
@@ -314,7 +314,7 @@ describe("the command that runs a slot", () => {
 describe("the cron the three slots fire on", () => {
   it("names the three mornings, and the tick that observes them sees each one", () => {
     const c = loadOpsConfig();
-    const cron = c.jobs["pick-reminder"].schedule;
+    const cron = jobSchedule(c.jobs["pick-reminder"]).exprs[0];
     const spec = parseCron(cron);
     expect([...spec.dow]).toEqual([3, 4, 5]);
     expect(spec.hour.size).toBe(1);
@@ -340,7 +340,7 @@ describe("the cron the three slots fire on", () => {
     // later, or the lead higher, fails here rather than quietly shortening the
     // warning Anthony's players get.
     const c = loadOpsConfig();
-    const [hour] = [...parseCron(c.jobs["pick-reminder"].schedule).hour];
+    const [hour] = [...parseCron(jobSchedule(c.jobs["pick-reminder"]).exprs[0]).hour];
     for (const deadlineUtcHour of [18, 19]) {
       expect({ deadlineUtcHour, notice: deadlineUtcHour - hour }).toEqual({ deadlineUtcHour, notice: expect.any(Number) });
       expect(deadlineUtcHour - hour).toBeGreaterThanOrEqual(c.reminderLeadHours);

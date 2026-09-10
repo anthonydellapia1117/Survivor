@@ -5,23 +5,48 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { missedSlots, parseCron } from "./cron";
+import { missedSlots, parseCron, unobservedEtSlots } from "./cron";
 
-export const JOB_NAMES = ["sweep", "pick-reminder", "lynne-import", "chase", "results", "distribute"] as const;
+export const JOB_NAMES = ["sweep", "pick-reminder", "lynne-import", "chase", "results", "distribute", "scores"] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 /** The only jobs that may send mail, and only through scripts/lib/send.ts. */
 export const SEND_JOBS: readonly JobName[] = ["pick-reminder", "chase"];
 
 export interface JobConfig {
-  /** 5-field cron, UTC. */
-  schedule: string;
+  /**
+   * 5-field cron, UTC. Exactly one of `schedule` and `scheduleEt` is set.
+   */
+  schedule?: string;
+  /**
+   * 5-field cron read against the AMERICA/NEW_YORK wall clock, converted on
+   * every run rather than pinned to a UTC hour.
+   *
+   * A slot written as a fixed UTC cron moves an hour when the clock does: 3 AM
+   * ET is 07:00 UTC until 2026-11-01 and 08:00 UTC after it, so either half of
+   * the season is wrong. Day-of-month and month must both be `*` - an ET
+   * expression is a weekly pattern, and a date field would need resolving in a
+   * zone too.
+   *
+   * It is a LIST because one cron field cannot say "3 AM on four days AND
+   * 5 PM and 10 PM on Sunday" - hour and day-of-week cross-multiply, so that
+   * would be fifteen slots. One expression per slot instead: a reviewer counts
+   * the lines and gets the number Anthony asked for.
+   */
+  scheduleEt?: string[];
   /** The npm script the job runs. */
   command: string;
   args: string[];
   sends: boolean;
   template?: string;
   what: string;
+}
+
+/** A job's schedule expressions and the clock they are read against. */
+export function jobSchedule(j: JobConfig): { exprs: string[]; zone: "utc" | "et" } {
+  if (j.scheduleEt) return { exprs: j.scheduleEt, zone: "et" };
+  if (j.schedule) return { exprs: [j.schedule], zone: "utc" };
+  throw new Error("job has neither schedule nor scheduleEt");
 }
 
 export interface OpsConfig {
@@ -109,8 +134,26 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
   for (const name of Object.keys(jobs)) if (!(JOB_NAMES as readonly string[]).includes(name)) fail(`unknown job ${name}`);
   for (const name of JOB_NAMES) {
     const j = jobs[name] as Record<string, unknown>;
-    if (typeof j.schedule !== "string" || j.schedule.trim().split(/\s+/).length !== 5) fail(`${name}: schedule must be 5 cron fields`);
-    checkCron(`${name}: schedule`, () => parseCron(j.schedule as string));
+    // Exactly one clock. Two would be two answers to when the job runs, and
+    // the day they disagree the job runs twice or not at all.
+    const hasUtc = j.schedule !== undefined;
+    const hasEt = j.scheduleEt !== undefined;
+    if (hasUtc === hasEt) fail(`${name}: set exactly one of schedule (UTC) and scheduleEt (America/New_York)`);
+    if (hasEt) {
+      const list = j.scheduleEt;
+      if (!Array.isArray(list) || list.length === 0) fail(`${name}: scheduleEt must be a non-empty list of cron expressions`);
+      for (const expr of list as unknown[]) {
+        if (typeof expr !== "string" || expr.trim().split(/\s+/).length !== 5) fail(`${name}: every scheduleEt entry must be 5 cron fields`);
+        const parsed = checkCron(`${name}: scheduleEt`, () => parseCron(expr));
+        if (parsed.dom.size !== 31 || parsed.month.size !== 12) {
+          fail(`${name}: scheduleEt must leave day-of-month and month as * - it is a weekly pattern`);
+        }
+      }
+    } else {
+      const expr = j.schedule as unknown;
+      if (typeof expr !== "string" || expr.trim().split(/\s+/).length !== 5) fail(`${name}: schedule must be 5 cron fields`);
+      checkCron(`${name}: schedule`, () => parseCron(expr));
+    }
     if (typeof j.command !== "string" || !j.command) fail(`${name}: command missing`);
     if (!Array.isArray(j.args) || !j.args.every((a) => typeof a === "string")) fail(`${name}: args must be strings`);
     if (typeof j.sends !== "boolean") fail(`${name}: sends must be true or false`);
@@ -144,7 +187,17 @@ export function validateOpsConfig(raw: unknown): OpsConfig {
 export function slotBreaches(c: OpsConfig): string[] {
   const out: string[] = [];
   for (const name of JOB_NAMES) {
-    const missed = checkCron(`${name}: schedule`, () => missedSlots(c.jobs[name].schedule, c.tickSchedule, c.tickWindowMinutes));
+    const { exprs, zone } = jobSchedule(c.jobs[name]);
+    // An ET slot is checked in BOTH offsets: it lands on two different UTC
+    // minutes across a season, and a tick that observes only one of them runs
+    // the job for half the year and silently does not for the other half.
+    const missed = checkCron(`${name}: schedule`, () =>
+      exprs.flatMap((expr) =>
+        zone === "et"
+          ? unobservedEtSlots(expr, c.tickSchedule, c.tickWindowMinutes)
+          : missedSlots(expr, c.tickSchedule, c.tickWindowMinutes),
+      ),
+    );
     if (missed.length) out.push(`${name}: ${missed.join(", ")} falls outside every ${c.tickWindowMinutes}-minute tick window of "${c.tickSchedule}"`);
   }
   return out;

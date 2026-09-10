@@ -5,7 +5,7 @@ code in this repo.**
 
 | Routine             | Cron (UTC)            | Runs                    |
 | ------------------- | --------------------- | ----------------------- |
-| **Survivor Sweep**  | `43 9-23,0-2 * * *`   | `npm run ops -- hourly` |
+| **Survivor Sweep**  | `43 7-23,0-3 * * *`   | `npm run ops -- hourly` |
 | **Survivor Daily**  | `30 12 * * *`         | `npm run ops -- daily`  |
 
 `hourly` is what section 10 called the Ops Tick: every job in
@@ -467,8 +467,8 @@ one line to ntfy when `NTFY_TOPIC` is set, and prints it otherwise.
 ## 10. Ops Tick
 
 Name: **Survivor Ops Tick**
-Cron (America/New_York): `43 5-22 * * *` (every hour at :43, 5 AM to 10 PM)
-Cron stored (UTC): `43 9-23,0-2 * * *`
+Cron (America/New_York): `43 3-23 * * *` (every hour at :43, 3 AM to 11 PM ET)
+Cron stored (UTC): `43 7-23,0-3 * * *`
 Trigger ID: `trig_01W9BrBAoWKBQm9AjJ9FVVKK` (created 2026-09-09 as the Week
 Reminder, renamed and repointed the same day. **It is ENABLED**, verified
 2026-09-10 against the live trigger list; an earlier draft of this file said
@@ -510,6 +510,7 @@ this table is a copy for reading):
 | lynne-import  | `5 21 * * 2,4`        | `npm run lynne:roster -- --file <her newest Football xlsx, fetched> --message-id <id> --yes` | no |
 | results       | `5 21 * * 2,4`        | `npm run results -- --yes --week <last locked week>` | no |
 | distribute    | `20 18 * * 5`         | `npm run distribute -- --yes --week <last locked week>` | no |
+| scores        | `0 3 * * 5` ET, `0 3 * * 6` ET, `0 17 * * 0` ET, `0 22 * * 0` ET, `0 3 * * 1` ET, `0 3 * * 2` ET | `npm run scores -- --yes` | no |
 
 Three rules that used to be pasted into a Routine or a Gmail setting are code
 now:
@@ -860,7 +861,7 @@ is exactly two.
      3. Environment: `env_01E2ghUxXKj19qoDX3bTxf3p`.
      4. Source repo: `anthonydellapia1117/Survivor`, branch `main`.
      5. Connectors: **Gmail only**. Nothing else is granted.
-     6. Schedule (UTC): `43 9-23,0-2 * * *` for the Sweep,
+     6. Schedule (UTC): `43 7-23,0-3 * * *` for the Sweep,
         `30 12 * * *` for the Daily.
      7. Prompt, one line and nothing else:
         - Sweep: `Run npm run ops -- hourly and report exactly what it printed.`
@@ -886,7 +887,7 @@ is exactly two.
 
      | Routine                        | State    | Cron (UTC)            |
      | ------------------------------ | -------- | --------------------- |
-     | Survivor Ops Tick              | ENABLED  | `43 9-23,0-2 * * *`   |
+     | Survivor Ops Tick              | ENABLED  | `43 7-23,0-3 * * *`   |
      | Survivor Gmail Sweep           | ENABLED  | `43 11-23,0-2 * * *`  |
      | Survivor Pick Gap Check        | paused   | `5 13 * * 1-5`        |
      | Survivor Deadline Close Check  | paused   | `20 18 * * 2-5`       |

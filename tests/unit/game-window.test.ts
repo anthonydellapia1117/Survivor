@@ -75,7 +75,7 @@ function tokensOf(block: string): Record<string, Rgb> {
     throw new Error(`token ${name}: cannot read "${v}"`);
   };
   const out: Record<string, Rgb> = {};
-  for (const n of ["win", "loss", "tie", "bye", "primary", "snf", "mnf", "wfs"]) out[n] = resolve(n);
+  for (const n of ["win", "loss", "tie", "bye", "primary", "tnf", "snf", "mnf", "wfs"]) out[n] = resolve(n);
   return out;
 }
 
@@ -87,11 +87,14 @@ describe("the window colours", () => {
   const light = css.slice(lightStart);
 
   it("are mapped for Tailwind and defined in both themes from existing tokens", () => {
-    for (const t of ["snf", "mnf", "wfs"]) {
+    for (const t of ["tnf", "snf", "mnf", "wfs"]) {
       expect(css).toContain(`--color-${t}: var(--${t});`);
       expect((css.match(new RegExp(`^\\s*--${t}:`, "gm")) ?? []).length).toBe(2);
     }
-    expect(WINDOW_TOKEN).toEqual({ tnf: "tie", snf: "snf", mnf: "mnf", wfs: "wfs" });
+    // Every window owns its token. TNF used to borrow --tie, so the broadcast
+    // window and the tie RESULT moved together; they are the same amber today
+    // and are now separately movable.
+    expect(WINDOW_TOKEN).toEqual({ tnf: "tnf", snf: "snf", mnf: "mnf", wfs: "wfs" });
   });
 
   it("collide with none of win, loss, bye or tie, nor with each other, in dark or light", () => {
@@ -100,13 +103,17 @@ describe("the window colours", () => {
     const MIN = 50;
     for (const [theme, block] of [["dark", dark], ["light", light]] as const) {
       const t = tokensOf(block);
-      const windows: Record<string, Rgb> = { tnf: t.tie, snf: t.snf, mnf: t.mnf, wfs: t.wfs };
+      const windows: Record<string, Rgb> = { tnf: t.tnf, snf: t.snf, mnf: t.mnf, wfs: t.wfs };
       const results: Record<string, Rgb> = { win: t.win, loss: t.loss, bye: t.bye };
       for (const [w, c] of Object.entries(windows)) {
         for (const [r, rc] of Object.entries(results)) {
           expect({ theme, window: w, result: r, far: dist(c, rc) >= MIN }).toEqual({ theme, window: w, result: r, far: true });
         }
-        // TNF is the tie amber by design; the other three must differ from it.
+        // TNF renders the tie amber deliberately, so it is exempt from THIS
+        // check - and only this one. That the two vocabularies never share a
+        // surface is proved structurally in tests/unit/colour-systems.test.ts,
+        // which is what stops a reader learning "amber = tie = loss" on one
+        // screen and misreading every Thursday cell on another.
         if (w !== "tnf") expect({ theme, window: w, vsTie: dist(c, t.tie) >= MIN }).toEqual({ theme, window: w, vsTie: true });
       }
       const names = Object.keys(windows);
@@ -124,7 +131,7 @@ describe("the legend", () => {
     const html = renderToStaticMarkup(React.createElement(WindowLegend));
     const labels = [...html.matchAll(/>([^<]+)<\/span>/g)].map((m) => m[1]);
     expect(labels).toEqual(WINDOW_ORDER.map((w) => WINDOW_LABEL[w]));
-    expect(html).toContain("bg-tie/25");
+    expect(html).toContain("bg-tnf/25");
     expect(html).toContain("bg-snf/25");
     expect(html).toContain("bg-mnf/25");
     expect(html).toContain("bg-wfs/25");

@@ -187,13 +187,22 @@ export function ScheduleGrid({
                       </span>
                       {selected === null && count > 0 ? (
                         <span
+                          // How many entries have USED this team. That is
+                          // neither a broadcast window nor a result, and it
+                          // used to be drawn in bg-loss/text-loss and
+                          // bg-tie/text-tie - so on this one page red meant
+                          // "popular", amber meant both "popular" and "TNF",
+                          // and neither meant what those tokens mean
+                          // everywhere else. The count is the information;
+                          // weight carries the emphasis and no colour lies
+                          // (2026-09-11).
                           className={cn(
-                            "ml-auto rounded px-1 text-[10px] font-semibold tabular-nums",
+                            "ml-auto rounded bg-surface-2 px-1 text-[10px] tabular-nums",
                             count >= 8
-                              ? "bg-loss/25 text-loss"
+                              ? "font-bold text-foreground"
                               : count >= 4
-                                ? "bg-tie/25 text-tie"
-                                : "bg-surface-2 text-muted-foreground",
+                                ? "font-semibold text-foreground/80"
+                                : "font-semibold text-muted-foreground",
                           )}
                           title={`${count} ${count === 1 ? "entry has" : "entries have"} used ${t.abbr}`}
                         >

@@ -130,7 +130,7 @@ describe("the daily schedule is checked in, not a Routine setting", () => {
   it("config.json carries dailySchedule beside tickSchedule", () => {
     const cfg = JSON.parse(readFileSync("scripts/ops/config.json", "utf8")) as Record<string, unknown>;
     expect(cfg.dailySchedule).toBe("30 12 * * *");
-    expect(cfg.tickSchedule).toBe("43 9-23,0-2 * * *");
+    expect(cfg.tickSchedule).toBe("43 7-23,0-3 * * *");
   });
 
   it("refuses a daily schedule that would send several identical reports", () => {
