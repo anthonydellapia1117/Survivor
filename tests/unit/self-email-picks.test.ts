@@ -246,12 +246,16 @@ describe("what the command and the migration wire up", () => {
   // has no pick field, so sending him there leaves the correction unmade and
   // the row dismissed.
   it("sends a refusal the queue cannot write to the screen that can write it", () => {
-    const c = code("scripts/picks/self.ts").replace(/\/\/[^\n]*/g, " ");
-    const i = c.indexOf("Approve cannot write this one");
-    expect(i).toBeGreaterThan(-1);
-    const prompt = c.slice(Math.max(0, i - 200), i);
-    expect(prompt).toMatch(/\/admin\/picks/);
-    expect(prompt).not.toMatch(/\/admin\/entries/);
+    // The prompt's OWN line, not a window of characters around it: a window
+    // sized to today's wording either drops the route when the sentence grows
+    // or picks one up from the comment above, and a guard that can pass or
+    // fail for the wrong reason is worse than none.
+    const line = code("scripts/picks/self.ts")
+      .split("\n")
+      .find((l) => l.includes("Approve cannot write this one"));
+    expect(line).toBeDefined();
+    expect(line).toMatch(/\/admin\/picks/);
+    expect(line).not.toMatch(/\/admin\/entries/);
   });
 
   it("refuses a blank actor, so nothing it audits is untraceable", () => {
