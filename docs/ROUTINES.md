@@ -808,6 +808,68 @@ way on 2026-09-10 (10a) and `week:1:fri` goes that way on the 11th, on
 Anthony's instruction: he would rather send by hand twice than hold a token
 that dies silently next week.
 
+### 10c-done. What was actually done, 2026-09-10 (session oauth)
+
+**Steps 1 to 3 above are complete and verified.** Recorded here so nobody
+repeats them or trusts an older line in this file over them.
+
+1. **Google would not publish until the Branding page had a homepage and a
+   privacy policy URL.** The Publish button stays disabled with the tooltip
+   "homepage url, and privacy policy url are required for switching the app
+   to external production mode". Set on project `survivor-2026-sheets`:
+   - Application home page `https://ad-26-survivor.vercel.app`
+   - Application privacy policy link `https://ad-26-survivor.vercel.app/privacy`
+     (`src/app/privacy/page.tsx`, PR #59 - public, unauthenticated, linked
+     from no nav on purpose; every sentence in it is checked against what
+     the pool stores, shows and sends, so a change to those is a change to
+     that page)
+   - Authorized domain `ad-26-survivor.vercel.app`
+2. **Published: Publishing status reads In production.** The confirm dialog
+   only noted that restricted scopes need verification; nothing was submitted
+   and none is needed under the 100-user cap. Consent shows the
+   unverified-app warning, which is expected.
+3. **Re-authorised AFTER publishing.** The old Testing token was deleted
+   first, then `npm run gmail:auth` minted a new one. **Proof it took: the new
+   token has no `refresh_token_expires_in` field.** The Testing token carried
+   `604799` (seven days). If a future token ever shows that field again, the
+   app has fallen back to Testing - check the Audience page before anything
+   else.
+
+**Where the four Gmail and admin variables live:**
+
+| Variable | Local Mac | Routine environment |
+| --- | --- | --- |
+| `GMAIL_OAUTH_CLIENT_ID` | `.env.local` (git-ignored) | DELLA, `env_01E2ghUxXKj19qoDX3bTxf3p` |
+| `GMAIL_OAUTH_CLIENT_SECRET` | `.env.local` | DELLA |
+| `GMAIL_OAUTH_TOKEN_JSON` | not set; `~/.config/survivor/gmail-token.json` is read instead | DELLA, the file's JSON on one line |
+| `SURVIVOR_ADMIN_PASSWORD` | not set; the command prompts for it | DELLA |
+
+Anthony pasted all four into DELLA himself on 2026-09-10. A session does not
+write secrets into the environment and cannot open its editor reliably (the
+settings gear in the Cloud environment menu does not respond to automated
+clicks). `REMINDER_AUTOSEND` is deliberately NOT in that list: it waits until
+after the Week 1 lock, and a separate trigger is armed for it.
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and
+`ADMIN_EMAIL` need no environment entry: they come from the committed
+`.env.production`.
+
+**Cloud sessions install dependencies themselves (PR #60).** Every Ops Tick
+fire before 2026-09-10 17:43 UTC exited 127 with `sh: 1: tsx: not found`: a
+Routine container clones the repo with no `node_modules`, `tsx` is a
+devDependency, and DELLA has no setup script. `.claude/settings.json` now runs
+`npm ci --no-audit --no-fund` in a `SessionStart` hook, only when
+`CLAUDE_CODE_REMOTE=true`, so a local checkout is never touched and a Routine
+runs the lockfile's exact versions. Remove that hook and every tick goes back
+to failing before any job starts. It adds roughly two minutes to a fire, which
+is why the agent's first `npm run ops` call can outlast its 120-second
+foreground timeout and finish in the background.
+
+**First real fire, 2026-09-10 18:43 UTC:** `sweep: ok`, 0 picks written, and
+the subject sweep read and filed a burst of unknown-sender mail whose subject
+carried "Survivor" - including this repo's own GitHub notification mail -
+staging it as identity rows. The sweep's guards after that are PR #66 and
+later, not this section.
+
 ## 10d. The prompt, rewritten 2026-09-10
 
 `audit_log` 681 was written by the Routine's **agent** through its Supabase
@@ -896,7 +958,7 @@ is exactly two.
      | Routine                        | State    | Cron (UTC)            |
      | ------------------------------ | -------- | --------------------- |
      | Survivor Ops Tick              | ENABLED  | `43 7-23,0-3 * * *`   |
-     | Survivor Gmail Sweep           | ENABLED  | `43 11-23,0-2 * * *`  |
+     | Survivor Gmail Sweep           | paused 2026-09-10 17:27 UTC, `enabled: false` on the live trigger | `43 11-23,0-2 * * *`  |
      | Survivor Pick Gap Check        | paused   | `5 13 * * 1-5`        |
      | Survivor Deadline Close Check  | paused   | `20 18 * * 2-5`       |
      | Survivor Lynne Echo Check      | paused   | `5 19 * * 4,6`        |
