@@ -499,3 +499,103 @@ the slot. The schedules and the tick's own cron are in
 `scripts/ops/config.json`; the loader every command imports checks only the
 shape of that file, so a schedule that is wrong against the tick stops the
 tick and not the picks intake.
+
+## 11. Local desk or hosted runner: what runs where
+
+Set 2026-09-10, from the code, after the Gmail OAuth session asked. Every
+answer below names the file it comes from, so the next session reads the code
+rather than asking again.
+
+11a. **Both, and it is the same code either way.** There is no hosted intake
+service. The commands are the local CLI on Anthony's Mac, and the Routine's
+cloud container runs **those same commands**: `scripts/ops/cli.ts:137` is
+`spawnSync("npm", ["run", cfg.command, "--", ...args])` and it is the only
+child process anything in `scripts/` or `src/` spawns. So "hosted" here means
+one more machine running `npm run`, with the same `.env` contract, not a
+different code path. Nothing needs to move.
+
+11b. **The token, hosted.** `storedToken()` in `scripts/lib/gmail.ts` reads
+`GMAIL_OAUTH_TOKEN_JSON` when it is set and falls back to
+`~/.config/survivor/gmail-token.json` otherwise. So yes: on a runner you paste
+the contents of that file into `GMAIL_OAUTH_TOKEN_JSON`, which is what 1b
+already says. The file stays on the Mac and is not moved or deleted; the two
+are the same credential read from two places.
+
+11c. **The Routine's Gmail connector does NOT make the OAuth path optional,
+and this is the answer the question was really after.** `npm run ops` reaches
+Gmail through `gmailClient()` - googleapis, `GMAIL_OAUTH_CLIENT_ID`,
+`GMAIL_OAUTH_CLIENT_SECRET` and the stored token. There is **no MCP client
+anywhere in `scripts/`**. The connector belongs to the *agent* in the Routine's
+session, not to the command the agent is told to run, so it cannot stand in for
+the OAuth credentials. A hosted run of these commands needs them.
+
+**The seven-day expiry is real and it does break an unattended runner.** A
+Google OAuth client whose consent screen is left in **Testing** issues refresh
+tokens that stop working after seven days - that is Google's published policy
+for the Testing publishing status, not anything this repo controls, and it
+should be confirmed in the Cloud Console (APIs & Services > OAuth consent
+screen) before acting on it. The consequence here is concrete:
+`GMAIL_OAUTH_TOKEN_JSON` goes stale weekly, and every Gmail-touching job -
+sweep, chase, lynne-import, results, distribute, the week reminder - fails
+until somebody runs `npm run gmail:auth` again and re-pastes the JSON. That is
+not unattended.
+
+The way out is to move the consent screen to **In production**. A personal
+gmail.com account can publish; it shows an unverified-app warning at consent,
+which is acceptable for a single user granting access to his own mailbox.
+**Internal is not an option** - that publishing status needs a Google Workspace
+domain, and this is a gmail.com account. The third choice is to accept a weekly
+re-auth, which means the runner is attended once a week and should not be
+described as unattended.
+
+11d. **Yes, unchanged.** A pick the intake resolves is written by
+`submitPick` (`scripts/lib/db.ts:364`), which calls the audited
+`admin_submit_pick` RPC - the same RPC `/admin` uses. A line it cannot resolve
+is staged by `stagePending` (`scripts/lib/db.ts`) through
+`admin_stage_pending` into `pending_actions`, with `kind` one of
+`identity | player_question | pick` and `actor` the admin's own address. The
+CLI writes nothing else and resolves nothing itself.
+
+11e. **What the Routine actually did on 2026-09-10, and why it is not the
+command running.** `audit_log` 681 at 10:46 ET staged Lynne's "Tonights game"
+message with `actor` and `staged_by` = `ops-routine`. That row was **not
+written by `npm run ops`**, on three independent readings of the code:
+
+- `ops-routine` appears **nowhere in this repository**. Every command writes
+  the actor `adminClient()` returns, which is `ADMIN_EMAIL` -
+  `anthonydellapia@gmail.com`.
+- its `kind` is `lynne`, and `stagePending` types `kind` as
+  `identity | player_question | pick`. The CLI cannot produce `lynne`.
+- its payload is `{subject, summary}` - prose - where the CLI builds
+  `{entry_id, entry_name, week, team, source, received_at, from, subject,
+  line, reason, question}`.
+
+So the Routine's **agent** called `admin_stage_pending` directly through its
+Supabase MCP connector and read the mail through its Gmail connector, rather
+than running the command. Its prompt says the opposite: "never send, draft,
+label or read mail yourself, and never touch the database except through that
+command."
+
+**The decision it recorded is correct** and the row is inert, which is the only
+reason this is a note and not an incident: NO. 1283 and 1284 are outside
+972-1092 (zero matching rows), it is staged and not applied, it names its
+source message, and `KIND_DISPATCH` in `src/lib/queue.ts` covers only
+`payment | pick | entries`, so `appliesAutomatically("lynne")` is false and
+Approve cannot apply it by itself.
+
+**What it is evidence of is the gap, not the fix.** An agent working around a
+command it cannot run bypasses every guarantee the command carries: the typed
+`kind`, the payload shape, the honest actor, `admin_submit_pick`, and the
+send allowlist in `scripts/lib/send.ts`. An actor string that names the ops
+routine on a row the ops routine did not write is the same shape as an actor
+string naming a migration that did not exist (CLAUDE.md, Working rules).
+
+11f. **A local checkout is never authoritative.** On 2026-09-10 Anthony's Mac
+was sixteen commits behind at `8aaed4f`, which predates that week's merges -
+so a file read there would have shown the old deadline table, the unwired
+retired-address guard and the wrong pool-close date, all three as if they were
+current. **`origin/main` is the source of truth for what this project does; the
+database is the source of truth for what it holds.** Before quoting a file,
+`git fetch origin main` and read that, or read it on GitHub. Before quoting a
+number, read the database. A stale working copy disagreeing with either is a
+stale working copy, never a discrepancy to investigate.

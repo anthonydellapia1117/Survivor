@@ -601,9 +601,18 @@ recruited + 11 free, Lynne numbers 972-1092 contiguous, `audit_log` max **680**.
 **Every deadline of all 18 weeks reads 2:00 PM ET** (above); Friday
 2026-09-11 2:00 PM is Week 1's hard lock and the sweep boundary. Week 1: **62
 current picks in, 59 outstanding**.
-**The Thursday reminder went by hand.** The Ops Tick Routine fired at 12:43 UTC
-into a session with no git checkout and `npm run ops` could not run - the cause
-and the one field that fixes it are `docs/ROUTINES.md` section 10a. `week:1:thu`
+**The Thursday reminder went by hand, and tomorrow's will not go at all
+unless the environment gets three variables.** The Ops Tick Routine fired at
+12:43 UTC into a session with no git checkout and `npm run ops` could not run -
+`docs/ROUTINES.md` section 10a. **The repo was attached that afternoon and the
+credentials were not**: `REMINDER_AUTOSEND`, `SURVIVOR_ADMIN_PASSWORD` and the
+three `GMAIL_OAUTH_*` are all still unset, so the Friday 8 AM `pick-reminder`
+job is `skipped` before it spawns and produces no send, no draft and no staged
+row (section 10b, with the gates exercised end to end and stopped at dispatch).
+**A row written by the Routine is not proof the command ran** - `audit_log` 681
+carries the actor `ops-routine`, a string that appears nowhere in this repo, on
+a `kind` the CLI cannot produce; the agent went around the command through its
+MCP connectors (`docs/PICKS_INTAKE.md` section 11e). `week:1:thu`
 was sent from a session instead (Gmail `1a08b8674c5d0995`, 40 on Bcc derived
 live, count gate exactly 40) and its `week_reminder_claim` / `week_reminder_sent`
 rows, `audit_log` 679 and 680 in one transaction, **say in their notes that it
