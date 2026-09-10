@@ -808,6 +808,45 @@ Two standing facts that are NOT snapshots and must survive:
   `player_email = jmvas731@msn.com` and he is mailed for them directly, which
   is a gift on Ray's entries and not a second owner row.
 
+## Standing judgment (set 2026-09-10)
+
+How a session decides, so it does not need Anthony as a relay for decisions
+that were never his. Every line below is his, set the evening of the sweep
+flood.
+
+- **When a number surprises you, read the TABLE before reporting it.** That
+  evening an advisor reported 857 staged rows from a truncated query; the real
+  figure was 1,951, the kind was `identity` rather than the audit action
+  `stage_pending`, and the queue was 1,960 rather than 866. Every one of those
+  came from reading a summary instead of the rows. **The table is the answer;
+  a summary never is.** A number that does not match what you expect is the
+  signal to query, not the signal to relay.
+
+- **Anthony's decisions are exactly three: MONEY, IDENTITY, and WHAT GOES TO
+  LYNNE.** Everything else is yours. **Never ask him to choose between two
+  technical options** - pick the safer one, do it, and say which you picked
+  and why in one line. A question that offers him two engineering answers is
+  work handed back, and he is not the one holding the context to answer it.
+
+- **Never hand him a UI task you have not tried three ways first**: the direct
+  URL, a zoomed-out layout, and the API where using it is legitimate. "You
+  will have to click this" is a last resort with three failures behind it,
+  not a first response to a screen you could not reach.
+
+- **Report by email only**, under [the CODE STATUS rule](#session-status-email-set-2026-09-10).
+  **Never write a report expecting a human to carry it somewhere.** A report
+  that lives in a terminal he is not reading has not been delivered.
+
+- **Routines run the operations. You fix what breaks and report by email.**
+  That is the whole division:
+  - **Lynne emails are always DRAFTED, never sent.** Permanent, and the only
+    send Anthony makes himself.
+  - **Player emails send on their own schedule behind their own count gates.**
+    He does not approve those, and asking him to is inventing a gate the
+    design deliberately does not have.
+  - **If something genuinely needs his decision it is ONE EMAIL, ONE LINE, ONE
+    QUESTION** - never a report, and never a menu.
+
 ## Working rules
 
 - **Severity in the abstract is not severity here.** This is a **one-admin
