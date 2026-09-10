@@ -1173,13 +1173,34 @@ in any of them.**
     their own entry and wrong here;
   - **a team must resolve to exactly one team that PLAYS THAT WEEK.** A team
     with no game that week stages, and so does a bye;
-  - one entry given **two different teams in one message** stages both.
+  - one entry given **two different teams in one message** stages both;
+  - **an ELIMINATED entry is off this roster**, the same as it is off the
+    ordinary intake and the pick-email screen. `loadLiveEntries` filters only
+    `voided_at`, so the command runs it through `aliveEntries` and prints who
+    it dropped.
+
+  **`admin_submit_pick` is NOT the place three of those live, and this file
+  said it was.** Corrected 2026-09-11, before the migration was applied. That
+  function enforces the week, the bye rules and the late flag, and **it has no
+  repeated-team guard and no look at what is already current** - it supersedes
+  whatever it finds. So a repeated team, a pick already scored or newer, and a
+  change arriving after the lock are caught in `guardSelfRows` BEFORE the write
+  and staged, exactly as `cli.ts` does with the same two functions
+  (`repeatedWeek`, `overrideDecision`) rather than a second copy of them. **A
+  repeated team is an ELIMINATION in her pool**, so it is never written from a
+  dictated line without Anthony approving it on `/admin/queue`.
+
+  **What the command calls staged IS staged**, in the same transaction as the
+  applies and before the row that makes the message applied - so a replay,
+  which writes nothing, can never be the thing that loses the questions. The
+  ones that resolved to an entry and a team stage as kind `pick`, where
+  approving writes the pick he dictated.
 
   Every applied line carries the **Gmail message id** in its own audit row, and
   a replay of the same message writes nothing - the guard is an `audit_log`
-  row, so it holds for a re-run and for SQL by hand. The write is
-  `admin_submit_pick` per line, so the deadline, repeated-team and bye guards
-  all still apply.
+  row, so it holds for a re-run and for SQL by hand. **The pick is stamped with
+  the time the MAIL arrived**, not the time the command ran, so a run after a
+  deadline does not mark a pick late that the mail beat.
 
   **It never sends.** The reply is a draft on his own thread plus the same
   lines on stdout; the send allowlist is two templates and adding a third is a
