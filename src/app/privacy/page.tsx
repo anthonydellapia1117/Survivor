@@ -14,7 +14,7 @@ export default function PrivacyPage() {
       <div>
         <h1 className="text-2xl">Privacy</h1>
         <p className="mt-1 text-muted-foreground">
-          This site runs a private NFL survivor pool of about 120 entries.
+          This site runs a private NFL survivor pool.
         </p>
       </div>
 
@@ -83,6 +83,8 @@ export default function PrivacyPage() {
           .
         </p>
       </section>
+
+      <p className="text-muted-foreground">Last updated 2026-09-10.</p>
     </div>
   );
 }
