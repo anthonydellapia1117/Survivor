@@ -242,6 +242,18 @@ describe("what the command and the migration wire up", () => {
     expect(c).toMatch(/!r\.ok && r\.noop !== true/);
   });
 
+  // The pick editor is /admin/picks. /admin/entries edits entry metadata and
+  // has no pick field, so sending him there leaves the correction unmade and
+  // the row dismissed.
+  it("sends a refusal the queue cannot write to the screen that can write it", () => {
+    const c = code("scripts/picks/self.ts").replace(/\/\/[^\n]*/g, " ");
+    const i = c.indexOf("Approve cannot write this one");
+    expect(i).toBeGreaterThan(-1);
+    const prompt = c.slice(Math.max(0, i - 200), i);
+    expect(prompt).toMatch(/\/admin\/picks/);
+    expect(prompt).not.toMatch(/\/admin\/entries/);
+  });
+
   it("refuses a blank actor, so nothing it audits is untraceable", () => {
     expect(code("supabase/migrations/20260911000067_self_pick_email.sql"))
       .toMatch(/coalesce\(trim\(p_actor\), ''\) = ''/);

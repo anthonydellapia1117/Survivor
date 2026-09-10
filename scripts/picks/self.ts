@@ -197,7 +197,12 @@ async function main(): Promise<void> {
               question:
                 (r.stageAs ?? "pick") === "pick"
                   ? `Record this pick anyway? ${r.reason}. Approve writes it; dismiss leaves the entry as it is.`
-                  : `Change this on /admin/entries if you want it: ${r.reason}. Approve cannot write this one - the queue refuses a scored or superseded pick - so dismiss the row once you have.`,
+                  // /admin/picks, not /admin/entries: the pick editor is
+                  // there, and it goes through admin_submit_pick directly,
+                  // which is the deliberate override this row cannot get
+                  // through the queue. /admin/entries edits entry metadata
+                  // and has no pick field at all.
+                  : `Change this on /admin/picks if you want it: ${r.reason}. Approve cannot write this one - the queue refuses a scored or superseded pick - so dismiss the row once you have.`,
             }
           : {
               kind: "player_question",
