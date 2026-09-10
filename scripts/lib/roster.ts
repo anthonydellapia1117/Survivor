@@ -185,3 +185,110 @@ export function intakeAddresses(owners: OwnerRow[], entries: EntryRow[], adminMa
   }
   return out;
 }
+
+// --------------------------------------------------------- retired addresses
+//
+// The incident this exists for: on 2026-09-09 a Week 1 reminder went to a
+// HAND-BUILT Bcc list that still carried ernie706@gmail.com. That mailbox does
+// not exist and the message hard-bounced 550 5.1.1. The owner's real address,
+// dellapia706@gmail.com, was corrected in the database the same day, so the
+// dead address is already gone from every table a send derives from.
+//
+// It survives only in HISTORY - owners.notes, two audit_log rows and one
+// pending_actions bounce record - and history is append-only: scrubbing the
+// record of a bounce destroys the evidence the bounce happened, which is the
+// opposite of this fix. So this list is not a data cleanup. It is a checked-in
+// statement that these addresses are dead, and the guard below proves a
+// derived recipient list cannot carry one back in.
+
+export interface RetiredAddress {
+  /** The dead address, as it was last seen. Compared case-insensitively. */
+  address: string;
+  /** ISO date it was retired. */
+  retiredOn: string;
+  /** Why it is dead, and what replaced it where anything did. */
+  reason: string;
+}
+
+/**
+ * Every address that must never reach a send again. Adding one is a reviewed
+ * change to this list, never a flag and never a runtime lookup: a dead address
+ * is a fact about the world, and the checked-in file is where this project
+ * keeps facts a run must not be able to talk itself out of.
+ */
+export const RETIRED_ADDRESSES: readonly RetiredAddress[] = [
+  {
+    address: "ernie706@gmail.com",
+    retiredOn: "2026-09-09",
+    reason:
+      "Does not exist; hard-bounced 550 5.1.1 on the Week 1 reminder, which went to a hand-built Bcc list. The owner's real address is dellapia706@gmail.com and the database was corrected the same day.",
+  },
+];
+
+/** One comparison shape for every address here: trimmed copy, lower-cased. */
+function addressKey(address: string): string {
+  return address.trim().toLowerCase();
+}
+
+const RETIRED_KEYS: ReadonlySet<string> = new Set(RETIRED_ADDRESSES.map((r) => addressKey(r.address)));
+
+/** True when this address is on the retired list, whatever its casing or padding. */
+export function isRetiredAddress(address: string): boolean {
+  return RETIRED_KEYS.has(addressKey(address));
+}
+
+/**
+ * The retired addresses present in a list, returned AS GIVEN so the caller
+ * prints the offending string rather than a normalized one - the casing or the
+ * stray space is part of what went wrong. Empty when the list is clean.
+ */
+export function retiredAddressesIn(addresses: Iterable<string>): string[] {
+  return [...addresses].filter((a) => isRetiredAddress(a));
+}
+
+/**
+ * The list with every retired address removed. Order and the remaining strings
+ * are untouched: this filters, it does not normalize, and a clean list comes
+ * back exactly as it went in.
+ */
+export function withoutRetiredAddresses(addresses: Iterable<string>): string[] {
+  return [...addresses].filter((a) => !isRetiredAddress(a));
+}
+
+/** Thrown by assertNoRetiredAddresses. Named so a caller can tell it apart. */
+export class RetiredAddressError extends Error {
+  readonly offenders: string[];
+  constructor(offenders: string[], context: string) {
+    super(
+      `retired address in ${context}: ${offenders.join(", ")} - ` +
+        `see RETIRED_ADDRESSES in scripts/lib/roster.ts. The roster this list was ` +
+        `derived from is wrong; fix the roster, do not filter this away.`,
+    );
+    this.name = "RetiredAddressError";
+    this.offenders = offenders;
+  }
+}
+
+/**
+ * Throw if a list about to be mailed carries a retired address.
+ *
+ * A silent filter is NOT enough, and that is the whole point. The retired
+ * addresses are already gone from every table a send derives from, so a derived
+ * list cannot contain one unless the roster itself has gone wrong - somebody
+ * re-typed the dead address onto an owner, or a hand-built list crept back in,
+ * which is exactly what caused the bounce. Quietly dropping it would send the
+ * message to everyone else and leave nobody knowing the roster is wrong; the
+ * owner it belongs to would go on having no working address and nobody would
+ * find out until the next thing that needed to reach them. Failing loudly, by
+ * name, stops the run and puts the broken row in front of a person.
+ *
+ * withoutRetiredAddresses is the filter for the places that want one - a
+ * report, a preview, anything that is not a send. A send calls this.
+ */
+export function assertNoRetiredAddresses(
+  addresses: Iterable<string>,
+  context = "recipient list",
+): void {
+  const offenders = retiredAddressesIn(addresses);
+  if (offenders.length > 0) throw new RetiredAddressError(offenders, context);
+}

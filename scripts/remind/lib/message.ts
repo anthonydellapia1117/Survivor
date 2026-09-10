@@ -15,24 +15,30 @@ import { CONTACT_PHONE } from "@/lib/emails/pick-request";
 import { SITE_URL } from "../../lib/constants";
 import { fullTeamName, joinOr, openTiers, type Tier } from "../../chase/lib/message";
 import type { GameLite, WeekBounds } from "../../picks/lib/deadline";
-import type { Boundary } from "./due";
+import { etDateKey, type Boundary, type SlotName } from "./due";
+
+/**
+ * What one reminder names: a stored boundary, and - when the caller is one of
+ * the three morning slots - which slot it is. Only the Friday slot changes a
+ * word: it is the FINAL CALL, and it says so.
+ */
+export interface ReminderTarget extends Boundary {
+  slot?: SlotName;
+}
+
+/** The Friday slot's mark, in the subject and on the first line. */
+export const FINAL_CALL = "FINAL CALL";
 
 /** The one line the site link may sit on. Exported so the copy guard can name it. */
 export const NOT_THE_APP = "You do not make picks in the app. It is there to look at:";
 
 export const SIGNOFF = "- Anthony";
 
-const ET_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 const ET_WEEKDAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long" });
 const ET_CLOCK = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true });
 
 function at(iso: string): number {
   return new Date(iso).getTime();
-}
-
-/** The ET calendar date, e.g. 2026-09-11. */
-export function etDateKey(d: Date): string {
-  return ET_DATE.format(d);
 }
 
 /** "today", "tomorrow", or the weekday name, judged on the ET calendar. */
@@ -57,8 +63,9 @@ export function joinAnd(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
-export function reminderSubject(b: Boundary, now: Date): string {
-  return `Survivor Week ${b.week} - picks due ${relativeDay(b.deadlineIso, now)} at ${clockTime(b.deadlineIso)}`;
+export function reminderSubject(b: ReminderTarget, now: Date): string {
+  const mark = b.slot === "fri" ? `${FINAL_CALL}, ` : "";
+  return `Survivor Week ${b.week} - ${mark}picks due ${relativeDay(b.deadlineIso, now)} at ${clockTime(b.deadlineIso)}`;
 }
 
 const DAY_ORDER: GameDay[] = ["Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "Monday"];
@@ -89,11 +96,11 @@ export function deadlineSentences(tiers: Tier[], bounds: WeekBounds, games: Game
   return out;
 }
 
-export function reminderBody(b: Boundary, bounds: WeekBounds, games: GameLite[], now: Date): string {
+export function reminderBody(b: ReminderTarget, bounds: WeekBounds, games: GameLite[], now: Date): string {
   const tiers = openTiers(games, bounds, now);
   const deadlines = deadlineSentences(tiers, bounds, games, now).join(" ");
   return [
-    `Week ${b.week} is here.`,
+    b.slot === "fri" ? `Week ${b.week} - ${FINAL_CALL}.` : `Week ${b.week} is here.`,
     "",
     `${deadlines} No pick in by the deadline and you are out.`,
     "",

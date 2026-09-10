@@ -47,6 +47,19 @@ export interface OpsConfig {
    */
   dailySchedule: string;
   expectedRosterAddresses: number;
+  /**
+   * The MINIMUM notice a reminder must give, in hours. Nothing reads this at
+   * run time any more: the three-slot model (2026-09-10) sends on a slot's ET
+   * date rather than a fixed lead before its deadline, so the instant a
+   * reminder goes is the `pick-reminder` cron and nothing else.
+   *
+   * It is kept because it is now the reviewable FLOOR that cron is checked
+   * against - tests/unit/ops.test.ts and tests/unit/remind-slots.test.ts
+   * assert the Wednesday and Friday slots clear a 2:00 PM ET deadline by at
+   * least this many hours, in EDT and in EST. Moving the cron later without
+   * moving this number fails those tests, which is the point. Deleting it
+   * would delete the only statement of how much warning a player is owed.
+   */
   reminderLeadHours: number;
   sweepSubjectTerms: string[];
   jobs: Record<JobName, JobConfig>;

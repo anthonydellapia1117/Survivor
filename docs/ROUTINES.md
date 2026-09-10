@@ -505,7 +505,7 @@ this table is a copy for reading):
 | Job           | Cron (UTC)            | Runs                                  | Sends |
 | ------------- | --------------------- | ------------------------------------- | ----- |
 | sweep         | `43 * * * *`          | `npm run picks -- --yes`              | no    |
-| pick-reminder | `0 10,11,12 * * 3,5`  | `npm run remind -- --send --yes`      | yes   |
+| pick-reminder | `0 12 * * 3,4,5`      | `npm run remind -- --send --yes`      | yes   |
 | chase         | `5 13 * * 2-5`        | `npm run chase -- --send --yes`       | yes   |
 | lynne-import  | `5 21 * * 2,4`        | `npm run lynne:roster -- --file <her newest Football xlsx, fetched> --message-id <id> --yes` | no |
 | results       | `5 21 * * 2,4`        | `npm run results -- --yes --week <last locked week>` | no |
@@ -520,18 +520,24 @@ now:
   words in `sweepSubjectTerms` (`survivor`, `picks`) - the Gmail filter's
   rule. A stranger's mail is staged for Anthony as an identity question, never
   written as a pick.
-- The week reminder goes six hours before each of a week's two stored
-  boundaries, from the weeks table. The lead is `reminderLeadHours` in the
-  config and nowhere else that the command reads: `npm run remind` passes it
-  in and `dueBoundary` has no default of its own (issue #41).
-  **The lead and the `pick-reminder` cron are one setting in two places.**
-  `reminderLeadHours` only widens or narrows the window the command tests; the
-  instant the mail goes is the cron's slots, which are the season's deadline
-  hours (noon, 1 PM and 2 PM ET - 16:00, 17:00 and 18:00 UTC in EDT) less the
-  lead. Changing one alone does nothing useful and can do harm: a lead of 3
-  with the slots left at 10, 11 and 12 UTC sends nothing at all, with no
-  error. `tests/unit/ops.test.ts` holds the two together, so a change to
-  either fails CI until the other follows.
+- The week reminder goes THREE times a week, each on its own morning, from
+  the weeks table (Anthony, 2026-09-10, replacing the two-boundary schedule):
+  **Wednesday** naming the week's early boundary (the Thursday game's
+  deadline), **Thursday** naming the late one (the weekend games' deadline,
+  the Friday lock) and **Friday** the FINAL CALL, naming that same late one.
+  Thursday and Friday name one boundary, so the once-only key is week + SLOT -
+  `week:N:wed`, `week:N:thu`, `week:N:fri` - and never week + boundary, which
+  would let one of the two swallow the other.
+  **The cron and the schedule are one setting in two places.** Which slot a
+  run belongs to is the ET calendar day of a stored boundary
+  (`scripts/remind/lib/due.ts`, which knows no hour at all); the minute the
+  mail goes is the cron's `0 12 * * 3,4,5`. A cron on a day that names no slot
+  finds nothing due and says so quietly, which is the silent failure #41 was
+  about, so `tests/unit/ops.test.ts` holds the cron's three days to the three
+  slots. `reminderLeadHours` is no longer the trigger; it is the notice the two
+  SAME-DAY slots owe - wed names that Wednesday's deadline, fri names that
+  Friday's - and the same test holds the cron to at least that many hours
+  before a 2 PM ET deadline in both EDT (18:00 UTC) and EST (19:00 UTC).
 - Only `pick-reminder` and `chase` may send, and only through
   `scripts/lib/send.ts` with `REMINDER_AUTOSEND=true`; the loader refuses a
   config that marks any other job as sending or hands it `--send`. Every

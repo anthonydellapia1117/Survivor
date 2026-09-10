@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { EntryRow, OwnerRow, WeekBoundsRow } from "../../scripts/lib/db";
 import { EXPECTED_ROSTER_ADDRESSES } from "../../scripts/lib/constants";
 import { readFileSync } from "node:fs";
-import { boundariesOf, boundaryKey, dueBoundary, findBoundary } from "../../scripts/remind/lib/due";
+import { dueSlot, findSlot, slotKey, slotsOf } from "../../scripts/remind/lib/due";
 import { countGate, reminderAddresses } from "../../scripts/remind/lib/recipients";
 import {
   clockTime,
@@ -94,45 +94,50 @@ const WEEKS: WeekBoundsRow[] = [
   { week: 2, early_deadline_at: "2026-09-16T16:00:00+00:00", late_deadline_at: "2026-09-18T16:00:00+00:00" },
 ];
 
-describe("which boundary is due", () => {
-  it("lists both boundaries of every week, earliest first, under their keys", () => {
-    expect(boundariesOf(WEEKS).map(boundaryKey)).toEqual(["week:1:early", "week:1:late", "week:2:early", "week:2:late"]);
+describe("which slot is due", () => {
+  // Three a week, each on its own morning: wed names the early boundary, thu
+  // the late one, fri the final call on that same late one (Anthony,
+  // 2026-09-10). tests/unit/remind-slots.test.ts is the full account of the
+  // schedule; what is here is what this file already covered.
+  it("lists all three slots of every week, in send order, under their keys", () => {
+    expect(slotsOf(WEEKS).map(slotKey)).toEqual([
+      "week:1:wed",
+      "week:1:thu",
+      "week:1:fri",
+      "week:2:wed",
+      "week:2:thu",
+      "week:2:fri",
+    ]);
   });
 
-  it("is the boundary whose six-hour window holds now, and nothing outside it", () => {
-    // Week 1 early is Wed 2 PM ET: due from 8 AM ET to 2 PM ET, not before, not after.
-    expect(dueBoundary(WEEKS, new Date("2026-09-09T11:59:59Z"), 6)).toBeNull();
-    expect(dueBoundary(WEEKS, new Date("2026-09-09T12:00:00Z"), 6)?.kind).toBe("early");
-    expect(dueBoundary(WEEKS, new Date("2026-09-09T17:59:59Z"), 6)?.kind).toBe("early");
-    expect(dueBoundary(WEEKS, new Date("2026-09-09T18:00:00Z"), 6)).toBeNull();
-    // Friday 8 AM ET: the late one.
-    expect(dueBoundary(WEEKS, new Date("2026-09-11T12:30:00Z"), 6)).toMatchObject({ week: 1, kind: "late" });
-    // Thursday: nothing, whatever the week.
-    expect(dueBoundary(WEEKS, new Date("2026-09-10T15:00:00Z"), 6)).toBeNull();
+  it("is today's slot on the ET calendar, and nothing once its deadline has passed", () => {
+    // Week 1 early is Wed 2 PM ET (18:00Z): the Wednesday slot runs all
+    // morning and stops at the deadline it names.
+    expect(dueSlot(WEEKS, new Date("2026-09-09T12:00:00Z"))?.slot).toBe("wed");
+    expect(dueSlot(WEEKS, new Date("2026-09-09T17:59:59Z"))?.slot).toBe("wed");
+    expect(dueSlot(WEEKS, new Date("2026-09-09T18:00:00Z"))).toBeNull();
+    // Thursday and Friday both name the late boundary and are two sends.
+    expect(dueSlot(WEEKS, new Date("2026-09-10T15:00:00Z"))).toMatchObject({ week: 1, slot: "thu", kind: "late" });
+    expect(dueSlot(WEEKS, new Date("2026-09-11T12:30:00Z"))).toMatchObject({ week: 1, slot: "fri", kind: "late" });
+    // Tuesday: nothing, whatever the week.
+    expect(dueSlot(WEEKS, new Date("2026-09-08T15:00:00Z"))).toBeNull();
   });
 
-  it("takes the lead from its caller and has no default of its own", () => {
-    // The lead lives in scripts/ops/config.json. A second copy in due.ts was a
-    // constant a reviewed change to the config would not have moved (#41), so
-    // the argument is required and the window actually follows it.
-    const eightHoursBefore = new Date("2026-09-09T10:00:00Z");
-    expect(dueBoundary(WEEKS, eightHoursBefore, 6)).toBeNull();
-    expect(dueBoundary(WEEKS, eightHoursBefore, 8)?.kind).toBe("early");
-    // No default: calling it without a lead is a type error, and a nonsense
-    // lead is refused rather than silently treated as six hours.
-    expect(() => dueBoundary(WEEKS, eightHoursBefore, 0)).toThrow(/positive number of hours/);
-    expect(() => dueBoundary(WEEKS, eightHoursBefore, Number.NaN)).toThrow(/positive number of hours/);
-    // The command reads the config and passes it; it holds no literal lead.
+  it("holds no clock of its own: the command reads the weeks table and no lead", () => {
+    // The lead lives in scripts/ops/config.json and used to be what triggered
+    // a run (#41). Under the three-slot schedule the ET calendar decides which
+    // slot a run belongs to and the pick-reminder cron decides the minute, so
+    // the command reads neither an hour nor a lead.
     const cli = readFileSync("scripts/remind/cli.ts", "utf8");
-    expect(cli).toMatch(/loadOpsConfig\(\)\.reminderLeadHours/);
-    expect(cli).toMatch(/dueBoundary\(weeks, now, leadHours\)/);
+    expect(cli).toMatch(/dueSlot\(weeks, now\)/);
+    expect(cli).not.toMatch(/reminderLeadHours/);
     expect(cli).not.toMatch(/REMINDER_LEAD_HOURS/);
     expect(readFileSync("scripts/remind/lib/due.ts", "utf8")).not.toMatch(/REMINDER_LEAD_HOURS/);
   });
 
-  it("finds a named boundary for a hand run and nothing for a week without one", () => {
-    expect(findBoundary(WEEKS, 2, "late")?.deadlineIso).toBe("2026-09-18T16:00:00+00:00");
-    expect(findBoundary(WEEKS, 3, "early")).toBeNull();
+  it("finds a named slot for a hand run and nothing for a week without one", () => {
+    expect(findSlot(WEEKS, 2, "fri")?.deadlineIso).toBe("2026-09-18T16:00:00+00:00");
+    expect(findSlot(WEEKS, 3, "wed")).toBeNull();
   });
 });
 
@@ -145,8 +150,9 @@ const GAMES: GameLite[] = [
   { week: 1, dayOfWeek: "Sunday", homeTeam: "KC", awayTeam: "LAC" },
   { week: 1, dayOfWeek: "Monday", homeTeam: "BUF", awayTeam: "NYJ" },
 ];
-const EARLY = { week: 1, kind: "early" as const, deadlineIso: BOUNDS.earlyDeadlineAt };
-const LATE = { week: 1, kind: "late" as const, deadlineIso: BOUNDS.lateDeadlineAt };
+const EARLY = { week: 1, kind: "early" as const, slot: "wed" as const, deadlineIso: BOUNDS.earlyDeadlineAt };
+const LATE = { week: 1, kind: "late" as const, slot: "thu" as const, deadlineIso: BOUNDS.lateDeadlineAt };
+const FINAL = { week: 1, kind: "late" as const, slot: "fri" as const, deadlineIso: BOUNDS.lateDeadlineAt };
 const WED_8AM = new Date("2026-09-09T12:00:00Z");
 const FRI_8AM = new Date("2026-09-11T12:00:00Z");
 
@@ -164,6 +170,8 @@ describe("the reminder's words", () => {
     expect(reminderSubject(EARLY, WED_8AM)).toBe("Survivor Week 1 - picks due today at 2 PM");
     expect(reminderSubject(LATE, WED_8AM)).toBe("Survivor Week 1 - picks due Friday at 2 PM");
     expect(reminderSubject(LATE, FRI_8AM)).toBe("Survivor Week 1 - picks due today at 2 PM");
+    // Only the Friday slot is the final call.
+    expect(reminderSubject(FINAL, FRI_8AM)).toBe("Survivor Week 1 - FINAL CALL, picks due today at 2 PM");
   });
 
   it("derives the deadline sentences from the games and the boundaries, leaving out a tier that has closed", () => {
@@ -173,7 +181,7 @@ describe("the reminder's words", () => {
     expect(early).toContain("Thursday's game closes today at 2 PM ET. Sunday and Monday games close Friday at 2 PM ET. No pick in by the deadline and you are out.");
     expect(early).not.toContain("Wednesday");
     // Friday 8 AM ET: only the lock is ahead.
-    const late = reminderBody(LATE, BOUNDS, GAMES, FRI_8AM);
+    const late = reminderBody(FINAL, BOUNDS, GAMES, FRI_8AM);
     expect(late).toContain("Sunday and Monday games close today at 2 PM ET. No pick in by the deadline and you are out.");
     expect(late).not.toContain("Thursday");
   });
