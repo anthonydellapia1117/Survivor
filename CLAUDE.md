@@ -839,11 +839,18 @@ flood.
 
 - **Routines run the operations. You fix what breaks and report by email.**
   That is the whole division:
-  - **Lynne emails are always DRAFTED, never sent.** Permanent, and the only
-    send Anthony makes himself.
-  - **Player emails send on their own schedule behind their own count gates.**
-    He does not approve those, and asking him to is inventing a gate the
-    design deliberately does not have.
+  - **Lynne emails are always DRAFTED, never sent.** That one is permanent and
+    no flag reaches it.
+  - **EXACTLY TWO templates send on their own schedule**, behind their own
+    count gates and `REMINDER_AUTOSEND=true`: `pick_reminder` and
+    `week_reminder`, which are the whole of `SEND_ALLOWLIST` in
+    `scripts/lib/send.ts`. He does not approve those, and asking him to is
+    inventing a gate the design deliberately does not have.
+  - **Every OTHER player-facing message is a draft he sends himself**,
+    `npm run distribute` included - it derives a whole-roster Bcc and gates
+    the count, and it still only ever calls `createDraft`. **A count gate is
+    not a licence to send.** Adding a template to the allowlist is a reviewed
+    change, never a flag.
   - **If something genuinely needs his decision it is ONE EMAIL, ONE LINE, ONE
     QUESTION** - never a report, and never a menu.
 
