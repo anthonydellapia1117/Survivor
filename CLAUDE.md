@@ -1190,11 +1190,25 @@ in any of them.**
   repeated team is an ELIMINATION in her pool**, so it is never written from a
   dictated line without Anthony approving it on `/admin/queue`.
 
+  **The same team already on file is a NO-OP** - not written, not staged.
+  `admin_submit_pick` supersedes unconditionally and stamps the new row
+  `pending`, so re-sending the team an entry already holds would erase its
+  RESULT: the exact damage the guards prevent, walked in through the front
+  door. Both reviewers found this in the first version of the fix.
+
   **What the command calls staged IS staged**, in the same transaction as the
   applies and before the row that makes the message applied - so a replay,
-  which writes nothing, can never be the thing that loses the questions. The
-  ones that resolved to an entry and a team stage as kind `pick`, where
-  approving writes the pick he dictated.
+  which writes nothing, can never be the thing that loses the questions. **The
+  kind depends on WHY**, because `admin_approve_pending` refuses a scored
+  current pick and a reply older than the current one outright: those two
+  stage as `player_question` pointing at the admin screen, and everything else
+  that resolved to an entry and a team stages as `pick`, where approving
+  writes what he dictated. A row staged as a `pick` that approve can never
+  write would sit open forever behind a button that always errors.
+
+  **A message that produces nothing is still filed.** Left unread it is read,
+  reported and notified on again every run, for as long as it sits in the
+  mailbox.
 
   Every applied line carries the **Gmail message id** in its own audit row, and
   a replay of the same message writes nothing - the guard is an `audit_log`

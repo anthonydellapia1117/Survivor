@@ -26,7 +26,13 @@
 // Anything that does not satisfy all of that is staged as a question. Nothing
 // here guesses.
 
-import { overrideDecision, repeatedWeek, strictTeam, type ExistingPick } from "./resolve";
+import {
+  overrideDecision,
+  repeatedWeek,
+  strictTeam,
+  type ExistingPick,
+  type OverrideRefusal,
+} from "./resolve";
 import { SKIP_WEEK } from "@/lib/standing";
 
 /** The subject must carry this word, so an ordinary self-sent mail is not a pick list. */
@@ -48,11 +54,38 @@ export interface SelfEntry {
 export type SelfPickRow =
   | { ok: true; entryId: string; entryName: string; lynneNumber: number | null; team: string; line: string }
   // A row that is not applied. It carries the entry and team when they were
-  // resolved and something LATER refused them - a repeat, a conflict, a pick
-  // already on file - because those are the rows staged as kind "pick", where
-  // approving writes the pick Anthony dictated. A line that never resolved
-  // carries neither and is staged as a question.
-  | { ok: false; line: string; reason: string; entryId?: string; entryName?: string; team?: string };
+  // resolved and something LATER refused them, because those can be staged as
+  // kind "pick", where approving writes the pick Anthony dictated. A line that
+  // never resolved carries neither and is staged as a question.
+  //
+  // `noop` is neither applied nor staged: the team named is ALREADY the
+  // current pick, so there is nothing to write and nothing to decide.
+  // `stageAs` says which kind it can be staged as - see stageKindFor.
+  | {
+      ok: false;
+      line: string;
+      reason: string;
+      entryId?: string;
+      entryName?: string;
+      team?: string;
+      noop?: true;
+      stageAs?: StageKind;
+    };
+
+/** The queue kinds a refused self-pick row can take. */
+export type StageKind = "pick" | "player_question";
+
+/**
+ * Where a refused row can GO. `admin_approve_pending` refuses a scored
+ * current pick and a reply older than the current one outright, so staging
+ * either as a `pick` puts it behind a button that always errors and leaves
+ * the row open forever. Those two become questions pointing at the admin
+ * screen; everything else that resolved to an entry and a team is a `pick`
+ * approve can really write.
+ */
+export function stageKindFor(code: OverrideRefusal | "repeat" | "conflict"): StageKind {
+  return code === "scored" || code === "stale" ? "player_question" : "pick";
+}
 
 /** Case and surrounding whitespace only. Internal spacing is the owner's and still counts. */
 function norm(s: string): string {
@@ -153,8 +186,13 @@ export function conflictingSelfRows(rows: SelfPickRow[]): Set<string> {
 /** The reply Anthony gets: what applied, what did not, under ten lines. */
 export function selfPickReply(rows: SelfPickRow[], week: number): string {
   const applied = rows.filter((r): r is Extract<SelfPickRow, { ok: true }> => r.ok);
-  const staged = rows.filter((r): r is Extract<SelfPickRow, { ok: false }> => !r.ok);
-  const lines: string[] = [`Week ${week}: ${applied.length} applied, ${staged.length} staged.`];
+  const staged = rows.filter((r): r is Extract<SelfPickRow, { ok: false }> => !r.ok && r.noop !== true);
+  const noop = rows.filter((r) => !r.ok && r.noop === true).length;
+  // A no-op is counted apart from a staged row: nothing was written and there
+  // is nothing on the queue for him to decide.
+  const lines: string[] = [
+    `Week ${week}: ${applied.length} applied, ${staged.length} staged${noop ? `, ${noop} already on file` : ""}.`,
+  ];
   for (const r of applied.slice(0, 4)) lines.push(`applied ${r.lynneNumber ?? r.entryName} ${r.team}`);
   if (applied.length > 4) lines.push(`applied ${applied.length - 4} more`);
   for (const r of staged.slice(0, 3)) lines.push(`staged "${r.line}" - ${r.reason}`);
@@ -189,11 +227,30 @@ export function guardSelfRows(rows: SelfPickRow[], ctx: SelfGuardContext): SelfP
     if (!r.ok) return r;
     const held = { entryId: r.entryId, entryName: r.entryName, team: r.team };
     const existing = ctx.currentByEntry.get(r.entryId) ?? null;
+    // THE SAME TEAM ALREADY ON FILE IS A NO-OP, not a write. admin_submit_pick
+    // supersedes unconditionally and stamps the new row `pending`, so
+    // re-sending the team an entry already holds would erase its RESULT - the
+    // exact damage the guards above exist to prevent, walked in through the
+    // front door. The ordinary intake never writes an already-recorded
+    // proposal either. Nothing to apply and nothing to decide.
+    if (existing && existing.team === r.team) {
+      return {
+        ok: false as const,
+        line: r.line,
+        reason: `already on file as ${r.team}; nothing to do`,
+        noop: true as const,
+        ...held,
+      };
+    }
     const decision = overrideDecision(existing, ctx.madeAt, ctx.lateDeadlineIso);
-    // The same team re-sent is not a change, so it is not staged - exactly
-    // the condition the ordinary intake uses.
-    if (!decision.ok && existing && existing.team !== r.team) {
-      return { ok: false as const, line: r.line, reason: decision.reason, ...held };
+    if (!decision.ok) {
+      return {
+        ok: false as const,
+        line: r.line,
+        reason: decision.reason,
+        stageAs: stageKindFor(decision.code),
+        ...held,
+      };
     }
     const usedIn = repeatedWeek(r.team, ctx.priorByEntry.get(r.entryId));
     if (usedIn !== null) {
@@ -201,6 +258,7 @@ export function guardSelfRows(rows: SelfPickRow[], ctx: SelfGuardContext): SelfP
         ok: false as const,
         line: r.line,
         reason: `already used in week ${usedIn}; a repeated team is an ELIMINATION in her pool`,
+        stageAs: stageKindFor("repeat"),
         ...held,
       };
     }

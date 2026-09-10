@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   conflictingSelfRows,
   guardSelfRows,
+  stageKindFor,
   isSelfPickSubject,
   parseSelfPickEmail,
   resolveSelfRef,
@@ -185,9 +186,32 @@ describe("the guards the parser cannot apply", () => {
     expect(one("1073 LAC", { currentByEntry: cur, madeAt: new Date("2026-09-11T13:00:00Z") }).ok).toBe(true);
   });
 
-  it("lets the same team through when it is re-sent, because that is not a change", () => {
+  // Re-sending the team an entry ALREADY holds is the one case that must not
+  // be written: admin_submit_pick supersedes unconditionally and stamps the
+  // new row pending, so a harmless resend would erase a scored result.
+  it("treats the same team already on file as a no-op - not written, not staged", () => {
     const cur = new Map([["e-1073", { team: "LAC", submitted_at: "2026-09-11T09:00:00Z", result: "win" }]]);
-    expect(one("1073 LAC", { currentByEntry: cur, madeAt: new Date("2026-09-11T19:00:00Z") }).ok).toBe(true);
+    const r = one("1073 LAC", { currentByEntry: cur, madeAt: new Date("2026-09-11T19:00:00Z") });
+    expect(r.ok).toBe(false);
+    expect((r as { noop?: true }).noop).toBe(true);
+    expect((r as { reason: string }).reason).toMatch(/already on file as LAC/);
+  });
+
+  // A row staged as kind "pick" promises Approve will write it, and
+  // admin_approve_pending refuses a scored or superseded pick outright - so
+  // those two have to be questions or they sit open behind a button that
+  // always errors.
+  it("stages a scored or superseded refusal as a question, and everything else as a pick", () => {
+    expect(stageKindFor("scored")).toBe("player_question");
+    expect(stageKindFor("stale")).toBe("player_question");
+    expect(stageKindFor("after_lock")).toBe("pick");
+    expect(stageKindFor("repeat")).toBe("pick");
+    expect(stageKindFor("conflict")).toBe("pick");
+
+    const cur = new Map([["e-1073", { team: "PHI", submitted_at: "2026-09-11T09:00:00Z", result: "loss" }]]);
+    expect(one("1073 LAC", { currentByEntry: cur })).toMatchObject({ stageAs: "player_question" });
+    expect(one("1073 LAC", { priorByEntry: new Map([["e-1073", new Map([["LAC", 1]])]]) }))
+      .toMatchObject({ stageAs: "pick" });
   });
 });
 
@@ -203,6 +227,24 @@ describe("what the command and the migration wire up", () => {
     const c = code("scripts/picks/self.ts");
     expect(c).toMatch(/submitted_at: m\.receivedAt/);
     expect(c).toMatch(/p_staged: toStage/);
+  });
+
+  it("files a message that produced nothing, so the same mail is not read again every run", () => {
+    const c = code("scripts/picks/self.ts").replace(/\/\/[^\n]*/g, " ");
+    const i = c.indexOf("!toWrite.length && !toStage.length");
+    const j = c.indexOf("continue;", i);
+    expect(i).toBeGreaterThan(-1);
+    expect(c.slice(i, j)).toMatch(/fileMessage\(m\.id\)/);
+  });
+
+  it("keeps a no-op out of both the writes and the queue", () => {
+    const c = code("scripts/picks/self.ts");
+    expect(c).toMatch(/!r\.ok && r\.noop !== true/);
+  });
+
+  it("refuses a blank actor, so nothing it audits is untraceable", () => {
+    expect(code("supabase/migrations/20260911000067_self_pick_email.sql"))
+      .toMatch(/coalesce\(trim\(p_actor\), ''\) = ''/);
   });
 
   it("stops on a replay before drafting a reply that would claim rows were applied", () => {

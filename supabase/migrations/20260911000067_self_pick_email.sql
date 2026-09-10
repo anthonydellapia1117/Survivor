@@ -41,6 +41,12 @@ begin
   if coalesce(trim(p_message_id), '') = '' then
     raise exception 'admin_apply_self_pick_email: a Gmail message id is required';
   end if;
+  -- Every row this writes is audited under p_actor. A blank one would leave
+  -- picks and queue rows nobody can be traced to, which is the one thing an
+  -- audit row exists to prevent.
+  if coalesce(trim(p_actor), '') = '' then
+    raise exception 'admin_apply_self_pick_email: an actor is required';
+  end if;
   if jsonb_typeof(p_rows) <> 'array' then
     raise exception 'admin_apply_self_pick_email: p_rows must be an array';
   end if;
