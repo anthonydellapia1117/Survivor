@@ -186,9 +186,40 @@ those rows — via /admin/audit — before re-raising anything.**
 - They are **Anthony's only**, under the participant row for
   `anthonydellapia@gmail.com` (distinct from the admin login).
 - Count is **FLOOR(recruited / 10)**.
-- **Final at 11 for 2026.** The pool closed 2026-09-08 at 110 recruited, so
-  the entitlement cannot move again this season. `AAA #11` was minted
-  2026-09-07 and carries Lynne number 1317, set 2026-09-08 on her word.
+- **Final at 11 for 2026.** **Lynne closed the pool on 2026-09-05 at 6:46 PM
+  ET** — her own words, "The pool is closed now" (Gmail `1a073c0f91f4900e`,
+  22:46:49 UTC), which Anthony recorded the next morning in a DECISION
+  self-email: "Lynne closed the pool at 6:46 PM Sep 5. No new owners or
+  entries from now on."
+  **One addition was made after that close, and only because she reopened for
+  it.** The close was enforced first: asked on 2026-09-06 whether four more
+  could go in, she said "Sorry. Sheet is done and sent out to everyone"
+  (Gmail `1a0778411a43cb23`), and Andrew's $100 was recorded that day as **not
+  pool money** on those grounds (`audit_log` 207). She changed that herself on
+  2026-09-07 at 6:18 PM ET — "If you want to add Andrew he will have to be at
+  #1313-1316. I apparently made a couple of mistakes" (Gmail
+  `1a07df4265215907`) — Anthony accepted at 6:46 PM and she confirmed "Done" at
+  6:51 PM. **Declined, then reopened by her, in writing, on her initiative.**
+  That is what makes it an exception rather than evidence the close was soft.
+  His four entries were created that evening at **7:46:46 PM ET**, taking
+  recruited from **106 to 110**, and the `mint_free_entries` trigger minted **`AAA #11` in the same transaction** —
+  `audit_log` 212 (`held_before: 10, entitlement: 11`) and 213
+  (`create_owner`) carry the **identical** timestamp
+  `2026-09-07 23:46:46.984142+00`, which is what one transaction looks like.
+  Those five rows are the **newest rows in `entries`**; nothing has been
+  created since, so the roster reached its final shape on the evening of
+  2026-09-07 and the entitlement cannot move again this season. (The one other
+  movement after the close was a REMOVAL, not an addition: `Adriana Flacco #2`
+  came off four minutes later, which is why the count going into the DiCicco
+  add was 106 and not 107.)
+  `AAA #11` carried Lynne number 1317 on her word and was renumbered to 982 on
+  2026-09-08.
+  **This corrects a date this file had wrong.** It used to read "The pool
+  closed 2026-09-08 at 110 recruited", which nothing supports: no
+  `audit_log` row and no message in that window says anything closed on
+  2026-09-08, and the same paragraph already said `AAA #11` was minted
+  2026-09-07 — a mint cannot precede the close that made it final. The
+  2026-09-08 work was the Lynne renumber, not a closing.
 - Named **"AAA #1"** through **"AAA #n"** — the same separator as every
   other multi-entry owner, per [the numbering convention](#the-numbering-convention).
   `FREE_ENTRY_NAME_PREFIX` in `src/lib/free-entries.ts` is `"AAA #"`, and the
@@ -565,11 +596,19 @@ pick request.
 These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
 
-**As of 2026-09-10 (Thursday of Week 1):** 121 entries = 110 recruited + 11
-free, Lynne numbers 972-1092 contiguous, `audit_log` max 666 before this
-session. **Every deadline of all 18 weeks reads 2:00 PM ET** (above); Friday
-2026-09-11 2:00 PM is Week 1's hard lock and the sweep boundary. Week 1: 57
-current picks in, 64 outstanding. The derived recipient set is **40**
+**As of 2026-09-10 (Thursday of Week 1, 9:35 AM ET):** 121 entries = 110
+recruited + 11 free, Lynne numbers 972-1092 contiguous, `audit_log` max **680**.
+**Every deadline of all 18 weeks reads 2:00 PM ET** (above); Friday
+2026-09-11 2:00 PM is Week 1's hard lock and the sweep boundary. Week 1: **62
+current picks in, 59 outstanding**.
+**The Thursday reminder went by hand.** The Ops Tick Routine fired at 12:43 UTC
+into a session with no git checkout and `npm run ops` could not run - the cause
+and the one field that fixes it are `docs/ROUTINES.md` section 10a. `week:1:thu`
+was sent from a session instead (Gmail `1a08b8674c5d0995`, 40 on Bcc derived
+live, count gate exactly 40) and its `week_reminder_claim` / `week_reminder_sent`
+rows, `audit_log` 679 and 680 in one transaction, **say in their notes that it
+was a hand send and not the command**. `week:1:fri` is deliberately unclaimed,
+so the Friday final call still goes on its own. The derived recipient set is **40**
 addresses - it moved from 39 when
 [Alexa took three of the free entries](#alexa-plays-three-of-the-free-entries).
 `lynne_roster` holds her `Football 2026-3.xlsx` (sha `cc7a987c`), 1,319 rows;
@@ -582,10 +621,12 @@ with our 121 is her NO. 1005, `E.A.T.`, on Seattle, which matches the pick this
 group holds. The block below is kept for the history it carries.
 
 **As of 2026-09-08 (Tuesday of Week 1):** 110 recruited + 11 free =
-**121 entries**, and **the pool is closed** - the season opens Wednesday
-2026-09-09 and no entry is added after this. **Free entries are final at 11**
-(FLOOR(110 / 10)); `AAA #11` was minted 2026-09-07 when the roster crossed
-110. **All 121 entries carry a Lynne number, 972-1092 contiguous**, from
+**121 entries**, and **the pool has been closed since 2026-09-05 6:46 PM ET**
+- the season opens Wednesday 2026-09-09 and no entry is added after this.
+**Free entries are final at 11** (FLOOR(110 / 10)); `AAA #11` was minted
+2026-09-07 in the same transaction as Andrew DiCicco's four, the post-close
+add Lynne approved in writing, which took the roster to 110. See
+[free entries](#free-entries) for that sequence and its evidence. **All 121 entries carry a Lynne number, 972-1092 contiguous**, from
 her corrected master sheet `Football 2026-3.xlsx` of 2026-09-08 (sha256
 `cc7a987c...cb37a`, Gmail message `1a082df163b5a6e6`), applied that evening
 by `admin_update_entry` inside one transaction (audit rows 498-620: one

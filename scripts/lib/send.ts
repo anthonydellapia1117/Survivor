@@ -32,6 +32,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadEnv } from "./env";
 import { encodeRaw, type OutboundMessage } from "./gmail";
 import { loadAuditByAction, recordAudit } from "./db";
+import { assertNoRetiredAddresses } from "./roster";
 
 export const SEND_ALLOWLIST = ["pick_reminder", "week_reminder"] as const;
 export type SendableTemplate = (typeof SEND_ALLOWLIST)[number];
@@ -149,6 +150,9 @@ export async function sendAllowlisted(
   if (req.entryNames.length === 0) {
     throw new Error(`Nothing to ask ${req.to} for: no unpicked entries.`);
   }
+  // Before the claim row, never after: a claim written and then thrown past
+  // would consume the recipient's lock day without a message going anywhere.
+  assertNoRetiredAddresses([req.to], `pick_reminder To for week ${req.week}`);
   const lockDay = lockDayKey(req.deadlineIso);
   const dup = alreadySent(prior, req.to, lockDay);
   if (dup) return { kind: "already_sent", prior: dup, lockDay };
@@ -241,8 +245,15 @@ export const WEEK_REMINDER_SENT_ACTION = "week_reminder_sent";
 export const WEEK_REMINDER_SLOTS = ["wed", "thu", "fri"] as const;
 export type WeekReminderSlot = (typeof WEEK_REMINDER_SLOTS)[number];
 
-/** week:N:wed, week:N:thu or week:N:fri - one send each, per week. */
-export function weekReminderKey(week: number, slot: WeekReminderSlot | "early" | "late"): string {
+/**
+ * week:N:wed, week:N:thu or week:N:fri - one send each, per week.
+ *
+ * A SLOT only. It used to accept a boundary name as well, which was the escape
+ * hatch that let the key fall back to week+boundary - and thu and fri name the
+ * same boundary, so that fallback silently turns two sends into one and eats
+ * whichever runs second. There is no fallback now.
+ */
+export function weekReminderKey(week: number, slot: WeekReminderSlot): string {
   return `week:${week}:${slot}`;
 }
 
@@ -286,10 +297,14 @@ export interface WeekReminderRequest {
   /**
    * Which of the week's three morning sends this is. THE KEY IS BUILT FROM
    * THIS, so thu and fri - which name the same boundary - are two sends and
-   * not one. Optional only so the pre-slot shape still type-checks; the
-   * command always passes it.
+   * not one.
+   *
+   * REQUIRED. It was optional while the two-boundary shape was still around,
+   * and an optional field that the key falls back from is a once-only guard
+   * that can quietly degrade to the very collision this exists to stop
+   * (Copilot on #54). Nothing is left to fall back to.
    */
-  slot?: WeekReminderSlot;
+  slot: WeekReminderSlot;
   deadlineIso: string;
   /** The count gate's expected number; bcc.length must equal it. */
   expectedRecipients: number;
@@ -320,7 +335,13 @@ export async function sendWeekReminder(
   if (!/^Survivor\b/.test(req.subject)) {
     throw new Error(`Subject must begin with "Survivor" so replies hit the pool filter: "${req.subject}".`);
   }
-  const key = weekReminderKey(req.week, req.slot ?? req.boundary);
+  // The count gate counts; it does not read. A roster that has had a dead
+  // address typed back onto it can derive exactly the expected number and
+  // still carry the mailbox that bounced, so the list is READ here too - and
+  // read BEFORE the claim row, because a claim written and then thrown past
+  // would consume the slot for good with nothing sent.
+  assertNoRetiredAddresses([req.to, ...req.bcc], `week_reminder recipients for week ${req.week}`);
+  const key = weekReminderKey(req.week, req.slot);
   // Read right before the send, never from a caller's snapshot.
   const prior = await priorWeekReminders(client);
   const dup = prior.find((p) => p.key === key);
@@ -337,7 +358,7 @@ export async function sendWeekReminder(
       boundary_key: key,
       week: req.week,
       boundary: req.boundary,
-      slot: req.slot ?? null,
+      slot: req.slot,
       deadline_at: req.deadlineIso,
       subject: req.subject,
       recipient_count: recipients.length,
@@ -361,7 +382,7 @@ export async function sendWeekReminder(
         boundary_key: key,
         week: req.week,
         boundary: req.boundary,
-        slot: req.slot ?? null,
+        slot: req.slot,
         deadline_at: req.deadlineIso,
         message_id: messageId,
         subject: req.subject,
