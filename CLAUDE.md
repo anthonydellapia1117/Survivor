@@ -612,7 +612,19 @@ row (section 10b, with the gates exercised end to end and stopped at dispatch).
 **A row written by the Routine is not proof the command ran** - `audit_log` 681
 carries the actor `ops-routine`, a string that appears nowhere in this repo, on
 a `kind` the CLI cannot produce; the agent went around the command through its
-MCP connectors (`docs/PICKS_INTAKE.md` section 11e). `week:1:thu`
+MCP connectors (`docs/PICKS_INTAKE.md` section 11e). The prompt was rewritten
+to forbid that by any means and to make an honest NEEDS ANTHONY the correct
+outcome (`docs/ROUTINES.md` section 10d), and
+`tests/unit/audit-actor-names.test.ts` now fails if any audit actor literal in
+this repo names a routine, a schedule or an agent, or if anything under
+`scripts/` hardcodes an actor at all instead of passing the one `adminClient()`
+derived. **`week:1:fri` is hand-sent on 2026-09-11 too**, on Anthony's call:
+the Gmail token authorized on the 10th was minted under a Testing consent
+screen and Google expires those refresh tokens after seven days, so putting it
+on the environment tonight would buy one send and then fail silently. Publishing
+the consent screen is the fix and the sequence is `docs/ROUTINES.md` section
+10c - publish BEFORE re-authorising, because a token carries the expiry of the
+status it was minted under. `week:1:thu`
 was sent from a session instead (Gmail `1a08b8674c5d0995`, 40 on Bcc derived
 live, count gate exactly 40) and its `week_reminder_claim` / `week_reminder_sent`
 rows, `audit_log` 679 and 680 in one transaction, **say in their notes that it
