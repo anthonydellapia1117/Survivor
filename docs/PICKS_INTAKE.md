@@ -359,7 +359,7 @@ command ran.
 - Every write is an audited RPC as the admin. No service-role key exists.
 - Drafts only. The one send path is `scripts/lib/send.ts`, allowlisted to
   `pick_reminder` (once per recipient per lock day) and `week_reminder`
-  (once per week boundary, exact recipient count), both gated on
+  (once per week SLOT, exact recipient count), both gated on
   `REMINDER_AUTOSEND=true`, every send audited.
 - A variance is printed with both values and never resolved.
 - Nothing here touches money or identity resolution.
@@ -370,18 +370,38 @@ command ran.
 npm run remind
 ```
 
-Six hours before a week's early deadline and again six hours before its late
-deadline, one message to everyone: To yourself, Bcc every address on the live
-roster (every owner address and every `player_email` on a live entry,
-lowercased, once each, yours included). Set by Anthony on 2026-09-09; the
-text is his Week 1 reminder with the deadline sentences derived from the
-week's games, so Week 12 and Week 16 read right without a special case.
+Three mornings a week, one message to everyone: To yourself, Bcc every address
+on the live roster (every owner address and every `player_email` on a live
+entry, lowercased, once each, yours included). Set by Anthony on 2026-09-09
+and put on three slots on 2026-09-10; the text is his Week 1 reminder with the
+deadline sentences derived from the week's games, so Week 12 and Week 16 read
+right without a special case.
 
-With no arguments it reads the weeks table and the clock, finds the boundary
-whose six-hour window holds now, and drafts for it; outside every window it
-prints `Nothing due` and exits. `--week N --boundary early|late` names one
-for a hand run (a boundary that has passed is refused). `--dry-run` prints
-the message and stops. `--yes` skips the y prompt.
+| Slot | Morning   | Names                                              | Key          |
+| ---- | --------- | -------------------------------------------------- | ------------ |
+| wed  | Wednesday | the week's EARLY boundary - the Thursday game       | `week:N:wed` |
+| thu  | Thursday  | the week's LATE boundary - the Sunday games         | `week:N:thu` |
+| fri  | Friday    | that same LATE boundary, as the **FINAL CALL**      | `week:N:fri` |
+
+Thursday and Friday name **one** boundary, so the once-only key is the week
+and the SLOT and never the week and the boundary - under a boundary key the
+final call would be dropped as a duplicate of Thursday's, with nothing printed
+but `already sent`. Only the Friday message says FINAL CALL, in the subject
+and on its first line.
+
+Every deadline comes from the weeks table. A slot's morning is the ET calendar
+date of a boundary the table holds - wed and fri on their boundary's own day,
+thu on the day before the late one - and no hour is written anywhere in
+`scripts/remind/lib/due.ts`: all eighteen weeks read 2:00 PM ET today and every
+one could move without a line of it changing. The minute the mail actually
+goes is the `pick-reminder` cron in `scripts/ops/config.json`
+(`0 12 * * 3,4,5`).
+
+With no arguments it reads the weeks table and the ET calendar, finds today's
+slot, and drafts for it; on a day with no slot, or once that slot's deadline
+has passed, it prints `Nothing due` and exits. `--week N --slot wed|thu|fri`
+names one for a hand run (a slot whose deadline has passed is refused).
+`--dry-run` prints the message and stops. `--yes` skips the y prompt.
 
 9a. **The count gate.** The derived recipient count must equal
 `EXPECTED_ROSTER_ADDRESSES` in `scripts/lib/constants.ts` (40)
@@ -392,9 +412,9 @@ stays 40; when it does not, the constant changes in a reviewed PR.
 
 9b. **Sending.** `--send` mails the `week_reminder` template instead of
 drafting, only when the environment has `REMINDER_AUTOSEND=true`, only once
-per boundary (a `week_reminder_claim` or `week_reminder_sent` audit row on
-`week:N:early` or `week:N:late` makes a re-run print `already sent` and
-skip), and only when the Bcc count equals the expected count - the gate is
+per slot (a `week_reminder_claim` or `week_reminder_sent` audit row on
+`week:N:wed`, `week:N:thu` or `week:N:fri` makes a re-run print `already sent`
+and skip), and only when the Bcc count equals the expected count - the gate is
 checked again inside `sendWeekReminder`, not only by the command. The claim
 row goes in before the Gmail call, the sent row with the message id and the
 full Bcc after it. The subject must begin `Survivor` or the send is refused.
@@ -431,8 +451,8 @@ called `tick` and that name still works. `daily` runs the six reporters in
 what would run and starts nothing - it reaches no database and no Gmail.
 
 The split is about what is hour-sensitive: a reply landing at 1:15 has to be
-recorded before a 2:00 deadline, and the two sending jobs fire six hours
-before a boundary, so those need the hour. Reporting does not.
+recorded before a 2:00 deadline, and the two sending jobs fire on a morning
+slot and on a lock day, so those need the hour. Reporting does not.
 
 10-0. **The reporters write nothing.** No send, no draft, no label, no mark,
 no identity resolved, no variance resolved. Each prints twelve lines or fewer:

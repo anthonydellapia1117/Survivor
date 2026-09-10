@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { EXPECTED_ROSTER_ADDRESSES } from "../../scripts/lib/constants";
 import { CONFIG_PATH, JOB_NAMES, loadOpsConfig, SEND_JOBS, slotBreaches, validateOpsConfig } from "../../scripts/ops/lib/config";
 import { cronMatches, describeSlot, dueAtEveryTick, dueInWindow, missedSlots, parseCron, unobservedSlots } from "../../scripts/ops/lib/cron";
-import { dueBoundary } from "../../scripts/remind/lib/due";
+import { dueSlot } from "../../scripts/remind/lib/due";
 import { tempSheetName } from "../../scripts/ops/lib/attachment";
 import { latestLockedWeek } from "../../scripts/ops/lib/weeks";
 import { draftedWeekOf, priorDraftFor } from "../../scripts/distribute/lib/drafted";
@@ -98,13 +98,17 @@ describe("the cron matcher", () => {
     expect(dueInWindow(reminder, new Date("2026-09-10T10:43:00Z"), 60)).toBe(false);
   });
 
-  it("puts the reminder six hours before a noon, 1 PM or 2 PM ET deadline on the days that carry one", () => {
+  it("puts the reminder on the Wednesday, Thursday and Friday mornings and no other day", () => {
+    // Anthony's three slots, set 2026-09-10: one message each morning, the
+    // Friday one the final call. The cron is the minute they go; which slot a
+    // run belongs to is the ET calendar (scripts/remind/lib/due.ts).
     const { schedule } = loadOpsConfig().jobs["pick-reminder"];
-    // Week 1's late deadline is Friday 18:00Z; six hours before is 12:00Z, the 12:43Z tick sees it.
-    expect(dueInWindow(schedule, new Date("2026-09-11T12:43:00Z"), 60)).toBe(true);
-    // A noon-ET deadline (16:00Z) is six hours before at 10:00Z.
-    expect(dueInWindow(schedule, new Date("2026-09-16T10:43:00Z"), 60)).toBe(true); // Wednesday
-    expect(dueInWindow(schedule, new Date("2026-09-14T10:43:00Z"), 60)).toBe(false); // Monday
+    expect(dueInWindow(schedule, new Date("2026-09-09T12:43:00Z"), 60)).toBe(true); // Wednesday
+    expect(dueInWindow(schedule, new Date("2026-09-10T12:43:00Z"), 60)).toBe(true); // Thursday
+    expect(dueInWindow(schedule, new Date("2026-09-11T12:43:00Z"), 60)).toBe(true); // Friday
+    expect(dueInWindow(schedule, new Date("2026-09-08T12:43:00Z"), 60)).toBe(false); // Tuesday
+    expect(dueInWindow(schedule, new Date("2026-09-12T12:43:00Z"), 60)).toBe(false); // Saturday
+    expect(dueInWindow(schedule, new Date("2026-09-14T12:43:00Z"), 60)).toBe(false); // Monday
   });
 });
 
@@ -197,9 +201,10 @@ describe("the tick that observes the schedules", () => {
     expect(slotBreaches(validateOpsConfig(withJob("distribute", { schedule: "20 8 * * 5" })))).toEqual([
       expect.stringMatching(/^distribute: Fri 08:20 UTC falls outside/),
     ]);
-    // So is a tick that stops observing a schedule that used to be fine.
-    expect(slotBreaches(validateOpsConfig({ ...raw(), tickSchedule: "43 11-23,0-2 * * *" }))).toEqual([
-      expect.stringMatching(/^pick-reminder: Wed 10:00 UTC, Fri 10:00 UTC falls outside/),
+    // So is a tick that stops observing a schedule that used to be fine: a
+    // Routine starting at 13:43 UTC would never see the three morning slots.
+    expect(slotBreaches(validateOpsConfig({ ...raw(), tickSchedule: "43 13-23,0-2 * * *" }))).toEqual([
+      expect.stringMatching(/^pick-reminder: Wed 12:00 UTC, Thu 12:00 UTC, Fri 12:00 UTC falls outside/),
     ]);
   });
 
@@ -218,23 +223,29 @@ describe("the tick that observes the schedules", () => {
     expect(readFileSync("scripts/ops/lib/config.ts", "utf8")).not.toMatch(/missedSlots\([^)]*\)[\s\S]{0,80}?fail\(/);
   });
 
-  it("keeps the reminder's slots and its lead in step, so changing one alone cannot silently stop the mail", () => {
-    // reminderLeadHours only widens the window dueBoundary tests; the instant
-    // the mail goes is the pick-reminder cron. Dropping the lead to 3 with the
-    // slots left alone sends NOTHING, with no error - the exact silent failure
-    // 41.1 claims to prevent. The two are held together here: every deadline
-    // hour the season uses (noon, 1 PM and 2 PM ET, which in EDT are 16:00,
-    // 17:00 and 18:00 UTC) must have its slot at deadline minus the lead.
+  it("keeps the reminder's cron and the schedule it fires in step, so neither can silently stop the mail", () => {
+    // The cron is the minute the mail goes; the slot a run belongs to is the
+    // ET calendar day. If they disagree - a cron on a day that names no slot,
+    // or a slot on a day the cron never fires - the run finds nothing due and
+    // says so quietly, which is the silent failure #41 was about. So: the
+    // cron's days and the slots' days are the same three, and at the tick
+    // that follows each firing the right slot is due.
     const c = loadOpsConfig();
-    const DEADLINE_HOURS_UTC = [16, 17, 18];
-    const slots = [...parseCron(c.jobs["pick-reminder"].schedule).hour].sort((a, b) => a - b);
-    expect(slots).toEqual(DEADLINE_HOURS_UTC.map((h) => h - c.reminderLeadHours).sort((a, b) => a - b));
-    // And prove the pairing actually fires: at each slot's tick, the boundary is due.
-    const weeks = [{ week: 1, early_deadline_at: "2026-09-09T16:00:00Z", late_deadline_at: "2026-09-11T18:00:00Z" }];
-    const fired = ["2026-09-09T10:43:00Z", "2026-09-09T11:43:00Z", "2026-09-09T12:43:00Z"].filter(
-      (t) => dueInWindow(c.jobs["pick-reminder"].schedule, new Date(t), c.tickWindowMinutes) && dueBoundary(weeks, new Date(t), c.reminderLeadHours) !== null,
+    const cron = c.jobs["pick-reminder"].schedule;
+    expect([...parseCron(cron).dow].sort((a, b) => a - b)).toEqual([3, 4, 5]);
+    const weeks = [{ week: 1, early_deadline_at: "2026-09-09T18:00:00Z", late_deadline_at: "2026-09-11T18:00:00Z" }];
+    const fired = ["2026-09-09T12:43:00Z", "2026-09-10T12:43:00Z", "2026-09-11T12:43:00Z"].map((t) =>
+      dueInWindow(cron, new Date(t), c.tickWindowMinutes) ? (dueSlot(weeks, new Date(t))?.slot ?? null) : null,
     );
-    expect(fired.length).toBeGreaterThan(0);
+    expect(fired).toEqual(["wed", "thu", "fri"]);
+    // The lead is no longer the trigger, so what holds it honest is the notice
+    // the two same-day slots give: wed names that Wednesday's early deadline
+    // and fri names that Friday's late one, and the cron must be at least
+    // reminderLeadHours before a 2 PM ET deadline in EDT (18:00Z) and EST
+    // (19:00Z). Moving the cron later, or the lead higher, fails here.
+    const [hour] = [...parseCron(cron).hour];
+    expect(18 - hour).toBeGreaterThanOrEqual(c.reminderLeadHours);
+    expect(19 - hour).toBeGreaterThanOrEqual(c.reminderLeadHours);
   });
 
   it("attributes a bad cron to the file it came from, like every other breach", () => {

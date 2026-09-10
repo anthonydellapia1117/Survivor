@@ -214,23 +214,40 @@ export async function sendAllowlisted(
 
 // ------------------------------------------------------------ week_reminder
 //
-// One message per boundary (a week's early or late deadline), To the admin's
-// mailbox and Bcc every address on the live roster, sent REMINDER_LEAD_HOURS
-// before the boundary by `npm run remind`. Its gate, all enforced here:
+// One message per SLOT - a week has three, each sent on its own morning by
+// `npm run remind` (Anthony, 2026-09-10): wed names the early boundary, thu
+// names the late one, fri is the final call and names that same late one. To
+// the admin's mailbox and Bcc every address on the live roster. Its gate, all
+// enforced here:
 //
 //   - REMINDER_AUTOSEND=true, the same switch as pick_reminder
 //   - the Bcc count equals the expected count the caller passes, exactly;
 //     the caller derives both, this refuses to send when they differ
-//   - at most once per boundary, judged from audit_log rows with actions
-//     week_reminder_claim and week_reminder_sent on the boundary's key
+//   - at most once per SLOT, judged from audit_log rows with actions
+//     week_reminder_claim and week_reminder_sent on the slot's key
 //   - a claim row goes in BEFORE the Gmail call, the sent row with the
 //     message id after it, so at most once holds if the run dies mid-send
+//
+// The key is week + slot and NOT week + boundary: thu and fri name the same
+// boundary, so a key built from the boundary would let one of them send and
+// silently swallow the other. `boundary` stays on the request and in the audit
+// row because it is still true and still worth reading - which deadline the
+// message named - it is just not what the once-only key is made of.
 
 export const WEEK_REMINDER_CLAIM_ACTION = "week_reminder_claim";
 export const WEEK_REMINDER_SENT_ACTION = "week_reminder_sent";
 
+/** The three morning sends of a week; the key is built from one of these. */
+export const WEEK_REMINDER_SLOTS = ["wed", "thu", "fri"] as const;
+export type WeekReminderSlot = (typeof WEEK_REMINDER_SLOTS)[number];
+
+/** week:N:wed, week:N:thu or week:N:fri - one send each, per week. */
+export function weekReminderKey(week: number, slot: WeekReminderSlot | "early" | "late"): string {
+  return `week:${week}:${slot}`;
+}
+
 export interface PriorWeekReminder {
-  /** week:N:early or week:N:late. */
+  /** week:N:wed, week:N:thu or week:N:fri. */
   key: string;
   messageId: string;
   at: string;
@@ -264,7 +281,15 @@ export interface WeekReminderRequest {
   subject: string;
   body: string;
   week: number;
+  /** Which stored deadline the message names. Recorded, never the key. */
   boundary: "early" | "late";
+  /**
+   * Which of the week's three morning sends this is. THE KEY IS BUILT FROM
+   * THIS, so thu and fri - which name the same boundary - are two sends and
+   * not one. Optional only so the pre-slot shape still type-checks; the
+   * command always passes it.
+   */
+  slot?: WeekReminderSlot;
   deadlineIso: string;
   /** The count gate's expected number; bcc.length must equal it. */
   expectedRecipients: number;
@@ -295,7 +320,7 @@ export async function sendWeekReminder(
   if (!/^Survivor\b/.test(req.subject)) {
     throw new Error(`Subject must begin with "Survivor" so replies hit the pool filter: "${req.subject}".`);
   }
-  const key = `week:${req.week}:${req.boundary}`;
+  const key = weekReminderKey(req.week, req.slot ?? req.boundary);
   // Read right before the send, never from a caller's snapshot.
   const prior = await priorWeekReminders(client);
   const dup = prior.find((p) => p.key === key);
@@ -312,6 +337,7 @@ export async function sendWeekReminder(
       boundary_key: key,
       week: req.week,
       boundary: req.boundary,
+      slot: req.slot ?? null,
       deadline_at: req.deadlineIso,
       subject: req.subject,
       recipient_count: recipients.length,
@@ -335,6 +361,7 @@ export async function sendWeekReminder(
         boundary_key: key,
         week: req.week,
         boundary: req.boundary,
+        slot: req.slot ?? null,
         deadline_at: req.deadlineIso,
         message_id: messageId,
         subject: req.subject,
