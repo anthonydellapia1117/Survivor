@@ -868,6 +868,56 @@ Two standing facts that are NOT snapshots and must survive:
   no ruleset on main (`docs/MERGE_AUTOMATION.md` section 4). Merge by
   squash, pinned to the head that was verified. Set 2026-09-09.
 
+- **One status email after every material run.** Set by Anthony on
+  2026-09-10. At the end of any run that **changed something or ended
+  blocked**, send - never draft - one plain-text email to
+  `anthonydellapia@gmail.com`, subject **`Survivor CODE STATUS - v2`**, under
+  ten lines.
+
+  **A run that changed nothing sends nothing.** A check-in that finds no
+  reply, a Vercel echo, a re-arm, a subscription confirmation: silent. If the
+  body would say "nothing actionable", write nothing at all.
+
+  The body is these lines, in this order, each on its own line, omitting any
+  that do not apply. **Values only** - no prose, no bold, no tables:
+
+  ```
+  SESSION: v2
+  RAN: <one line, what this run did>
+  MERGED: <PR number, squash sha, one-line title>
+  APPLIED: <migrations applied to production, or none>
+  BRANCH: <branch, PR number, state>
+  ISSUES: <issue numbers filed this run>
+  BLOCKED: <what is stuck and on whom - Anthony, a reviewer, a UI field, a secret>
+  NEXT: <the one thing queued>
+  WATCHING: <what a check-in is armed on, or none>
+  ```
+
+  **Never restate database state** - no entry counts, no pick counts, no
+  dollar figures, no participant names, no queue contents. Anthony and the
+  advisor chat both read the database directly, and repeating it wastes the
+  ten lines. What belongs here is exactly what is NOT in the database: PR
+  numbers, commit shas, branch names, migration names, issue numbers, what a
+  reviewer found, what the run is waiting on. **Write it for a reader who can
+  query the database but cannot see the terminal, the PRs or the
+  notifications**, because that is exactly true.
+
+  Never include an address other than the To, a phone number, a password, a
+  token or an anon key. Hyphens only, no em dashes, no emojis, no sign-off.
+  **Never send this subject to anyone but Anthony**, and never use it for a
+  participant-facing message.
+
+  The subject carries the word `Survivor`, which the sweep matches on. It is
+  always self-sent from Anthony's own address and **the sweep must always skip
+  it**. If any intake path ever stages a row from a CODE STATUS message, that
+  is a defect in the intake - fix the intake, never the subject. Two
+  independent gates already hold it out, both on the ADDRESS and neither on
+  the subject: `intakeAddresses` drops the admin mailbox even though Anthony
+  is a confirmed owner with entries, and the subject sweep is handed
+  `ADMIN_MAILBOX` as an excluded address. `tests/unit/code-status-not-swept.test.ts`
+  guards both, and asserts first that the subject IS swept - so the day the
+  address rule rots, the guard cannot pass on the subject instead.
+
 - **Do not watch pull requests, and never print a waiting line.** Set by
   Anthony on 2026-09-09 and restated the same day, after a session answered
   him with "Waiting on the ci re-run" four times and said nothing four
