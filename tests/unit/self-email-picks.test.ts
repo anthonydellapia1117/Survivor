@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   conflictingSelfRows,
+  guardSelfRows,
   isSelfPickSubject,
   parseSelfPickEmail,
   resolveSelfRef,
@@ -145,5 +146,78 @@ describe("the whole message", () => {
     const reply = selfPickReply(rows, 1);
     expect(reply.split("\n").length).toBeLessThanOrEqual(9);
     expect(reply.split("\n")[0]).toBe("Week 1: 40 applied, 40 staged.");
+  });
+});
+
+// The three guards the PARSER cannot apply, because they need the entry's own
+// history: admin_submit_pick knows none of them (it supersedes whatever is
+// current and it has never heard of a repeated team), so a dictated line only
+// meets them if guardSelfRows applies them first.
+describe("the guards the parser cannot apply", () => {
+  const LATE = "2026-09-11T18:00:00Z";
+  const ctx = (over: Partial<Parameters<typeof guardSelfRows>[1]> = {}) => ({
+    currentByEntry: new Map(),
+    priorByEntry: new Map(),
+    madeAt: new Date("2026-09-11T12:00:00Z"),
+    lateDeadlineIso: LATE,
+    ...over,
+  });
+  const one = (body: string, over = {}) => guardSelfRows(parseSelfPickEmail(body, 2, ENTRIES, PLAYS), ctx(over))[0];
+
+  it("stages a team the entry already used, because a repeat is an elimination in her pool", () => {
+    const r = one("1073 LAC", { priorByEntry: new Map([["e-1073", new Map([["LAC", 1]])]]) });
+    expect(r.ok).toBe(false);
+    expect((r as { reason: string }).reason).toMatch(/already used in week 1.*ELIMINATION/);
+    // It still carries the entry and team, so it stages as a pick Anthony can approve.
+    expect(r).toMatchObject({ entryId: "e-1073", team: "LAC" });
+  });
+
+  it("stages rather than overwriting a pick that is already scored", () => {
+    const cur = new Map([["e-1073", { team: "PHI", submitted_at: "2026-09-11T09:00:00Z", result: "win" }]]);
+    const r = one("1073 LAC", { currentByEntry: cur });
+    expect(r.ok).toBe(false);
+    expect((r as { reason: string }).reason).toMatch(/already scored/);
+  });
+
+  it("stages a change that arrives after the lock, and lets one that beat it through", () => {
+    const cur = new Map([["e-1073", { team: "PHI", submitted_at: "2026-09-11T09:00:00Z", result: "pending" }]]);
+    expect(one("1073 LAC", { currentByEntry: cur, madeAt: new Date("2026-09-11T19:00:00Z") }).ok).toBe(false);
+    expect(one("1073 LAC", { currentByEntry: cur, madeAt: new Date("2026-09-11T13:00:00Z") }).ok).toBe(true);
+  });
+
+  it("lets the same team through when it is re-sent, because that is not a change", () => {
+    const cur = new Map([["e-1073", { team: "LAC", submitted_at: "2026-09-11T09:00:00Z", result: "win" }]]);
+    expect(one("1073 LAC", { currentByEntry: cur, madeAt: new Date("2026-09-11T19:00:00Z") }).ok).toBe(true);
+  });
+});
+
+describe("what the command and the migration wire up", () => {
+  const code = (f: string): string => readFileSync(path.join(__dirname, "../..", f), "utf8");
+
+  it("takes its roster from aliveEntries, so an eliminated entry cannot be dictated a pick", () => {
+    const c = code("scripts/picks/self.ts");
+    expect(c).toMatch(/aliveEntries\(await loadLiveEntries\(client\), await loadStandings\(client\)\)/);
+  });
+
+  it("sends the receipt time and the staged rows to the RPC", () => {
+    const c = code("scripts/picks/self.ts");
+    expect(c).toMatch(/submitted_at: m\.receivedAt/);
+    expect(c).toMatch(/p_staged: toStage/);
+  });
+
+  it("stops on a replay before drafting a reply that would claim rows were applied", () => {
+    const c = code("scripts/picks/self.ts").replace(/\/\/[^\n]*/g, " ");
+    const i = c.indexOf("result.already_applied");
+    const j = c.indexOf("createDraft(gmail");
+    expect(i).toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
+    expect(c.slice(i, j)).toMatch(/continue;/);
+  });
+
+  it("calls the six-argument admin_submit_pick and really stages what it reports staged", () => {
+    const sql = code("supabase/migrations/20260911000067_self_pick_email.sql");
+    expect(sql).toMatch(/admin_submit_pick\(r\.entry_id, r\.week, r\.team, 'text', p_actor, r\.submitted_at\)/);
+    expect(sql).toMatch(/perform admin_stage_pending\(/);
+    expect(sql).toMatch(/pg_advisory_xact_lock\(hashtext\('self_pick_email:/);
   });
 });
