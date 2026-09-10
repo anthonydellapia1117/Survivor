@@ -20,7 +20,8 @@
     "remind": "tsx scripts/remind/cli.ts",
     "ops": "tsx scripts/ops/cli.ts",
     "notify": "tsx scripts/notify/cli.ts",
-    "scores": "NODE_USE_ENV_PROXY=1 tsx scripts/scores/cli.ts"
+    "scores": "NODE_USE_ENV_PROXY=1 tsx scripts/scores/cli.ts",
+    "picks:self": "tsx scripts/picks/self.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
