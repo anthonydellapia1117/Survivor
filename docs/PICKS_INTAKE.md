@@ -44,6 +44,9 @@ and the terminal prints `Token saved to ~/.config/survivor/gmail-token.json`.
 The scope is gmail.modify: read, label, draft and, through the one gate in
 section 4c, send. On a machine with no home-directory token (a Routine
 container) paste that file's contents into `GMAIL_OAUTH_TOKEN_JSON` instead.
+Publish the consent screen BEFORE running `npm run gmail:auth`, or the token
+expires in seven days; the order, the Google prerequisites and where each
+variable lives are in docs/ROUTINES.md section 10c-done.
 
 1c. Optional. `NTFY_TOPIC=<your topic>` in `.env.local` makes every command
 post its one-line summary and every NEEDS ANTHONY line to
