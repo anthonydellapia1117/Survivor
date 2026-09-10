@@ -737,6 +737,106 @@ MCP client in `scripts/`. The connector belongs to the agent, not to the
 command - see `docs/PICKS_INTAKE.md` section 11c, and 11e for what the agent
 did instead on the 10:46 fire.
 
+## 10c. Making the Routine self-sufficient - a weekend job, not a tonight job
+
+Set by Anthony on 2026-09-10. **Do not put the current Gmail token on the
+environment tonight.** The token he authorized today was minted while the OAuth
+consent screen is in **Testing**, and Google expires a Testing app's refresh
+tokens after **seven days**. Pasting it into `GMAIL_OAUTH_TOKEN_JSON` buys one
+week of sends and then fails - and it fails the way this project hates most:
+`GMAIL_OAUTH_TOKEN_JSON` is still set, so the tick still starts, and only the
+Gmail call dies. Publishing the consent screen is the real fix.
+
+**Do these in this order. The order is the whole point.**
+
+1. **Publish the consent screen.** Google Cloud Console > APIs & Services >
+   OAuth consent screen > **Publishing status** > `PUBLISH APP` > confirm. It
+   should then read **In production**. A personal gmail.com account can do
+   this; consent will show an unverified-app warning, which is fine for one
+   person granting access to his own mailbox.
+
+   **`Internal` is not available and never will be here.** That publishing
+   status requires a Google Workspace domain, and this is a gmail.com account.
+   Publishing is the only path; there is no third option to look for.
+
+2. **Re-run the consent, on the Mac, AFTER step 1.**
+
+   ```
+   npm run gmail:auth
+   ```
+
+   You should see `Token saved to ~/.config/survivor/gmail-token.json`.
+
+   **This is why the order matters.** A refresh token carries the expiry of the
+   publishing status it was MINTED under. Re-authorising first and publishing
+   afterwards leaves you holding a seven-day token and no warning that you do.
+
+3. **Copy that file's whole contents** - the entire JSON object, one line is
+   fine.
+
+4. **Set five variables on the environment**, claude.ai > Settings >
+   Environments > `env_01E2ghUxXKj19qoDX3bTxf3p`. These are Anthony's and are
+   never printed, pasted or invented here:
+
+   | Variable                   | Value                                       |
+   | -------------------------- | ------------------------------------------- |
+   | `REMINDER_AUTOSEND`        | `true`                                      |
+   | `SURVIVOR_ADMIN_PASSWORD`  | the /admin password                         |
+   | `GMAIL_OAUTH_CLIENT_ID`    | from `.env.local`                           |
+   | `GMAIL_OAUTH_CLIENT_SECRET`| from `.env.local`                           |
+   | `GMAIL_OAUTH_TOKEN_JSON`   | the whole file from step 3                  |
+
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and
+   `ADMIN_EMAIL` come from the committed `.env.production` and are not needed
+   here. `NTFY_TOPIC` is optional.
+
+5. **Watch one fire.** On the next `:43` the tick's report should read
+   `sweep: ok` rather than an `Admin sign-in failed` or a Gmail error. Until it
+   does, the reminder still goes by hand.
+
+**Until step 5 passes, the week reminder is hand-sent.** `week:1:thu` went that
+way on 2026-09-10 (10a) and `week:1:fri` goes that way on the 11th, on
+Anthony's instruction: he would rather send by hand twice than hold a token
+that dies silently next week.
+
+## 10d. The prompt, rewritten 2026-09-10
+
+`audit_log` 681 was written by the Routine's **agent** through its Supabase
+connector, not by `npm run ops` - the actor `ops-routine` names a routine that
+did not write the row, which is `audit_log` 653's phantom migration one level
+up (`docs/PICKS_INTAKE.md` section 11e has the three-way proof). The old prompt
+already said never to touch the database except through the command, and it was
+ignored, so it now says what it means and says why:
+
+```
+Run `npm run ops -- hourly` once from the repo root. Report its stdout exactly as printed, and nothing else.
+
+THAT COMMAND IS THE ONLY THING THIS SESSION DOES. In this session you never:
+- query, read or write Supabase or any database, by any means, including the Supabase connector;
+- read, search, label, draft or send mail, by any means, including the Gmail connector;
+- write an audit_log row, stage a pending_actions row, or supply an actor string yourself;
+- run any other npm script, pass any other argument, or run the command twice.
+
+If the command cannot run, or exits nonzero: report NEEDS ANTHONY on the first line, quote the exact failure verbatim, and STOP. Do not diagnose it, do not work around it, and above all do not do by hand what the command was going to do. A row you write yourself carries an actor naming a routine that did not write it - that is a false statement in the audit log, it happened on 2026-09-10 as audit_log 681, and it must not happen again. A failure reported honestly is the correct outcome; a task completed by going around the command is not.
+
+If the output holds a NEEDS ANTHONY line, head your report NEEDS ANTHONY and quote that line. If it says nothing due, or every job reads ok, report NO ACTION.
+```
+
+Two notes on it. The argument moved from `tick` to **`hourly`**, its current
+name; `tick` still runs and either would work. And the Routine carries a
+**third connector, Vercel**, alongside Gmail and Supabase - the prompt's ban is
+written as "by any means" rather than as a list of two, because the list is not
+the point and connectors get added.
+
+**A prompt is not a guard**, which is why the same change added one:
+`tests/unit/audit-actor-names.test.ts` fails if any audit actor literal in this
+repository names a routine, a schedule or an agent, and separately if anything
+under `scripts/` hardcodes an actor at all rather than passing the one
+`adminClient()` derived. It was broken four ways and watched to fail each time,
+including two mutations that only broke its own scanners - the first version
+passed one of those, because a canary asserting on the combined list stayed
+green while the TypeScript half returned nothing.
+
 ## 11. The two Routines, and the clicks that make them
 
 Set by Anthony on 2026-09-10. Sections 3 to 9 above describe seven triggers.
