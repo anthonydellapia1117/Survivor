@@ -1,40 +1,37 @@
-// Dynamic share card: live pool state, no money on it ever - the pot and
-// every dollar figure are admin-only and must never reach a public
-// surface, and this image is fetched by link scrapers with no auth.
+// Dynamic share card: HER pool's two published headline figures, and nothing
+// else. Set by Anthony on 2026-09-11.
+//
+// THE MONEY RULE HERE IS NOT "no money". This card used to say so, and that
+// was written before her figures were public. What is admin-only is THIS
+// GROUP's finances - collected, due, outstanding, the margin, the
+// recruited-vs-free split - and none of that is here. Her pool-wide pot is the
+// one dollar figure that is public by design, entered on /admin exactly as she
+// publishes it, and Total in Pool is her count of the whole pool.
+//
+// TWO THINGS CAME OFF. "121 of 121 entries alive" is an OUR-GROUP figure: it
+// is what Anthony manages, not what a person following the link came to see,
+// and it reads the same every week until somebody dies - the same reasoning
+// that took Entries and Alive off the dashboard. And the countdown went
+// because a share card is scraped once and cached: a lock time baked into an
+// image is wrong within hours and then stays wrong.
+//
+// A figure she has not published is left off rather than shown as zero, which
+// is poolStats()'s rule and the reason this reads it rather than formatting
+// its own.
 
 import { ImageResponse } from "next/og";
 import { getData } from "@/lib/data";
-import { isAliveStatus } from "@/lib/alive";
-import { LOCK_KIND_LABEL, nextLockBoundary } from "@/lib/dashboard";
+import { poolStats } from "@/lib/master-list";
 
 export const runtime = "nodejs";
 
-function deadlineText(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 export async function GET() {
   const data = getData();
-  const [entries, weeks, games] = await Promise.all([
-    data.getEntries(),
-    data.getWeeks(),
-    data.getSchedule(),
-  ]);
-
-  const total = entries.length;
-  const alive = entries.filter((e) => isAliveStatus(e.status)).length;
-  const next = nextLockBoundary(weeks, games, new Date());
-  const weekNo = next?.week ?? weeks.at(-1)?.week ?? 18;
-  const deadlineLine = next
-    ? `${LOCK_KIND_LABEL[next.kind]} lock ${deadlineText(next.deadlineAt)} ET`
-    : "Season complete";
+  const pot = await data.getPot();
+  // Her four, filtered to the two that head the card. Read through poolStats
+  // so this cannot drift from the dashboard strip or the Master List.
+  const wanted = ["Total in Pool", "Total Payout"];
+  const figures = poolStats(pot).filter((f) => wanted.includes(f.label));
 
   return new ImageResponse(
     <div
@@ -74,45 +71,27 @@ export async function GET() {
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "baseline", gap: 24 }}>
-        <div
-          style={{
-            display: "flex",
-            fontSize: 132,
-            fontWeight: 700,
-            color: "#4ADE80",
-          }}
-        >
-          {alive}
-        </div>
-        <div style={{ display: "flex", fontSize: 44, color: "#9BA1A8" }}>
-          of {total} entries alive
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ display: "flex", fontSize: 34, color: "#C8CDD3" }}>
-          {deadlineLine}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            padding: "10px 26px",
-            borderRadius: 999,
-            border: "2px solid #3B82F6",
-            color: "#7EB1FA",
-            fontSize: 34,
-            fontWeight: 700,
-          }}
-        >
-          Week {weekNo}
-        </div>
+      <div style={{ display: "flex", gap: 72 }}>
+        {figures.map((f) => (
+          <div
+            key={f.label}
+            style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          >
+            <div style={{ display: "flex", fontSize: 34, color: "#9BA1A8" }}>
+              {f.label}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                fontSize: 104,
+                fontWeight: 700,
+                color: "#4ADE80",
+              }}
+            >
+              {f.value}
+            </div>
+          </div>
+        ))}
       </div>
     </div>,
     {

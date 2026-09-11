@@ -167,12 +167,12 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl">2026 NFL Survivor Pool</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {entries.length} entries · live standings, picks, and pool health.
-        </p>
-      </div>
+      {/* The subtitle came off on 2026-09-11. It read "121 entries · live
+          standings, picks, and pool health" - an OUR-GROUP count a viewer did
+          not come for, followed by a list of what the page visibly already
+          is. Same reasoning that took Entries and Alive off the cards below
+          and the alive figure off the share card. */}
+      <h1 className="text-2xl">2026 NFL Survivor Pool</h1>
 
       {/* Row 1 - the master pool's own four figures, exactly as she
           publishes them, read through the same poolStats() the Master List

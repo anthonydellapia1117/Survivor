@@ -53,8 +53,11 @@ export default async function WeekCockpitPage(props: {
 
   const numberById = new Map(adminEntries.map((e) => [e.id, e.lynneNumber]));
   const missingNumbers = submitted.filter((e) => numberById.get(e.id) == null);
+  // EVERY live entry, not just the alive ones: an eliminated entry is a row
+  // reading OUT, and a row that is missing entirely is what used to send
+  // Lynne a short list (src/lib/lynne/submit.ts).
   const submitRows = buildSubmitRows(
-    alive,
+    entries,
     new Map(weekCells.map((c) => [c.entryId, c.team])),
     numberById,
   );

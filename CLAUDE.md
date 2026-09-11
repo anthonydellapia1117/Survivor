@@ -1574,9 +1574,20 @@ in any of them.**
   every 19 minutes of every hour. A tick costs a firing and does nothing
   unless a job is due.
 
-  **The config is necessary and not sufficient.** The tick's cron lives in the
-  claude.ai Routine, which is UI-only; until that Routine fires every 19
-  minutes the sweep still runs hourly whatever this file says.
+  **THE 19-MINUTE CADENCE CANNOT BE SET, AND THIS IS NOT A MISSING CLICK.**
+  Established 2026-09-11: the Routine platform enforces a **one-hour minimum
+  interval** and refuses `0,19,38,57 * * * *` outright -
+  *"may fire runs as little as 3 minutes apart; the minimum interval is 1
+  hour"*. Neither the UI nor the API can do better, so `scheduleEt` describes a
+  cadence nothing can deliver.
+
+  What WAS done instead: the `Survivor Ops Tick` Routine
+  (`trig_01W9BrBAoWKBQm9AjJ9FVVKK`) moved from `43 7-23,0-3 * * *` to
+  **`43 * * * *`** - hourly across all 24 hours. The old one named hours and so
+  missed UTC 4, 5 and 6, which is midnight to 2 AM ET on Saturday: **the tail
+  of the Friday window was never swept at all.** It is now, hourly. Closing an
+  hourly gap is not the same as closing a 19-minute one, and the sweep can
+  still sit up to an hour behind a reply.
   `tests/unit/ops.test.ts` holds the cadence as a GAP rather than a cron
   string - never 19 minutes unswept inside the window, never more than an hour
   outside it, and every slot observed in BOTH offsets - because a string
@@ -1635,6 +1646,43 @@ in any of them.**
   `tests/unit/thread-subject-query.test.ts` DRIVES the lookup with a fake
   Gmail, because the guards that only read the source could not see the
   empty-subject branch or the paging at all.
+
+- **The submission to Lynne carries EVERY live entry, every week.** Set by
+  Anthony on 2026-09-11. `buildSubmitRows` used to emit only entries that had
+  a current pick and silently drop the rest, so a week with a missed pick or
+  an elimination sent her a list SHORTER than the roster. Week 1 hid it - all
+  121 had picks - and from Week 2 it would not have.
+
+  A row is emitted for every entry that carries a Lynne number, and the cell
+  says what is true: the team, **BYE** for a bye, **NO PICK** where there is
+  none, **OUT** where the entry is eliminated. OUT beats a stale pick. **Row
+  count equals live entry count**; a missing `lynne_number` is the one thing
+  that can keep an entry off, because there is no number to file it under, and
+  it is reported by name.
+
+  `cellText` is the ONE place a cell's text is written - the CSV and the copy
+  block had a renderer each, which is the same two-copies-of-one-rule shape
+  that once put `SKIP_WEEK` on a screen. `NO_PICK` and `OUT_OF_POOL` are
+  values like `SKIP_WEEK` and never reach a reader raw.
+
+- **The share card carries HER two figures, and the dashboard has no
+  subtitle.** Set by Anthony on 2026-09-11. `/api/og` shows **Total in Pool**
+  and **Total Payout**, read through the same `poolStats()` the dashboard
+  strip and the Master List use.
+
+  **The money rule here is not "no money" - that comment was written before
+  her figures were public.** Her pool-wide pot is
+  [the one dollar figure public by design](#public-surfaces); what stays
+  admin-only is THIS GROUP's - collected, due, outstanding, the margin, the
+  recruited-vs-free split.
+
+  Two things came off. **"121 of 121 entries alive" is an our-group figure** -
+  what Anthony manages, not what a person following the link came to see, and
+  it reads the same every week until somebody dies. And **the countdown went
+  because a share card is scraped once and cached**: a lock time baked into an
+  image is wrong within hours and then stays wrong. The dashboard subtitle
+  went for the first reason, being an entry count followed by a list of what
+  the page visibly already is.
 
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is

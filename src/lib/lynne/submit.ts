@@ -8,11 +8,35 @@
 
 import { LYNNE_TEAM_NAME } from "./names";
 import { SKIP_WEEK } from "@/lib/standing";
+import { isAliveStatus } from "@/lib/alive";
+import type { EntryStatus } from "@/lib/data/types";
+
+/**
+ * What a cell holds when it is not a team. Values, never words - the same
+ * shape as SKIP_WEEK, and like it they are rendered by `cellText` and never
+ * printed raw.
+ */
+export const NO_PICK = "NO_PICK";
+export const OUT_OF_POOL = "OUT_OF_POOL";
+
+/**
+ * The one place a cell's TEXT is written. The block and the CSV each had
+ * their own copy of this and only one of them would have learned a new case -
+ * the same two-copies-of-one-rule shape that put SKIP_WEEK on a screen.
+ */
+export function cellText(value: string): string {
+  if (value === SKIP_WEEK) return "BYE";
+  if (value === NO_PICK) return "NO PICK";
+  if (value === OUT_OF_POOL) return "OUT";
+  return LYNNE_TEAM_NAME[value] ?? value;
+}
 
 export interface SubmitRow {
   lynneNumber: number;
   entryName: string;
-  team: string; // app abbreviation
+  /** App abbreviation, or SKIP_WEEK / NO_PICK / OUT_OF_POOL. Rendered by
+   *  `cellText`; never printed raw. */
+  team: string;
   /** Runner's entry — sorts to the top of the block and CSV. */
   isAdminEntry?: boolean;
 }
@@ -35,13 +59,11 @@ function csvField(s: string): string {
  */
 export function buildSubmissionCsv(week: number, rows: SubmitRow[]): string {
   const sorted = [...rows].sort(submitOrder);
-  const teamText = (abbr: string) =>
-    abbr === SKIP_WEEK ? "BYE" : (LYNNE_TEAM_NAME[abbr] ?? abbr);
   const lines = [
     `NO.,NAMES,Week ${week}`,
     ...sorted.map(
       (r) =>
-        `${r.lynneNumber},${csvField(r.entryName)},${csvField(teamText(r.team))}`,
+        `${r.lynneNumber},${csvField(r.entryName)},${csvField(cellText(r.team))}`,
     ),
   ];
   return lines.join("\n") + "\n";
@@ -55,29 +77,45 @@ export interface SubmitRowsResult {
 }
 
 /**
- * Assemble the week's submittable rows from alive entries: a row needs a
- * current pick AND a Lynne number. Shared by /admin/lynne-submit and the
- * week cockpit so both screens carry identical preconditions.
+ * Assemble the week's rows: EVERY live entry, every week.
+ *
+ * It used to emit only entries that had a current pick, and silently drop the
+ * rest - so a week with a missed pick or an elimination sent Lynne a SHORTER
+ * list than the roster, and nothing on the page said which rows had gone. In
+ * Week 1 that was invisible because all 121 had picks; from Week 2 it is not.
+ *
+ * So a row is emitted for every entry that carries a Lynne number, and the
+ * cell says what is true: the team, BYE for a bye, NO PICK where there is
+ * none, OUT where the entry is eliminated. **Row count equals live entry
+ * count**, which is the property `/admin/lynne-submit` states and the guard
+ * asserts.
+ *
+ * An entry with NO LYNNE NUMBER still cannot be a row - there is no number to
+ * put it under in her sheet - so it is reported separately and is the one
+ * thing that can make the counts differ. Every entry carries one today.
  */
 export function buildSubmitRows(
-  alive: { id: string; entryName: string; isAdminEntry?: boolean }[],
+  live: { id: string; entryName: string; status: EntryStatus; isAdminEntry?: boolean }[],
   pickByEntry: Map<string, string>,
   numberById: Map<string, number | null>,
 ): SubmitRowsResult {
   const ready: SubmitRow[] = [];
   const missingNumber: string[] = [];
   const missingPick: string[] = [];
-  for (const e of alive) {
-    const team = pickByEntry.get(e.id);
+  for (const e of live) {
     const no = numberById.get(e.id) ?? null;
-    if (!team || team === "MISSED") {
-      missingPick.push(e.entryName);
-      continue;
-    }
     if (no === null) {
       missingNumber.push(e.entryName);
       continue;
     }
+    const pick = pickByEntry.get(e.id);
+    // Eliminated wins over everything: a dead entry's last pick is not this
+    // week's business, and OUT is what tells her the row is finished.
+    const out = !isAliveStatus(e.status);
+    // A MISSED week is no pick, which is exactly what it should read as.
+    const noPick = !pick || pick === "MISSED";
+    const team = out ? OUT_OF_POOL : noPick ? NO_PICK : pick;
+    if (!out && noPick) missingPick.push(e.entryName);
     ready.push({
       lynneNumber: no,
       entryName: e.entryName,
@@ -85,13 +123,16 @@ export function buildSubmitRows(
       isAdminEntry: e.isAdminEntry ?? false,
     });
   }
-  return { ready, missingNumber, missingPick, aliveCount: alive.length };
+  return {
+    ready,
+    missingNumber,
+    missingPick,
+    aliveCount: live.filter((e) => isAliveStatus(e.status)).length,
+  };
 }
 
 export function buildSubmissionBlock(week: number, rows: SubmitRow[]): string {
   const sorted = [...rows].sort(submitOrder);
-  const teamText = (abbr: string) =>
-    abbr === SKIP_WEEK ? "BYE" : (LYNNE_TEAM_NAME[abbr] ?? abbr);
   const noWidth = Math.max(
     "NO.".length,
     ...sorted.map((r) => String(r.lynneNumber).length),
@@ -105,7 +146,7 @@ export function buildSubmissionBlock(week: number, rows: SubmitRow[]): string {
     `${pad("NO.", noWidth + 4)}${pad("NAMES", nameWidth + 4)}Week ${week}`,
     ...sorted.map(
       (r) =>
-        `${pad(String(r.lynneNumber), noWidth + 4)}${pad(r.entryName, nameWidth + 4)}${teamText(r.team)}`,
+        `${pad(String(r.lynneNumber), noWidth + 4)}${pad(r.entryName, nameWidth + 4)}${cellText(r.team)}`,
     ),
   ];
   return lines.join("\n");
