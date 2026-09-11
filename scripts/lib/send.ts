@@ -31,6 +31,7 @@ import type { gmail_v1 } from "googleapis";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadEnv } from "./env";
 import { encodeRaw, type OutboundMessage } from "./gmail";
+import { ccFor, deliveryAddressesFor } from "@/lib/emails/recipient-exceptions";
 import { loadAuditByAction, recordAudit } from "./db";
 import { assertNoRetiredAddresses } from "./roster";
 
@@ -185,7 +186,16 @@ export async function sendAllowlisted(
   });
   prior.push({ recipient: recipientKey, lockDay, messageId: "", at: new Date().toISOString() });
 
-  const m: OutboundMessage = { to: [req.to], subject: req.subject, body: req.body };
+  // The two named exceptions are applied HERE, at the one send seam, rather
+  // than in each caller: a multi-address person gets every copy and a CC'd
+  // owner is on the header whichever command built the message
+  // (src/lib/emails/recipient-exceptions.ts).
+  const m: OutboundMessage = {
+    to: deliveryAddressesFor(req.to),
+    cc: ccFor(req.to),
+    subject: req.subject,
+    body: req.body,
+  };
   const res = await gmail.users.messages.send({ userId: "me", requestBody: { raw: encodeRaw(m) } });
   const messageId = res.data.id ?? "";
   let auditId: number;

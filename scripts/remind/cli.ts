@@ -23,6 +23,7 @@ import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
 import { autosendEnabled, sendWeekReminder } from "../lib/send";
 import { assertNoRetiredAddresses, entriesOfConfirmedOwners, unpickedEntries } from "../lib/roster";
+import { expandDelivery } from "@/lib/emails/recipient-exceptions";
 import { formatEt, type GameLite, type WeekBounds } from "../picks/lib/deadline";
 import { dueSlot, findSlot, isSlotName, slotKey, SLOT_NAMES, type ReminderSlot, type SlotName } from "./lib/due";
 import { reminderBody, reminderHtml, reminderSubject } from "./lib/message";
@@ -92,14 +93,20 @@ async function main(): Promise<void> {
   console.log(`${key}: the ${b.slot} reminder, naming the ${b.kind} deadline ${formatEt(b.deadlineIso)}.`);
 
   // ---- who: derived live, then the retired check, then the exact count gate
-  const bcc = reminderAddresses(owners, entries);
+  // PEOPLE first. reminderAddresses returns one address per person; the gate
+  // runs on that, and the fan-out to a multi-address person's other mailboxes
+  // happens after it. Gating the expanded list would make every extra mailbox
+  // a reviewed change to the expected count, and that number would stop
+  // meaning "how many people are on this roster"
+  // (src/lib/emails/recipient-exceptions.ts).
+  const people = reminderAddresses(owners, entries);
   // The retired check runs BEFORE the count gate, because the count gate can
   // pass while the list is wrong: a dead address typed back onto an owner
   // REPLACES that owner's live one, so the derived total is still 40 and the
   // message reaches everyone except the person it was corrected for. Counting
   // is not reading. This throws by name and stops the run.
-  assertNoRetiredAddresses(bcc, "week reminder Bcc");
-  const gate = countGate(EXPECTED_ROSTER_ADDRESSES, bcc);
+  assertNoRetiredAddresses(people, "week reminder recipients");
+  const gate = countGate(EXPECTED_ROSTER_ADDRESSES, people);
   for (const line of gate.lines) console.log(line);
   if (!gate.ok) {
     await notify(
@@ -107,6 +114,16 @@ async function main(): Promise<void> {
       { tags: "warning" },
     );
     throw new Error(`Count gate: ${gate.actual} recipients, ${gate.expected} expected. Stopped.`);
+  }
+
+  // Now the addresses. The retired check runs AGAIN on the expanded list: an
+  // extra mailbox is checked in by hand and has never been through the
+  // roster, so it is exactly the kind of address that can be dead.
+  const bcc = expandDelivery(people);
+  assertNoRetiredAddresses(bcc, "week reminder Bcc");
+  const extra = bcc.length - people.length;
+  if (extra > 0) {
+    console.log(`${people.length} recipients, ${bcc.length} addresses (${extra} extra copies for a multi-address person)`);
   }
 
   // ---- what: the week's deadlines, judged on this clock

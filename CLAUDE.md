@@ -660,6 +660,63 @@ Three entries, one person, one message: `recipientsForPicks` buckets by the
 PERSON, so Alexa gets one request listing her three. Anthony's request lists
 the other eight `AAA` entries and not hers.
 
+### Two recipient exceptions, both permanent
+
+Set by Anthony on 2026-09-11. Both depart from a rule this file otherwise
+enforces hard, so both are checked in with their reason in
+`src/lib/emails/recipient-exceptions.ts` - the same shape as
+`RETIRED_ADDRESSES`, a fact a run must not be able to talk itself out of.
+**Neither is a duplicate or a routing bug to be tidied up later.**
+
+**Mario Tropea III gets THREE addresses, and is ONE recipient.** Owner
+`d82708ef`, entries 1037-1040. The roster holds `mariohockey97@yahoo.com` and
+that is the address verified against the 2026 kickoff and Last Call BCC lists,
+but on 2026-09-11 Anthony named `mariohockey97@gmail.com` and
+`mariospectrum3@gmail.com` and **did not recognise the yahoo one**. He is
+unsure which is live, so **every message for his entries goes to all three and
+none of them is replaced** - guessing would silently drop a player whose only
+fault is that nobody wrote his address down twice.
+
+**The count gate counts him ONCE.** That is the shape of the whole thing: a
+whole-roster send gates the PEOPLE list against `EXPECTED_ROSTER_ADDRESSES`
+**first** and expands to mailboxes **after**, so his three are one person to
+the gate and three lines on the Bcc. Counting addresses instead would make
+every extra mailbox a reviewed change to that constant, and the constant would
+stop meaning *how many people are on this roster* - which is the one number
+standing between a derived list and a wrong send. The retired-address check
+runs on the expanded list as well as the gated one, because an extra mailbox
+is typed in by hand and has never been through the roster.
+
+**A REPLY is what resolves it.** When one of the three answers, that is the
+live address and the entry collapses to it. Noted from the reply, never by
+anyone picking.
+
+**Johnvas goes to John with Ray on CC - a named exception to never-both.**
+Entries 1069-1070, `player_email = jmvas731@msn.com`, owned by Ray Vassallo at
+`ray@economydelivers.com`. The [gifted-entry rule](#gifted-entries) sends an
+entry to its player OR its owner and never both, because a buyer asked to pick
+for an entry he gave away can answer with no authority over it. Here Ray is
+deliberately shown the message anyway - **on CC, where he can read it and is
+plainly not the person being asked.** Anthony wants him to see everything about
+the entries he pays for.
+
+**CC and not Bcc on purpose:** John can see that Ray is reading it, which is
+the point of showing it to him. **Ray still gets his own message for
+`Rayvas #1`-`#2` (1067-1068) and must never receive a second email about
+1069-1070** - which is exactly what adding him as a second RECIPIENT rather
+than a copy would do.
+
+Both are applied at the **one send seam** (`scripts/lib/send.ts`) and the one
+draft seam (`scripts/chase/cli.ts`) rather than in each caller, so a future
+command inherits them. `tests/unit/recipient-exceptions.test.ts` holds the
+behaviour - the addresses a message carries and what the gate counts - not the
+shape of the constant, because a constant can be right while nothing reads it.
+
+**One trap this found:** `normalizeAddress` trims but deliberately does NOT
+lower-case (case-insensitivity lives in `sameAddress`), so a lookup keyed on
+it alone is a silent miss - a roster row holding `MarioHockey97@Yahoo.com`
+would have got one copy instead of three and nothing would have said so.
+
 ### An alias is not a giftee
 
 Set by Anthony on 2026-09-04, after the app got this wrong.
@@ -1593,4 +1650,5 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
 | The sweep's ceiling and filter      | `scripts/picks/lib/resolve.ts`, `scripts/picks/lib/subject-sweep.ts` |
 | His dictated picks by self-email    | `scripts/picks/lib/self-email.ts`, `scripts/picks/self.ts` |
+| The two recipient exceptions        | `src/lib/emails/recipient-exceptions.ts`     |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |
