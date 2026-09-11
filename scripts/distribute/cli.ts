@@ -19,7 +19,7 @@ import { createDraft, gmailClient, profileAddress } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { countGate } from "../remind/lib/recipients";
 import { confirm } from "../lib/prompt";
-import { confirmedOwners } from "../lib/roster";
+import { assertNoRetiredAddresses, confirmedOwners } from "../lib/roster";
 import { formatEt, type WeekBounds } from "../picks/lib/deadline";
 import { expandDelivery } from "@/lib/emails/recipient-exceptions";
 import { DRAFTED_ACTION, DRAFT_CLAIM_ACTION, priorDraftFor } from "./lib/drafted";
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   // ---- recipients: groupSendList decides, this only feeds it the roster
   const list = groupSendList(buildGroupSendOwners(owners, entries), { includeGiftedPlayers: true });
   const k = list.addresses.length;
-  console.log(`Recipients: ${k} addresses.`);
+  console.log(`Recipients: ${k} people.`);
   // The exact count gate every whole-roster message keeps: not a range.
   const gate = countGate(EXPECTED_ROSTER_ADDRESSES, list.addresses);
   for (const line of gate.lines) console.log(line);
@@ -124,6 +124,24 @@ async function main(): Promise<void> {
   }
   for (const d of list.duplicates) {
     console.log(`note: ${d.address} is on more than one row (also ${d.ownerName}); listed once.`);
+  }
+
+  // ---- addresses: the people list expanded, BEFORE the preview and the claim
+  // The gate above counts PEOPLE; the Bcc carries MAILBOXES
+  // (src/lib/emails/recipient-exceptions.ts). Both numbers are printed from
+  // here on, because approving "40 addresses" and creating a draft that
+  // carries 42 is the operator agreeing to something he was not shown.
+  //
+  // And it is materialised and READ here rather than inside createDraft: the
+  // claim row below is written first, so a retired extra mailbox that only
+  // encodeRaw notices would leave the claim standing with no draft made, and
+  // priorDraftFor would report the week as already drafted on every retry.
+  // Same defect this file's send-path sibling had (#85).
+  const bcc = expandDelivery(list.addresses);
+  assertNoRetiredAddresses(bcc, `distribute Bcc for week ${week}`);
+  const kAddresses = bcc.length;
+  if (kAddresses > k) {
+    console.log(`${k} people, ${kAddresses} addresses (${kAddresses - k} extra copies for a multi-address person).`);
   }
 
   // ---- standings: live entries of confirmed owners, bucketed as the dashboard does
@@ -150,14 +168,14 @@ async function main(): Promise<void> {
   const msg = distributeMessage(week, countStandings(rows));
   console.log(`\nSubject: ${msg.subject}\n`);
   console.log(msg.body);
-  console.log(`BCC: ${k} addresses.`);
+  console.log(`BCC: ${kAddresses} addresses to ${k} people.`);
   if (dryRun) {
     console.log("\nDry run. No draft created.");
     return;
   }
   if (k === 0) throw new Error("No addresses on the list; no draft created.");
   if (!yes) {
-    const ok = await confirm(`\nCreate one BCC draft to ${k} addresses? (y/N) `);
+    const ok = await confirm(`\nCreate one BCC draft to ${k} people on ${kAddresses} addresses? (y/N) `);
     if (!ok) {
       console.log("Not approved. No draft created.");
       return;
@@ -173,31 +191,26 @@ async function main(): Promise<void> {
     action: DRAFT_CLAIM_ACTION,
     targetTable: "gmail",
     targetId: `week:${week}`,
-    after: { week, recipient_count: k, subject: msg.subject },
+    after: { week, recipient_count: k, address_count: kAddresses, subject: msg.subject },
     note: `distribute draft claim for week ${week}; a drafted row follows on success`,
   });
   const { draftId } = await createDraft(gmail, {
     to: [await profileAddress(gmail)],
-    // Expanded AFTER the count gate above, which counts people. A
-    // multi-address person is one row on that gate and several lines here
-    // (src/lib/emails/recipient-exceptions.ts); passing list.addresses
-    // straight through sent the post-lock announcement to only the one
-    // uncertain roster mailbox.
-    bcc: expandDelivery(list.addresses),
+    bcc,
     subject: msg.subject,
     body: msg.body,
     html: msg.html,
   });
-  console.log(`draft ${draftId} created, BCC ${k} addresses. Not sent: open Gmail, check it, send it yourself.`);
+  console.log(`draft ${draftId} created, BCC ${kAddresses} addresses to ${k} people. Not sent: open Gmail, check it, send it yourself.`);
   await recordAudit(client, {
     actor,
     action: DRAFTED_ACTION,
     targetTable: "gmail",
     targetId: draftId,
-    after: { week, draft_id: draftId, recipient_count: k, subject: msg.subject },
-    note: `distribute draft for week ${week} to ${k} addresses on Bcc`,
+    after: { week, draft_id: draftId, recipient_count: k, address_count: kAddresses, subject: msg.subject },
+    note: `distribute draft for week ${week} to ${k} people on ${kAddresses} addresses on Bcc`,
   });
-  await notify(finishedLine("distribute", `week ${week}: draft ${draftId}, ${k} addresses`));
+  await notify(finishedLine("distribute", `week ${week}: draft ${draftId}, ${k} people on ${kAddresses} addresses`));
 }
 
 main().catch((e: unknown) => {

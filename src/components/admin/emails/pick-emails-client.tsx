@@ -144,12 +144,13 @@ export function PickEmailsClient({
     [built],
   );
 
-  // To-addresses only. A CC belongs beside the one owner it is for; pasting
-  // it into a combined address line would put a second person's address in the
-  // To line of a mass mail, which is the opposite of what the CC is for.
-  // Mailboxes, not people: this is pasted into an address field, so a
-  // multi-address person contributes all of theirs. Deduplicated because a
-  // person can appear on more than one message's delivery set.
+  // To-addresses only, and MAILBOXES rather than people. A CC belongs beside
+  // the one owner it is for; pasting it into a combined address line would put
+  // a second person's address in the To line of a mass mail, which is the
+  // opposite of what the CC is for. A multi-address person, though,
+  // contributes all of theirs - this is pasted into an address field, so it
+  // has to carry what a send would. Deduplicated because a person can appear
+  // on more than one message's delivery set.
   const addresses = useMemo(
     () => [...new Set(built.flatMap((b) => b.toAddresses))].join(", "),
     [built],
@@ -301,8 +302,15 @@ export function PickEmailsClient({
         {current ? (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5">
+              {/* The DELIVERY addresses, not the identity: this strip is what
+                  Anthony reads before pasting into Gmail. A multi-address
+                  person shows all of theirs, and the one named Cc exception
+                  shows on its own line - Ray was invisible here while the
+                  batch clipboard carried him, so a message composed from the
+                  per-message controls silently dropped him (Codex on #85). */}
               <code className="text-xs text-muted-foreground">
-                {current.to}
+                {current.toAddresses.join(", ")}
+                {current.cc.length > 0 ? ` · Cc ${current.cc.join(", ")}` : ""}
               </code>
               <span className="text-border">·</span>
               <Button
@@ -334,6 +342,17 @@ export function PickEmailsClient({
               >
                 To address
               </Button>
+              {current.cc.length > 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () =>
+                    note(`${current.key}-c`, await copyPlain(current.cc.join(", ")))
+                  }
+                >
+                  Cc address
+                </Button>
+              ) : null}
               <Button
                 size="sm"
                 variant="outline"
@@ -350,7 +369,7 @@ export function PickEmailsClient({
                   prefix of a@x.com.au, so copying for one recipient flashed
                   "Copied" on the other. */}
               {flash &&
-              ["e", "t", "a", "s"].some(
+              ["e", "t", "a", "c", "s"].some(
                 (k) => flash.id === `${current.key}-${k}`,
               ) ? (
                 <span

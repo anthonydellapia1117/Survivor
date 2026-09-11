@@ -170,7 +170,37 @@ describe("the seam, not the constant", () => {
     // the per-recipient seam, so without this a multi-address person gets
     // only the one uncertain roster mailbox on those messages.
     expect(read("scripts/chase/cli.ts")).toContain("const bcc = expandDelivery(people);");
-    expect(read("scripts/distribute/cli.ts")).toContain("bcc: expandDelivery(list.addresses),");
+    expect(read("scripts/distribute/cli.ts")).toContain("const bcc = expandDelivery(list.addresses);");
+  });
+
+  it("shows and copies the Cc on the PER-MESSAGE controls, not only the batch clipboard", () => {
+    // headerLines feeds the whole-batch copy. The per-message toolbar is a
+    // second path to the same message, and it carried the expanded To while
+    // never showing the Cc - so a message composed from it dropped Ray and
+    // said nothing (Codex on #85).
+    const client = read("src/components/admin/emails/pick-emails-client.tsx");
+    expect(client).toContain("{current.toAddresses.join(\", \")}");
+    expect(client).toContain("` · Cc ${current.cc.join(\", \")}`");
+    expect(client).toContain("copyPlain(current.cc.join(\", \"))");
+  });
+
+  it("materialises and READS distribute's expanded Bcc before its claim row", () => {
+    // Same defect as the send path's, one file over: the claim is written
+    // first, so a retired extra mailbox that only encodeRaw notices leaves
+    // the week claimed with no draft made, and every retry reports it as
+    // already drafted.
+    const d = read("scripts/distribute/cli.ts");
+    const expand = d.indexOf("const bcc = expandDelivery(list.addresses);");
+    const check = d.indexOf("assertNoRetiredAddresses(bcc,");
+    const claim = d.indexOf("action: DRAFT_CLAIM_ACTION");
+    expect(expand).toBeGreaterThan(-1);
+    expect(check).toBeGreaterThan(-1);
+    expect(expand).toBeLessThan(claim);
+    expect(check).toBeLessThan(claim);
+    // And both counts are what the operator approves and what is recorded:
+    // agreeing to 40 and creating a draft carrying 42 is not approval.
+    expect(d).toContain("${k} people on ${kAddresses} addresses? (y/N)");
+    expect(d).toContain("address_count: kAddresses");
   });
 
   it("puts the exceptions on the pick-email screen's headers too", () => {
