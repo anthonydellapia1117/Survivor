@@ -392,6 +392,14 @@ One consequence of drawing her cells the Grid's way, deliberate: **a week cell
 shows the mapped team code, not her word** - her word is still what is STORED
 and still what the view's reveal gate matches on.
 
+**`SKIP_WEEK` is a value, not a word, and never reaches a screen.** A bye
+reads "Bye" or "BYE". It leaked into the variance tooltip because the guard
+was written inline on the OURS half of the sentence and not on the HERS half -
+two copies of one rule and only one of them right - so there is now one
+`teamLabel()` in `grid-view.tsx` and both halves call it. A title attribute is
+not visible text, which is why nothing else caught it; the guard exercises
+both halves, one fixture row each.
+
 **A cell of hers that is NOT a team name** - an OUT, a note, one of her typos -
 **is shown as her words, verbatim, with no result colour**, because there is no
 team to have a result. **Verbatim means the CSS too**: never `uppercase`, which
@@ -417,6 +425,19 @@ her sheet.**
   distribution and the Teams table read her sheet's week cells for every
   entry when she has published them, with "Our group" as the other setting;
   until she publishes a week, our group stands in and says so.
+- **The whole pool is called "Everyone", on every surface.** One scope, one
+  word: the toggle on `/grid`, the toggle on `/teams` and the dashboard's
+  distribution caption all use it. **The removed page's name is in no live
+  copy at all** - the Teams toggle read "Master List" and the dashboard
+  linked to `/master-list` under that name until 2026-09-11, so the same
+  choice read as two different things on two public routes and the link took
+  a redirect hop to get where the tab already was. Comments keep that
+  history; copy does not. `tests/unit/master-list-wiring.test.ts` pins the
+  two toggles to one string and scans every file under `src/` with the
+  comments taken out, because **`<Link>Master List</Link>` is a name a reader
+  clicks and no quoted string anywhere** - a literals-only scan is blind to
+  it. The module paths (`@/lib/master-list`, `v_master_list`) are internal
+  identifiers and are deliberately unchanged.
 - **Her four figures are public as she publishes them:** Total in Pool,
   Admin entries, Total paid and Total Payout (his 2026-09-09 labels for her
   sheet's Free, Total and Total Pay Out; the values are hers verbatim), entered on `/admin` and stored as
@@ -1204,7 +1225,7 @@ in any of them.**
 | `npm run lynne:picks -- --message-id m` | Shape B: her plain-text pick email into her own week cells, matched on her NO., idempotent on the message, variances reported          |
 | `npm run chase -- --week N [--bcc]`      | One draft per recipient with no pick (or one BCC draft) naming their entries and the earliest deadline still open               |
 | `npm run results -- --week N`            | Her newest Football xlsx from Gmail through `admin_apply_lynne_import`; refuses a sha256 seen before; prints the variance table |
-| `npm run distribute -- --week N`         | After the Friday lock, one BCC draft to every owner and player address with the /grid link and the standings sentence           |
+| `npm run distribute -- --week N`         | After the Friday lock, one BCC draft to every owner and player address with the one link and the standings sentence             |
 | `npm run remind [-- --send --yes]`      | The week reminder due now (six hours before a week's early or late deadline) to every live address, exact count gate, drafted or sent |
 | `npm run ops -- <job>` / `-- hourly` / `-- daily` | Operations from the repo: sweep, pick-reminder, lynne-import, chase, results, distribute, each from `scripts/ops/config.json`; `hourly` runs whatever fell due in the last hour (`tick` is its old name and still works); `daily` runs the six reporters |
 | `npm run scores [-- --week N \| --all]`   | Finals from the free ESPN scoreboard onto `nfl_games`, matched on week and both teams; read-only against ESPN, write-only to `nfl_games` |

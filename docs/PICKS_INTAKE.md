@@ -6,7 +6,8 @@ a proposed table and writes only after you type y. `npm run lynne` prints the
 entries that locked at a deadline in Lynne's numbering and leaves it as a
 Gmail draft. `npm run chase` drafts one reminder per recipient with no pick.
 `npm run results` brings her newest Football sheet in through the importer.
-`npm run distribute` drafts the post-lock BCC with the /grid link. Every one
+`npm run distribute` drafts the post-lock BCC with the one link - the anchor
+AD-26-Survivor on the site root, never a path (CLAUDE.md, 2026-09-11). Every one
 of them drafts; the single send path is the pick_reminder gate in section 4c.
 Money and identity decisions still go by DECISION self-email; none of this
 touches them.
@@ -212,7 +213,7 @@ plan is computed; and the variance table is printed with both values on
 every line. Nothing is resolved. After `y` it commits through
 `admin_apply_lynne_import`, the results-only importer, and prints the import
 id. You should see the variance table and `import <id>`; review it on
-/admin/import and /master-list.
+/admin/import and /grid.
 
 5a. What is applied. Her grid carries teams and OUT status, not per-week
 results, so on that format the importer records the file, the rows and the
@@ -307,7 +308,7 @@ was her NO. 1005, `E.A.T.` on Seattle, which matched.
 second ops run in the same window, and for SQL applied by hand.
 
 5h. **The reveal rule is the site's, not this command's.** A cell is stored the
-moment she states it; `/master-list` serves it only once that team's game has
+moment she states it; the public view serves it only once that team's game has
 kicked off. On 2026-09-10 the seven Seattle cells were public and the LA Rams
 cell was still masked, because that game had not started.
 
@@ -320,7 +321,7 @@ npm run distribute -- --week 1
 Refuses before the week's Friday 2:00 PM lock. After it, one draft, To
 yourself, BCC every owner address and every player address on a live entry
 (the same list as the All filter on /admin/emails), saying the picks are
-locked and post on the grid as each game kicks off, with the /grid link and
+locked and post on the grid as each game kicks off, with the one link and
 the one-sentence standings line the dashboard shows, read from the same
 view the dashboard reads. Nothing about money.
 You should see `draft <id> created, BCC <k> addresses. Not sent`.

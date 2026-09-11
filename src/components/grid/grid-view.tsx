@@ -138,6 +138,16 @@ function RowName({
 // is what still says "no pick was made" rather than a colour of its own.
 const MISSED_EXTRA = "cell-hatched";
 
+/**
+ * A team code as a reader should see it. SKIP_WEEK is an internal sentinel and
+ * must never reach a screen - it did, in the variance tooltip, because the
+ * guard was written inline on one side of the sentence and not the other. One
+ * function, so the next caller cannot miss a side.
+ */
+function teamLabel(team: string): string {
+  return team === SKIP_WEEK ? "Bye" : team;
+}
+
 /** One row as the table needs it: identity, standing, and a cell per week. */
 interface Row {
   entry: EntrySummary;
@@ -650,14 +660,14 @@ export function GridView({
                             className="flex h-full min-h-10 w-full max-w-[7rem] flex-col items-center justify-center overflow-hidden whitespace-pre rounded-sm border border-border/60 bg-surface-2/60 px-1 text-[10px] font-semibold tracking-wide text-muted-foreground"
                             title={
                               ourTeam !== undefined
-                                ? `Published: ${herWords}. Our record: ${ourTeam === SKIP_WEEK ? "Bye" : ourTeam}. Reported, not changed.`
+                                ? `Published: ${herWords}. Our record: ${teamLabel(ourTeam)}. Reported, not changed.`
                                 : `Published: ${herWords}`
                             }
                           >
                             {herWords}
                             {ourTeam !== undefined ? (
                               <span className="text-[9px] font-normal normal-case opacity-80">
-                                ours {ourTeam === SKIP_WEEK ? "Bye" : ourTeam}
+                                ours {teamLabel(ourTeam)}
                               </span>
                             ) : null}
                           </span>
@@ -735,9 +745,9 @@ export function GridView({
                           {m.kind === "variance" ? (
                             <span
                               className="mt-0.5 rounded-sm bg-foreground/85 px-1 text-[10px] font-semibold leading-tight text-background no-underline"
-                              title={`Published: ${m.hers}. Our record: ${m.ours === SKIP_WEEK ? "Bye" : m.ours}. Reported, not changed.`}
+                              title={`Published: ${teamLabel(m.hers)}. Our record: ${teamLabel(m.ours)}. Reported, not changed.`}
                             >
-                              ours {m.ours === SKIP_WEEK ? "Bye" : m.ours}
+                              ours {teamLabel(m.ours)}
                             </span>
                           ) : null}
                           {c.late ? <span className="sr-only">late</span> : null}

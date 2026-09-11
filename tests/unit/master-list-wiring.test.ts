@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { codeWithoutComments, literals } from "../helpers/source-literals";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf8");
@@ -52,6 +53,32 @@ describe("Master List wiring", () => {
 
   it("the Teams page opens on the pool only once she has published a week, through the shared default", () => {
     expect(read("src/components/teams/teams-source.tsx")).toMatch(/useState<Source>\(defaultTeamsSource\(poolLoaded, poolHasPicks\)\)/);
+  });
+
+  it("calls the whole pool one thing on every surface, and never by the page that was removed", () => {
+    // ONE SCOPE, ONE WORD. The Grid's toggle says Everyone. The Teams page's
+    // said "Master List" until 2026-09-11 - the name of a page that no longer
+    // exists - so the same choice read as two different things on two public
+    // surfaces, and the dashboard linked to that page by that name as well.
+    const grid = /key: "everyone", label: "([^"]+)"/.exec(read("src/components/grid/grid-view.tsx"))?.[1];
+    const teams = /key: "pool", label: "([^"]+)"/.exec(read("src/components/teams/teams-source.tsx"))?.[1];
+    expect({ grid, teams }, "both toggles, one word").toEqual({ grid: "Everyone", teams: "Everyone" });
+
+    // And the removed page's name reaches no live copy at all. NOT literals:
+    // `<Link ...>Master List</Link>` is a name a reader clicks and no quoted
+    // string anywhere, which is exactly the shape the dashboard carried.
+    // Comments keep the history and are not copy.
+    for (const f of walk(path.join(ROOT, "src"))) {
+      const src = fs.readFileSync(f, "utf8");
+      const rel = path.relative(ROOT, f);
+      expect(codeWithoutComments(src), `${rel} names a page that is gone`).not.toContain("Master List");
+      // The ROUTE, not the module path: `@/lib/master-list` and
+      // `@/components/master-list/` are internal identifiers and are
+      // deliberately unchanged (src/lib/site-copy.ts). A route is a whole
+      // literal of its own, so the match is on the whole line.
+      const hrefs = literals(src).split("\n").filter((l) => /^\/master-list(?:[/?#]|$)/.test(l));
+      expect({ rel, hrefs }, "nothing links to the page that is gone").toEqual({ rel, hrefs: [] });
+    }
   });
 
   it("every old address for the list reaches the one table, and the old name is still gone", () => {

@@ -12,9 +12,22 @@
 //
 // One implementation, used by every copy guard. Two copies of a scanner drift,
 // and the day they disagree one of them is passing on nothing.
+//
+// JSX TEXT IS NOT A LITERAL. `<Link ...>Master List</Link>` is a name a reader
+// sees and no quoted string anywhere, so a literals-only scan is blind to it.
+// codeWithoutComments() is the other half: everything but the comments, which
+// is where a rule's own history is written down.
 
-export function literals(src: string): string {
+interface Scanned {
+  /** Every quoted string, one per line. */
+  literals: string;
+  /** The source with the comments taken out and everything else left. */
+  code: string;
+}
+
+function scan(src: string): Scanned {
   const out: string[] = [];
+  const kept: string[] = [];
   let i = 0;
   while (i < src.length) {
     if (src.startsWith("//", i)) {
@@ -42,9 +55,26 @@ export function literals(src: string): string {
       }
       i += 1;
       out.push(text);
+      kept.push(quote + text + quote);
       continue;
     }
+    kept.push(src[i]);
     i += 1;
   }
-  return out.join("\n");
+  return { literals: out.join("\n"), code: kept.join("") };
+}
+
+/** The string literals of a source, and nothing else. */
+export function literals(src: string): string {
+  return scan(src).literals;
+}
+
+/**
+ * The source with every comment removed. What is left is what ships: quoted
+ * strings, JSX text, attribute values, identifiers. Use it where the mistake
+ * can be written without quotes and the explanation of the rule cannot be
+ * allowed to trip it.
+ */
+export function codeWithoutComments(src: string): string {
+  return scan(src).code;
 }

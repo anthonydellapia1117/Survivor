@@ -348,7 +348,7 @@ export default async function DashboardPage() {
             <CardTitle className="text-base">
               Week {dist?.week ?? "-"} pick distribution
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {poolDist ? "Master List" : "our group"}
+                {poolDist ? "Everyone" : "our group"}
               </span>
             </CardTitle>
           </CardHeader>
@@ -364,8 +364,8 @@ export default async function DashboardPage() {
                     ? `; ${poolDist.other} cells are not a team (OUT or a note)`
                     : ""}
                   .{" "}
-                  <Link href="/master-list" className="text-primary underline-offset-2 hover:underline">
-                    Master List
+                  <Link href="/grid" className="text-primary underline-offset-2 hover:underline">
+                    The Grid
                   </Link>
                 </p>
               </>

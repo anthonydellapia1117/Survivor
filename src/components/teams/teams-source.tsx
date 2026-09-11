@@ -1,8 +1,8 @@
 "use client";
 
-// Which pool the Teams page reads: the Master List (every entry in the
+// Which pool the Teams page reads: everyone (every entry in the
 // master pool, from the published sheet) or our group (our recorded picks).
-// The Master List is the default once she has published a week's picks,
+// The whole pool is the default once she has published a week's picks,
 // because that is what the group wants to see; until then our group stands
 // in and says so. The choice is view state only.
 
@@ -32,7 +32,11 @@ export function TeamsSource({ ours, pool, poolLoaded, poolHasPicks, weekCount, g
   const [source, setSource] = useState<Source>(defaultTeamsSource(poolLoaded, poolHasPicks));
   const active = source === "pool" ? pool : ours;
   const options: { key: Source; label: string; n: number; disabled?: boolean }[] = [
-    { key: "pool", label: "Master List", n: pool.entries.length, disabled: !poolLoaded },
+    // "Everyone", the same word the one table at /grid uses for the same
+    // choice. It read "Master List" until 2026-09-11, which named a page that
+    // no longer exists and offered one scope under two names on two public
+    // surfaces.
+    { key: "pool", label: "Everyone", n: pool.entries.length, disabled: !poolLoaded },
     { key: "ours", label: "Our group", n: ours.entries.length },
   ];
 
@@ -41,7 +45,7 @@ export function TeamsSource({ ours, pool, poolLoaded, poolHasPicks, weekCount, g
       <div className="flex flex-wrap items-center gap-3">
         <div
           role="radiogroup"
-          aria-label="Master List or our group"
+          aria-label="Everyone or our group"
           className="inline-flex rounded-lg border border-border bg-surface p-0.5"
         >
           {options.map((o) => (

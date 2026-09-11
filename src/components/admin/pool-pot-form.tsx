@@ -1,6 +1,6 @@
 "use client";
 
-// The pool-wide figures behind the public pot card and the Master List
+// The pool-wide figures behind the public pot card and the one table
 // strip: Lynne's whole pool, not this group. All four are typed in from
 // what she sends and stored exactly as entered: Total in Pool, Free, Total
 // (paying) and the pot. Nothing is derived. The three counts have to agree
@@ -174,7 +174,7 @@ export function PoolPotForm({
       </p>
 
       {error ? <p className="text-sm text-loss">{error}</p> : null}
-      {saved && !error ? <p className="text-sm text-win">Saved - the public card and the Master List are updated.</p> : null}
+      {saved && !error ? <p className="text-sm text-win">Saved - the public card and the Grid are updated.</p> : null}
 
       <div className="flex gap-2">
         <Button size="sm" onClick={() => save(false)} disabled={pending}>

@@ -413,10 +413,10 @@ export function bucketOfEntry(e: Pick<EntrySummary, "status" | "losses" | "byeUs
 export type TeamsSourceKind = "pool" | "ours";
 
 /**
- * Which pool the Teams page opens on. The Master List once her sheet is
+ * Which pool the Teams page opens on. Everyone - her whole sheet - once it is
  * loaded and carries a week pick; until she publishes a week, our group
- * stands in (CLAUDE.md, Public surfaces). The Master List stays selectable
- * whenever a sheet is loaded.
+ * stands in (CLAUDE.md, Public surfaces). Everyone stays selectable whenever
+ * a sheet is loaded.
  */
 export function defaultTeamsSource(poolLoaded: boolean, poolHasPicks: boolean): TeamsSourceKind {
   return poolLoaded && poolHasPicks ? "pool" : "ours";
