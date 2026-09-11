@@ -366,7 +366,14 @@ defaults to it.
 **The Grid and the Master List rendered the same rows with different chrome,
 so they are one table now.** It keeps the best half of each: her NO. and her
 NAMES as the first two columns, and the week cells drawn the way the Grid drew
-them - a team chip with its result colour. **Every header sorts on click** -
+them - a team chip with its result colour. **Her NAMES are shown whitespace-verbatim** - `whitespace-pre`, never
+`truncate`, which carries `whitespace-nowrap` and collapses her runs of
+spaces. Her sheet has `Amy  3` with two and `Adriana Flacco ` with a trailing
+one, and Lynne matches the string exactly. A test that asserts the markup
+CONTAINS the name passes whatever the CSS does; the class is what makes it
+true, so the class is what is asserted.
+
+**Every header sorts on click** -
 NO., Name, and each week - and NO. ascending is what the page opens on. **A
 week's sort key is what the CELL SHOWS**, from either source, her published
 cell winning where both exist: built from her cells alone, a cell reading
@@ -378,11 +385,19 @@ week columns are sized to their content so eighteen of them stay readable;
 tight. The Comfortable toggle is gone: it underlined a cell and did nothing on
 a phone.
 
-Two consequences of drawing her cells the Grid's way, both deliberate:
-**a week cell shows the mapped team code, not her word** - her word is still
-what is STORED and still what the view's reveal gate matches on - and **a cell
-of hers that is not a team name** (OUT, a note) **has no chip**; her OUT still
-eliminates the row, which reads as the red struck row and its OUT badge.
+One consequence of drawing her cells the Grid's way, deliberate: **a week cell
+shows the mapped team code, not her word** - her word is still what is STORED
+and still what the view's reveal gate matches on.
+
+**A cell of hers that is NOT a team name** - an OUT, a note, one of her typos -
+**is shown as her words, verbatim, with no result colour**, because there is no
+team to have a result. It is carried by `herTextCells`, not by a GridCell:
+arbitrary text in a team field would be parsed, coloured and scored as a team.
+Dropping it, as the merge first did, lost two things - **her OUT is how a
+reader sees WHICH WEEK she declared a row out**, which the row badge cannot
+say, and where we also hold a pick the cell fell through to the ours-only chip
+and read "not on the published sheet yet", **asserting something false about
+her sheet.**
 
 - **`/grid`** shows her newest sheet from `lynne_roster` through the public
   view `v_master_list`: every NO. and NAMES verbatim, her week cells as she

@@ -37,6 +37,12 @@ vi.mock("../../src/lib/data", () => ({
         // her team with NO fill at all - the case that catches a colour
         // painted from her text instead of from a stored result.
         { no: 1200, names: "Unscored Row", cells: { "Week 2": "Buffalo" }, entryId: null },
+        // Her words where the cell is not a team. 1300 is hers alone; 1301 is
+        // one of OURS and we hold a Week 2 pick for it, which is the case
+        // that used to read "she has published nothing" while she had in fact
+        // published OUT. Her double space is hers and is kept verbatim.
+        { no: 1300, names: "Amy  3", cells: { "Week 1": "OUT" }, entryId: null },
+        { no: 1301, names: "Ours With Her Note", cells: { "Week 2": "OUT" }, entryId: "e-1301" },
       ],
     }),
     getPot: async () => ({
@@ -50,6 +56,7 @@ vi.mock("../../src/lib/data", () => ({
       { entryId: "e-983", week: 1, team: "PHI", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
       { entryId: "e-1005", week: 1, team: "LOCKED", result: null, late: true, submittedAt: "2026-09-08T00:00:00Z", source: "email", resultSource: null },
       { entryId: "e-1089", week: 2, team: "BUF", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
+      { entryId: "e-1301", week: 2, team: "NYJ", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
       { entryId: "someone-else", week: 7, team: "KC", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
     ],
     // Week 1 is final and Dallas lost it; Week 2 has not been played. Both
@@ -65,6 +72,7 @@ vi.mock("../../src/lib/data", () => ({
       { id: "e-983", entryName: "Adriana Flacco #1", nameIsDefault: false, ownerId: "o1", ownerName: "Adriana Flacco", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: false, teamsUsed: ["PHI"], lastScoredWeek: null, isAdminEntry: false },
       { id: "e-1005", entryName: "E.A.T.", nameIsDefault: false, ownerId: "o2", ownerName: "Ed", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: false, teamsUsed: [], lastScoredWeek: null, isAdminEntry: false },
       { id: "e-1089", entryName: "Andrew DiCicco #1", nameIsDefault: false, ownerId: "o3", ownerName: "Andrew DiCicco", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: false, teamsUsed: ["BUF"], lastScoredWeek: null, isAdminEntry: false },
+      { id: "e-1301", entryName: "Ours With Her Note", nameIsDefault: false, ownerId: "o4", ownerName: "Owner Four", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: false, teamsUsed: ["NYJ"], lastScoredWeek: null, isAdminEntry: false },
     ],
     getWeeks: async () => [1, 2].map((week) => ({
       week,
@@ -136,7 +144,7 @@ describe("the one table, signed out", () => {
     // either (CLAUDE.md - report the variance, never auto-resolve).
     const html = await render();
     expect(html).toContain("1,318");
-    expect(html).toMatch(/this sheet carries 5 rows/);
+    expect(html).toMatch(/this sheet carries 7 rows/);
     expect(html).not.toContain("matches the rows on this sheet");
   });
 
@@ -148,7 +156,7 @@ describe("the one table, signed out", () => {
       expect(html).not.toContain("matches the rows on this sheet");
       expect(html).not.toContain("this sheet carries");
       // Published and equal to the 4 mocked rows: now it is a match.
-      potState.poolEntryCount = 5;
+      potState.poolEntryCount = 7;
       html = await render();
       expect(html).toContain("matches the rows on this sheet");
     } finally {
@@ -198,10 +206,12 @@ describe("the one table, signed out", () => {
     // One loss puts yellow on the entry name; nothing here is out, so no row
     // is red or struck.
     expect(html).toContain("text-tie");
-    // No ROW is struck: the only line-through on the page is the legend's own
-    // swatch label, which is not a row.
-    expect((html.match(/line-through/g) ?? []).length, "legend only").toBe(1);
-    expect(html).not.toContain("bg-loss/10");
+    // Struck rows are exactly the two she wrote OUT on - her word is
+    // authoritative and eliminates the row whatever we compute. Nothing else
+    // in this fixture is out, and the legend's own swatch label is not a row.
+    const struck = (rowsOf(html).match(/line-through/g) ?? []).length;
+    expect(struck, "1300 and 1301, row class and name class each").toBe(4);
+    expect((rowsOf(html).match(/bg-loss\/10/g) ?? []).length, "the two OUT rows").toBe(2);
   });
 
   it("lists every row verbatim in her numbering, marks ours, reports a variance and never reveals a masked pick", async () => {
@@ -211,14 +221,14 @@ describe("the one table, signed out", () => {
     expect(html).toContain("Lynne P");
     expect(html).toContain("Adriana Flacco ");
     expect(html).toContain("Andrew Dicicco #1");
-    for (const no of ["1", "983", "1005", "1089", "1200"]) {
+    for (const no of ["1", "983", "1005", "1089", "1200", "1300", "1301"]) {
       expect(html, `NO. ${no}`).toMatch(new RegExp(`tabular-nums[^>]*">${no}<`));
     }
     // NO. ASCENDING is what the page opens on: 1, 983, 1005, 1089 in that
     // order down the markup.
-    const order = ["Lynne P", "Adriana Flacco ", "E.A.T.", "Andrew Dicicco #1", "Unscored Row"].map((n) => html.indexOf(n));
+    const order = ["Lynne P", "Adriana Flacco ", "E.A.T.", "Andrew Dicicco #1", "Unscored Row", "Amy  3", "Ours With Her Note"].map((n) => html.indexOf(n));
     expect(order, "rows in her numbering").toEqual([...order].sort((a, b) => a - b));
-    expect(html).toContain("5 of 5 entries");
+    expect(html).toContain("7 of 7 entries");
     // Her Dallas against our PHI on 983: a variance. Hers stays in the cell -
     // as the team code, because the week columns are drawn the way the Grid
     // draws them - and ours is reported beside it. NEITHER is changed
@@ -251,6 +261,41 @@ describe("the one table, signed out", () => {
     expect(html).toContain("Lynne P");
     expect(html).toMatch(/aria-sort="ascending"[^>]*>[\s\S]{0,200}?NO\./);
     expect((html.match(/aria-sort="none"/g) ?? []).length, "Name and both weeks unsorted").toBe(3);
+  });
+
+  it("shows her words where a cell is not a team, and never calls that an empty week", async () => {
+    // Her OUT is authoritative and it is how a reader sees WHICH WEEK she
+    // declared a row out - the row badge alone cannot say. And where we also
+    // hold a pick, her words must sit beside ours: the ours-only chip says
+    // "not on the published sheet yet", which would be false.
+    const html = await render();
+    const rows = rowsOf(html);
+    expect((rows.match(/>OUT</g) ?? []).length, "hers on 1300 and 1301, plus each row badge").toBeGreaterThanOrEqual(2);
+    // 1301 is ours, she published OUT for Week 2, and we hold NYJ. Both are
+    // shown, in one cell, and it is NOT the dashed ours-only chip.
+    expect(rows).toMatch(/OUT<[\s\S]{0,120}?ours NYJ/);
+    expect(rows, "her published note must not be drawn as an unpublished week")
+      .not.toMatch(/border-dashed[^>]*>NYJ</);
+    // Her words carry no result colour: there is no team to have a result.
+    expect(rows).not.toMatch(/bg-(?:tie|win)\/\d+[^>]*>[\s\S]{0,40}?OUT</);
+  });
+
+  it("shows her NAMES whitespace-verbatim, in the CSS and not just in the string", async () => {
+    // THE FIRST VERSION OF THIS WAS FAKE. It asserted the markup CONTAINED
+    // "Adriana Flacco " - and the trailing space is in React's output whatever
+    // the CSS does. HTML collapses runs of whitespace by default, so the page
+    // rendered `Amy  3` as `Amy 3` while the test stayed green. Her sheet
+    // carries both, Lynne matches strings exactly, and names are verbatim
+    // (CLAUDE.md). The class is what makes it true, so the class is asserted.
+    const html = await render();
+    expect(html).toContain("Amy  3");
+    expect(html).toContain("Adriana Flacco ");
+    const nameSpans = html.match(/<span class="[^"]*font-medium[^"]*">(?:Amy  3|Adriana Flacco )</g) ?? [];
+    expect(nameSpans.length, "both of her spaced names render through a name span").toBe(2);
+    for (const span of nameSpans) {
+      expect(span, "whitespace-pre keeps her spacing; truncate would collapse it").toContain("whitespace-pre");
+      expect(span, "truncate carries whitespace-nowrap and would collapse her runs of spaces").not.toContain("truncate");
+    }
   });
 
   it("sorts a week by what its cell SHOWS, overlay included", async () => {

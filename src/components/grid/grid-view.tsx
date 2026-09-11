@@ -82,6 +82,8 @@ interface Props {
   poolCells: GridCell[];
   /** Her NO. and NAMES by row id, from poolRowIdentity(). */
   identity: Map<string, PoolIdentity>;
+  /** Her week cells that are not a team - OUT, a note - by row id and week. */
+  herText: Map<string, Map<number, string>>;
   /** One line naming the sheet and any gap against her published total. */
   poolNote: string | null;
   /** Weeks every game of which has kicked off; a tally on any other week is a revealed subset and says so. */
@@ -146,6 +148,8 @@ interface Row {
   cellByWeek: Map<number, GridCell>;
   /** Our pick for the same week, only in Everyone scope and only for our rows. */
   oursByWeek: Map<number, string>;
+  /** Her words where the cell is not a team: OUT, a note. */
+  textByWeek: Map<number, string>;
 }
 
 export function GridView({
@@ -155,6 +159,7 @@ export function GridView({
   poolEntries,
   poolCells,
   identity,
+  herText,
   poolNote,
   revealedWeeks,
 }: Props) {
@@ -252,9 +257,10 @@ export function GridView({
           teamByWeek,
           cellByWeek,
           oursByWeek,
+          textByWeek: ours ? new Map() : (herText.get(e.id) ?? new Map()),
         };
       }),
-    [activeEntries, cellsByEntry, identity, ours, oursByEntry],
+    [activeEntries, cellsByEntry, identity, ours, oursByEntry, herText],
   );
 
   const q = query.trim().toLowerCase();
@@ -589,7 +595,20 @@ export function GridView({
                         404. Rows that ARE ours carry their real id and link. */}
                     <RowName entry={e}>
                       <StatusDot status={e.status} className="shrink-0" />
-                      <span className={cn("truncate font-medium", ROW_NAME_CLASS[row])}>{r.name}</span>
+                      {/* whitespace-pre, not truncate: `truncate` carries
+                          whitespace-nowrap, which COLLAPSES her runs of
+                          spaces - and her sheet has `Amy  3` with two and
+                          `Adriana Flacco ` with a trailing one. Names are
+                          stored verbatim and are shown verbatim (CLAUDE.md);
+                          the overflow and the ellipsis are kept. */}
+                      <span
+                        className={cn(
+                          "overflow-hidden text-ellipsis whitespace-pre font-medium",
+                          ROW_NAME_CLASS[row],
+                        )}
+                      >
+                        {r.name}
+                      </span>
                       {!ours && isOurs ? (
                         <span className="shrink-0 rounded-sm bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                           ours
@@ -605,7 +624,38 @@ export function GridView({
                   {visibleWeeks.map((w) => {
                     const cell = r.cellByWeek.get(w.week);
                     const ourTeam = r.oursByWeek.get(w.week);
+                    const herWords = r.textByWeek.get(w.week);
                     const m = matchTeams(cell?.team, ourTeam);
+
+                    // HER WORDS, where the cell is not a team: an OUT, a note,
+                    // one of her typos. Kept verbatim and never guessed at
+                    // (CLAUDE.md), with no result colour because there is no
+                    // team to have a result. Her OUT is authoritative and this
+                    // is how a reader sees WHICH WEEK she declared a row out.
+                    // Where we also hold a pick it sits beside her words - and
+                    // it must NOT read as "she has published nothing", which
+                    // is what the ours-only chip below says.
+                    if (!cell && herWords !== undefined) {
+                      return (
+                        <td key={w.week} className="h-11 w-px border-b border-border/60 p-0.5 px-1.5 text-center">
+                          <span
+                            className="flex h-full min-h-10 w-full flex-col items-center justify-center whitespace-nowrap rounded-sm border border-border/60 bg-surface-2/60 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                            title={
+                              ourTeam !== undefined
+                                ? `Published: ${herWords}. Our record: ${ourTeam === SKIP_WEEK ? "Bye" : ourTeam}. Reported, not changed.`
+                                : `Published: ${herWords}`
+                            }
+                          >
+                            {herWords}
+                            {ourTeam !== undefined ? (
+                              <span className="text-[9px] font-normal normal-case opacity-80">
+                                ours {ourTeam === SKIP_WEEK ? "Bye" : ourTeam}
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                      );
+                    }
 
                     // Nothing from either source: her blank week, or ours.
                     if (!cell && m.kind !== "ours") {
