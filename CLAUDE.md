@@ -1582,6 +1582,32 @@ in any of them.**
   outside it, and every slot observed in BOTH offsets - because a string
   assertion passes on the right shape with the wrong hours.
 
+- **The week selector on /admin/picks rolls on KICKOFF, not on the deadline.**
+  Set by Anthony on 2026-09-11. It used to offer the first week whose deadline
+  was still ahead, so it moved on at 2:00 PM and he had to fight it back to the
+  right week every time a straggler came in - and they arrive all Friday
+  evening and Saturday. The default now holds the current week until that
+  week's **first main-slate game has kicked off**.
+
+  **Which kickoff is the whole subtlety, and the obvious reading is wrong.**
+  "The week's earliest kickoff" would be **Week 1's Wednesday night game**
+  (NE at SEA, 2026-09-09 8:20 PM ET), which kicks off *before* that week's own
+  Friday deadline - so it would roll off Week 1 on Wednesday evening, a worse
+  version of the bug it replaces. The roll point is the first kickoff of the
+  games sharing the week's **late deadline** (the Sat/Sun/Mon window that
+  carries the volume), read through `deadlineTier`. **Week 1 therefore holds
+  until Sunday 2026-09-13 1:00 PM ET**, which is what Anthony specified.
+
+  Read off `nfl_games` on every render: **no hardcoded day, no hardcoded hour,
+  and nothing derived from the deadline.** A week the schedule says nothing
+  about is never rolled past - silence is not a kickoff.
+
+  **This governs the DEFAULT only.** He changes the week freely; the banner
+  still reads "locked 2h ago - new picks will be flagged late", which is what
+  tells him he is past the deadline while still recording on the right week;
+  and a pick entered after the deadline is still `late = true` and still
+  stored, never refused. `tests/unit/default-week.test.ts` holds all three.
+
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
   Anthony's to choose and is never invented.
@@ -1682,4 +1708,5 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | The sweep's ceiling and filter      | `scripts/picks/lib/resolve.ts`, `scripts/picks/lib/subject-sweep.ts` |
 | His dictated picks by self-email    | `scripts/picks/lib/self-email.ts`, `scripts/picks/self.ts` |
 | The two recipient exceptions        | `src/lib/emails/recipient-exceptions.ts`     |
+| Which week /admin/picks opens on    | `src/lib/default-week.ts`                    |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |
