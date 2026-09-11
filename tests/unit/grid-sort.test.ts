@@ -88,26 +88,34 @@ describe("clicking a header", () => {
 });
 
 describe("weekKeys - what the cell shows", () => {
-  it("takes a team from either source, so an ours-only cell is not a blank", () => {
-    // The bug this exists for: she publishes nothing for one of ours in a
-    // week, we hold a revealed pick, the cell draws "BUF / ours" - and sorting
-    // by that week dropped it among the genuinely empty rows.
-    expect([...weekKeys(new Map(), new Map([[2, "BUF"]]))]).toEqual([[2, "BUF"]]);
-    expect([...weekKeys(new Map([[1, "DAL"]]), new Map())]).toEqual([[1, "DAL"]]);
-    expect([...weekKeys(new Map(), new Map())]).toEqual([]);
+  const m = (o: Record<number, string>) => new Map(Object.entries(o).map(([k, v]) => [Number(k), v]));
+
+  it("takes a value from any of the three, so no filled cell is a blank", () => {
+    // Each source alone. The bug this exists for happened twice, once per
+    // source: a cell reading "BUF / ours" and then one reading "OUT" both
+    // sorted among the genuinely empty rows.
+    expect([...weekKeys({ ours: m({ 2: "BUF" }) })]).toEqual([[2, "BUF"]]);
+    expect([...weekKeys({ herTeam: m({ 1: "DAL" }) })]).toEqual([[1, "DAL"]]);
+    expect([...weekKeys({ herText: m({ 1: "OUT" }) })]).toEqual([[1, "OUT"]]);
+    expect([...weekKeys({})]).toEqual([]);
   });
 
-  it("lets HER cell win where both exist, because that is the chip's main text", () => {
-    // A variance sorts on what the reader is looking at. Ours is the smaller
-    // chip beside it, not the value of the cell.
-    expect(weekKeys(new Map([[1, "DAL"]]), new Map([[1, "PHI"]])).get(1)).toBe("DAL");
+  it("leads with her words, then her team, then ours - the order the cell does", () => {
+    // Her OUT beside our NYJ: the cell leads with OUT, so OUT is the key.
+    expect(weekKeys({ herText: m({ 1: "OUT" }), ours: m({ 1: "NYJ" }) }).get(1)).toBe("OUT");
+    // A variance: her published team is the big text, ours the small chip.
+    expect(weekKeys({ herTeam: m({ 1: "DAL" }), ours: m({ 1: "PHI" }) }).get(1)).toBe("DAL");
+    // And her words outrank her own mapped team if both ever arrived.
+    expect(weekKeys({ herText: m({ 1: "OUT" }), herTeam: m({ 1: "DAL" }), ours: m({ 1: "PHI" }) }).get(1)).toBe("OUT");
   });
 
-  it("does not mutate either map it was given", () => {
-    const hers = new Map([[1, "DAL"]]);
-    const ours = new Map([[1, "PHI"], [2, "BUF"]]);
-    weekKeys(hers, ours);
-    expect([...hers]).toEqual([[1, "DAL"]]);
-    expect([...ours]).toEqual([[1, "PHI"], [2, "BUF"]]);
+  it("does not mutate anything it was given", () => {
+    const herText = m({ 1: "OUT" });
+    const herTeam = m({ 2: "DAL" });
+    const ours = m({ 1: "PHI", 3: "BUF" });
+    weekKeys({ herText, herTeam, ours });
+    expect([...herText]).toEqual([[1, "OUT"]]);
+    expect([...herTeam]).toEqual([[2, "DAL"]]);
+    expect([...ours]).toEqual([[1, "PHI"], [3, "BUF"]]);
   });
 });

@@ -278,6 +278,13 @@ describe("the one table, signed out", () => {
       .not.toMatch(/border-dashed[^>]*>NYJ</);
     // Her words carry no result colour: there is no team to have a result.
     expect(rows).not.toMatch(/bg-(?:tie|win)\/\d+[^>]*>[\s\S]{0,40}?OUT</);
+    // AND THEY ARE VERBATIM. uppercase would change her case and
+    // whitespace-nowrap would collapse her runs of spaces - the same pair
+    // fixed on the names span, reintroduced one screen below it.
+    const herWordsSpan = rows.match(/<span class="([^"]*)"[^>]*title="Published: OUT[^"]*"/);
+    expect(herWordsSpan, "her words render through their own span").not.toBeNull();
+    expect(herWordsSpan![1], "her case is hers").not.toContain("uppercase");
+    expect(herWordsSpan![1], "her spacing is hers").toContain("whitespace-pre");
   });
 
   it("shows her NAMES whitespace-verbatim, in the CSS and not just in the string", async () => {
@@ -306,7 +313,8 @@ describe("the one table, signed out", () => {
     const { sortRows } = await import("@/lib/grid-sort");
     // The rule lives in weekKeys, which is tested on its own including the
     // precedence; here it is only that the table really uses it.
-    expect(read("src/components/grid/grid-view.tsx")).toContain("weekKeys(hers, oursByWeek)");
+    expect(read("src/components/grid/grid-view.tsx"))
+      .toContain("weekKeys({ herText: textByWeek, herTeam, ours: oursByWeek })");
     const rows = [
       { no: 1089, name: "ours only", teamByWeek: new Map([[2, "BUF"]]) },
       { no: 1, name: "blank", teamByWeek: new Map<number, string>() },

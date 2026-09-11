@@ -241,13 +241,14 @@ export function GridView({
         const cellByWeek = cellsByEntry.get(e.id) ?? new Map<number, GridCell>();
         // The overlay only exists where the two sources sit side by side.
         const oursByWeek = ours ? new Map<number, string>() : (oursByEntry.get(e.id) ?? new Map<number, string>());
-        // THE SORT KEY IS WHAT THE CELL SHOWS - both sources, her cell
-        // winning. weekKeys owns that rule and is tested on its own; building
-        // it here from her cells alone is what made a chip reading "BUF /
-        // ours" sort as a blank.
-        const hers = new Map<number, string>();
-        for (const [w, c] of cellByWeek) if (c.team !== LOCKED_TEAM) hers.set(w, c.team);
-        const teamByWeek = weekKeys(hers, oursByWeek);
+        const textByWeek = ours ? new Map<number, string>() : (herText.get(e.id) ?? new Map<number, string>());
+        // THE SORT KEY IS WHAT THE CELL SHOWS - all three sources, in the
+        // order the cell itself leads with them. weekKeys owns that; building
+        // it here from one source at a time is what made a chip reading
+        // "BUF / ours", and then one reading "OUT", sort as blanks.
+        const herTeam = new Map<number, string>();
+        for (const [w, c] of cellByWeek) if (c.team !== LOCKED_TEAM) herTeam.set(w, c.team);
+        const teamByWeek = weekKeys({ herText: textByWeek, herTeam, ours: oursByWeek });
         return {
           entry: e,
           no: id?.no ?? null,
@@ -257,7 +258,7 @@ export function GridView({
           teamByWeek,
           cellByWeek,
           oursByWeek,
-          textByWeek: ours ? new Map() : (herText.get(e.id) ?? new Map()),
+          textByWeek,
         };
       }),
     [activeEntries, cellsByEntry, identity, ours, oursByEntry, herText],
@@ -639,7 +640,14 @@ export function GridView({
                       return (
                         <td key={w.week} className="h-11 w-px border-b border-border/60 p-0.5 px-1.5 text-center">
                           <span
-                            className="flex h-full min-h-10 w-full flex-col items-center justify-center whitespace-nowrap rounded-sm border border-border/60 bg-surface-2/60 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                            // NOT uppercase and NOT whitespace-nowrap: the
+                            // first changes her case and the second collapses
+                            // her runs of spaces, which is the pair just
+                            // fixed on the names span. Her words are her
+                            // words. Overflow is clipped rather than
+                            // reflowed, so a long note cannot stretch the
+                            // column.
+                            className="flex h-full min-h-10 w-full max-w-[7rem] flex-col items-center justify-center overflow-hidden whitespace-pre rounded-sm border border-border/60 bg-surface-2/60 px-1 text-[10px] font-semibold tracking-wide text-muted-foreground"
                             title={
                               ourTeam !== undefined
                                 ? `Published: ${herWords}. Our record: ${ourTeam === SKIP_WEEK ? "Bye" : ourTeam}. Reported, not changed.`
