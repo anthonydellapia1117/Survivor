@@ -48,14 +48,20 @@ async function copyPlain(text: string): Promise<boolean> {
  * plain-text paste have to agree about what was sent, and they stop agreeing
  * the moment the list is written out twice.
  *
- * There is no Cc any more: a giftee gets their own message listing their own
- * entries, rather than riding along on the buyer's.
+ * A giftee gets their own message listing their own entries, rather than
+ * riding along on the buyer's, so there is normally no Cc. The ONE named
+ * exception puts an owner on Cc of a giftee's message, and one person with
+ * several mailboxes puts several addresses on To
+ * (src/lib/emails/recipient-exceptions.ts). Those come off the built message
+ * rather than being worked out here: this screen is where Anthony copies a
+ * header and pastes it into Gmail by hand, and a header that omits them
+ * quietly sends somewhere different from what every command sends.
  */
 function headerLines(b: BuiltEmail): { label: string; value: string }[] {
-  return [
-    { label: "To", value: b.to },
-    { label: "Subject", value: b.subject },
-  ];
+  const lines = [{ label: "To", value: b.toAddresses.join(", ") }];
+  if (b.cc.length > 0) lines.push({ label: "Cc", value: b.cc.join(", ") });
+  lines.push({ label: "Subject", value: b.subject });
+  return lines;
 }
 
 type Flash = { id: string; ok: boolean } | null;
@@ -141,7 +147,13 @@ export function PickEmailsClient({
   // To-addresses only. A CC belongs beside the one owner it is for; pasting
   // it into a combined address line would put a second person's address in the
   // To line of a mass mail, which is the opposite of what the CC is for.
-  const addresses = useMemo(() => built.map((b) => b.to).join(", "), [built]);
+  // Mailboxes, not people: this is pasted into an address field, so a
+  // multi-address person contributes all of theirs. Deduplicated because a
+  // person can appear on more than one message's delivery set.
+  const addresses = useMemo(
+    () => [...new Set(built.flatMap((b) => b.toAddresses))].join(", "),
+    [built],
+  );
 
   return (
     <div className="space-y-4">
@@ -317,7 +329,7 @@ export function PickEmailsClient({
                 size="sm"
                 variant="outline"
                 onClick={async () =>
-                  note(`${current.key}-a`, await copyPlain(current.to))
+                  note(`${current.key}-a`, await copyPlain(current.toAddresses.join(", ")))
                 }
               >
                 To address

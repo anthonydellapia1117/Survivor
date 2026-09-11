@@ -16,6 +16,7 @@
 // three would be wrong twice a season and is exactly the class of drift the
 // deadline work removed.
 
+import { ccFor, deliveryAddressesFor } from "@/lib/emails/recipient-exceptions";
 import type { GameDay, GameRow, WeekRow } from "@/lib/data/types";
 import {
   recipientsForPicks,
@@ -88,7 +89,19 @@ export interface BuiltEmail {
   /** How many entries on this message somebody else bought. */
   giftedCount: number;
   kind: "owner" | "player" | "mixed";
+  /** WHO this message is for - one person, one mailbox. The identity, not
+   *  the header: this is what the screen labels the message with. */
   to: string;
+  /**
+   * What the To header actually carries. Usually just `to`; several mailboxes
+   * for a multi-address person. The screen copies THIS, so a header pasted
+   * into Gmail by hand reaches the same addresses the CLI would send to
+   * (src/lib/emails/recipient-exceptions.ts).
+   */
+  toAddresses: string[];
+  /** What the Cc header carries, or empty. The one named exception to
+   *  never-both: an owner deliberately shown a giftee's message. */
+  cc: string[];
   subject: string;
   html: string;
   text: string;
@@ -219,6 +232,8 @@ export function buildPickRequest(
     giftedCount: recipient.giftedCount,
     kind: recipient.kind,
     to: recipient.email,
+    toAddresses: deliveryAddressesFor(recipient.email),
+    cc: ccFor(recipient.email),
     subject: doc.subject,
     html: renderEmailHtml(doc),
     text: renderEmailText(doc),

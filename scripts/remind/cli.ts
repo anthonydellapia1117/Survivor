@@ -116,10 +116,15 @@ async function main(): Promise<void> {
     throw new Error(`Count gate: ${gate.actual} recipients, ${gate.expected} expected. Stopped.`);
   }
 
-  // Now the addresses. The retired check runs AGAIN on the expanded list: an
-  // extra mailbox is checked in by hand and has never been through the
-  // roster, so it is exactly the kind of address that can be dead.
+  // Now the addresses, for the DRAFT path and for what this prints. The SEND
+  // path does not take these: sendWeekReminder expands `people` itself, after
+  // its own count gate, because that gate counts people and a pre-expanded
+  // list would be measured against the people constant and rejected.
   const bcc = expandDelivery(people);
+  // The retired check runs AGAIN on the expanded list: an extra mailbox is
+  // checked in by hand and has never been through the roster, so it is
+  // exactly the kind of address that can be dead. The send path repeats this
+  // at its own seam rather than trusting the check having happened here.
   assertNoRetiredAddresses(bcc, "week reminder Bcc");
   const extra = bcc.length - people.length;
   if (extra > 0) {
@@ -157,7 +162,7 @@ async function main(): Promise<void> {
 
   // ---- send: only through sendWeekReminder, once per slot
   if (args.send) {
-    if (!args.yes && !(await confirm(`\nSend to ${bcc.length} recipients? (y/N) `))) {
+    if (!args.yes && !(await confirm(`\nSend to ${people.length} recipients on ${bcc.length} addresses? (y/N) `))) {
       console.log("Not approved. Nothing sent.");
       await notify(summary("not approved, nothing sent"));
       return;
@@ -165,7 +170,7 @@ async function main(): Promise<void> {
     const out = await sendWeekReminder(gmailClient(), client, {
       template: "week_reminder",
       to: ADMIN_MAILBOX,
-      bcc,
+      recipients: people,
       subject,
       body,
       html,
@@ -177,8 +182,8 @@ async function main(): Promise<void> {
       actor,
     });
     if (out.kind === "sent") {
-      console.log(`sent ${out.messageId} -> ${bcc.length} recipients on Bcc (${key}, audit ${out.auditId})`);
-      await notify(summary(`${key} sent to ${bcc.length} recipients`));
+      console.log(`sent ${out.messageId} -> ${people.length} recipients on ${bcc.length} addresses (${key}, audit ${out.auditId})`);
+      await notify(summary(`${key} sent to ${people.length} recipients on ${bcc.length} addresses`));
     } else {
       const what = out.prior.messageId ? `already sent ${out.prior.messageId}` : "already claimed (outcome on /admin/audit)";
       console.log(`${what} for ${key} at ${out.prior.at}, skipped`);

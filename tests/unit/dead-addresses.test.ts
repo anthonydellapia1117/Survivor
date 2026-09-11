@@ -211,7 +211,7 @@ describe("the send path refuses a retired address", () => {
   const weekReq: WeekReminderRequest = {
     template: "week_reminder",
     to: "anthonydellapia@gmail.com",
-    bcc: ["chas.flaster@gmail.com", LIVE, "jmvas731@msn.com"],
+    recipients: ["chas.flaster@gmail.com", LIVE, "jmvas731@msn.com"],
     subject: "Survivor Week 1 - picks due tomorrow at 2 PM",
     body: "Week 1 is here.",
     week: 1,
@@ -248,7 +248,7 @@ describe("the send path refuses a retired address", () => {
 
   it("sendWeekReminder throws on a poisoned Bcc, sends nothing and claims nothing", async () => {
     const { gmail, send } = fakeGmail();
-    const poisoned = { ...weekReq, bcc: [...weekReq.bcc, DEAD], expectedRecipients: 4 };
+    const poisoned = { ...weekReq, recipients: [...weekReq.recipients, DEAD], expectedRecipients: 4 };
     await expect(sendWeekReminder(gmail, client, poisoned)).rejects.toThrow(RetiredAddressError);
     await expect(sendWeekReminder(gmail, client, poisoned)).rejects.toThrow(/ernie706@gmail\.com/);
     expect(send).not.toHaveBeenCalled();
@@ -259,8 +259,8 @@ describe("the send path refuses a retired address", () => {
     // The list is EXACTLY the expected length and still wrong: the dead
     // address replaced a live one, which is what a mistyped roster row does.
     const { gmail, send } = fakeGmail();
-    const swapped = { ...weekReq, bcc: ["chas.flaster@gmail.com", DEAD, "jmvas731@msn.com"] };
-    expect(swapped.bcc.length).toBe(swapped.expectedRecipients);
+    const swapped = { ...weekReq, recipients: ["chas.flaster@gmail.com", DEAD, "jmvas731@msn.com"] };
+    expect(swapped.recipients.length).toBe(swapped.expectedRecipients);
     await expect(sendWeekReminder(gmail, client, swapped)).rejects.toThrow(RetiredAddressError);
     expect(send).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();

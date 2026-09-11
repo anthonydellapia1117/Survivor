@@ -28,7 +28,7 @@ import {
   loadWeeks,
 } from "../lib/db";
 import { createDraft, gmailClient, profileAddress } from "../lib/gmail";
-import { ccFor, deliveryAddressesFor } from "@/lib/emails/recipient-exceptions";
+import { ccFor, deliveryAddressesFor, expandDelivery } from "@/lib/emails/recipient-exceptions";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
 import { splitRecipients, unpickedEntries, type OpenDeadline, entriesOfConfirmedOwners } from "../lib/roster";
@@ -293,7 +293,14 @@ async function main(): Promise<void> {
 
   // ---- bcc: one draft to Anthony's own mailbox, everyone on Bcc
   if (args.bcc) {
-    const bcc = dedupeAddresses(chases.map((c) => c.recipient.email));
+    // One line per PERSON first, then expanded to mailboxes: this branch
+    // never goes through the per-recipient seam below, so without the
+    // expansion a multi-address person would get only the one uncertain
+    // roster address on the aggregate draft. Same order as every other
+    // whole-roster message - people are what is counted, addresses are what
+    // is addressed (src/lib/emails/recipient-exceptions.ts).
+    const people = dedupeAddresses(chases.map((c) => c.recipient.email));
+    const bcc = expandDelivery(people);
     const earliest = earliestOf(chases.map((c) => c.deadline));
     if (!earliest) throw new Error("No open deadline for the Bcc draft.");
     const body = bccBody({
@@ -302,7 +309,7 @@ async function main(): Promise<void> {
       tiers: mergeTiers(chases.map((c) => c.tiers)),
       lateDeadlineIso: bounds.lateDeadlineAt,
     });
-    if (!args.yes && !(await confirm(`\nCreate 1 Bcc draft to ${bcc.length} recipients? (y/N) `))) {
+    if (!args.yes && !(await confirm(`\nCreate 1 Bcc draft to ${people.length} recipients on ${bcc.length} addresses? (y/N) `))) {
       console.log("Not approved. Nothing created.");
       await notify(summary("not approved, nothing created"));
       return;
@@ -310,9 +317,9 @@ async function main(): Promise<void> {
     const gmail = gmailClient();
     const me = await profileAddress(gmail);
     const d = await createDraft(gmail, { to: [me], bcc, subject: chaseSubject(week), body });
-    console.log(`draft ${d.draftId} -> ${me}, ${bcc.length} recipients on Bcc, earliest deadline ${formatEt(earliest.deadlineIso)}`);
+    console.log(`draft ${d.draftId} -> ${me}, ${people.length} recipients on ${bcc.length} addresses, earliest deadline ${formatEt(earliest.deadlineIso)}`);
     console.log("Not sent: open Gmail, check it, and send it yourself.");
-    await notify(summary(`1 bcc draft created for ${bcc.length} recipients`));
+    await notify(summary(`1 bcc draft created for ${people.length} recipients on ${bcc.length} addresses`));
     return;
   }
 
