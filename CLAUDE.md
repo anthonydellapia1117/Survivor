@@ -1466,6 +1466,34 @@ in any of them.**
   `43 7-23,0-3` for them - under the old one **nine of the twelve slot-offsets**
   (six slots x EDT and EST) fell between two ticks and would never have run.
 
+- **The sweep runs every 19 minutes on FRIDAYS, 8:00 AM to 2:00 AM ET.** Set
+  by Anthony on 2026-09-11, hourly at :43 the rest of the week. His words were
+  "8 AM to 2 AM" and he flagged that he might have meant 2 PM; **8 AM to 2 AM
+  is what is built** - it crosses midnight into Saturday and covers 2 PM
+  either way.
+
+  **Why: a deadline ran down while picks sat unread.** That Friday the hourly
+  tick reported "nothing due" at most hours because the sweep was not in the
+  window, and picks Anthony had emailed himself at 10:58 AM, 12:21 PM and
+  1:39 PM were still unrecorded at 2 PM. Nine of them were for entries the
+  2 PM confirmation then told their owners had no pick.
+
+  It is stated in `scheduleEt` for the same reason the scores job is - a fixed
+  UTC cron for 8 AM ET is an hour wrong for half the season - and the window
+  **crossing midnight is what forces the tick to be every hour**: the tail
+  lands on different UTC hours in EDT and EST, so a tick that names hours at
+  all loses half of it. **`tickSchedule` is therefore `0,19,38,57 * * * *`**,
+  every 19 minutes of every hour. A tick costs a firing and does nothing
+  unless a job is due.
+
+  **The config is necessary and not sufficient.** The tick's cron lives in the
+  claude.ai Routine, which is UI-only; until that Routine fires every 19
+  minutes the sweep still runs hourly whatever this file says.
+  `tests/unit/ops.test.ts` holds the cadence as a GAP rather than a cron
+  string - never 19 minutes unswept inside the window, never more than an hour
+  outside it, and every slot observed in BOTH offsets - because a string
+  assertion passes on the right shape with the wrong hours.
+
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
   Anthony's to choose and is never invented.

@@ -17,7 +17,17 @@ const raw = () => JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Record<string
 const withJob = (name: string, patch: Record<string, unknown>) => {
   const c = raw();
   const jobs = c.jobs as Record<string, Record<string, unknown>>;
-  jobs[name] = { ...jobs[name], ...patch };
+  // A schedule patch REPLACES the clock rather than adding a second one. The
+  // config refuses a job carrying both schedule and scheduleEt, so merging
+  // turned every "here is a bad cron" case into "you set two clocks" the day
+  // sweep moved to ET - the tests stopped exercising what they were written
+  // for and said so only by failing on the wrong message.
+  const base = { ...jobs[name] };
+  if ("schedule" in patch || "scheduleEt" in patch) {
+    delete base.schedule;
+    delete base.scheduleEt;
+  }
+  jobs[name] = { ...base, ...patch };
   return c;
 };
 
@@ -159,12 +169,85 @@ describe("the wiring the dispatcher and the commands keep", () => {
   });
 });
 
+describe("the Friday sweep cadence", () => {
+  // Set by Anthony on 2026-09-11: every 19 minutes on Fridays from 8:00 AM to
+  // 2:00 AM ET, hourly the rest of the week. The reason is a real failure, not
+  // a preference - that Friday the hourly tick reported "nothing due" at most
+  // hours because the sweep was not in the window, so picks he had emailed
+  // himself sat unread while the 2 PM deadline ran down.
+  //
+  // He said 8 AM to 2 AM literally and flagged that he might have meant 2 PM.
+  // 8 AM to 2 AM is what is built: it crosses midnight into Saturday, and it
+  // covers 2 PM either way.
+  //
+  // The window is checked as a GAP, not as a cron string. A test that asserts
+  // the expression matches some literal passes on a cron that names the right
+  // shape and the wrong hours, and it has to be rewritten every time the
+  // expression is tidied; the gap is the thing a late pick actually feels.
+
+  /** Every ET minute-of-week the sweep names: dow*1440 + hour*60 + minute. */
+  const sweepMinutes = (): Set<number> => {
+    const { exprs, zone } = jobSchedule(loadOpsConfig().jobs.sweep);
+    expect(zone, "the sweep is stated on the ET wall clock, like the scores job").toBe("et");
+    const out = new Set<number>();
+    for (const e of exprs) {
+      const c = parseCron(e);
+      for (const d of c.dow) for (const h of c.hour) for (const m of c.minute) out.add(d * 1440 + h * 60 + m);
+    }
+    return out;
+  };
+
+  /** The longest run of consecutive minutes in [from, to) with no sweep slot. */
+  const worstGap = (named: Set<number>, from: number, to: number): number => {
+    let gap = 0;
+    let worst = 0;
+    for (let t = from; t < to; t++) {
+      gap = named.has(t % (7 * 1440)) ? 0 : gap + 1;
+      if (gap > worst) worst = gap;
+    }
+    return worst;
+  };
+
+  const FRI_8AM = 5 * 1440 + 8 * 60;
+  const SAT_2AM = 6 * 1440 + 2 * 60;
+
+  it("never leaves 19 minutes unswept between Friday 8 AM and Saturday 2 AM ET", () => {
+    const named = sweepMinutes();
+    expect({ window: "Fri 08:00 - Sat 02:00 ET", worstGapMinutes: worstGap(named, FRI_8AM, SAT_2AM) })
+      .toEqual({ window: "Fri 08:00 - Sat 02:00 ET", worstGapMinutes: expect.any(Number) });
+    expect(worstGap(named, FRI_8AM, SAT_2AM), "the deadline window must never go 19 minutes unswept").toBeLessThanOrEqual(19);
+  });
+
+  it("still sweeps hourly the rest of the week, so the cadence is an addition and not a replacement", () => {
+    const named = sweepMinutes();
+    // From Saturday 2 AM round to Friday 8 AM: everything outside the window.
+    expect(worstGap(named, SAT_2AM, FRI_8AM + 7 * 1440), "hourly everywhere else").toBeLessThanOrEqual(60);
+    // And it really is hourly rather than the 19-minute cadence bleeding out:
+    // a Tuesday afternoon has one slot an hour, not four.
+    const tuesdayPm = [...named].filter((t) => t >= 2 * 1440 + 13 * 60 && t < 2 * 1440 + 17 * 60);
+    expect(tuesdayPm.length, "four hours of Tuesday, one slot each").toBe(4);
+  });
+
+  it("is observed by the tick in BOTH offsets, which is what a Friday-only UTC cron could not be", () => {
+    // The window crosses midnight, so its UTC hours differ between EDT and
+    // EST. unobservedEtSlots checks both; a breach here means the Routine
+    // would run the sweep for half the season and silently not for the other.
+    const c = loadOpsConfig();
+    const { exprs } = jobSchedule(c.jobs.sweep);
+    const missed = exprs.flatMap((e) => unobservedEtSlots(e, c.tickSchedule, c.tickWindowMinutes));
+    expect({ missed }).toEqual({ missed: [] });
+  });
+});
+
 describe("the tick that observes the schedules", () => {
-  // Widened from 9-23,0-2 on 2026-09-11 for the scores job: its six ET slots
-  // are overnight, and under the old tick nine of the twelve slot-offsets
-  // (six slots x EDT and EST) fell in the gap between two ticks and would
-  // never have run. 07, 08 and 03 UTC are the hours that close that gap.
-  const TICK = "43 7-23,0-3 * * *";
+  // Widened twice on 2026-09-11. First from 9-23,0-2 to 7-23,0-3 for the
+  // scores job, whose six ET slots are overnight. Then to every 19 minutes of
+  // EVERY hour for the Friday sweep cadence: the sweep's high-cadence window
+  // is 8 AM to 2 AM ET, which crosses midnight and therefore lands on
+  // different UTC hours in EDT and EST, so a tick that names hours at all
+  // loses the tail for half the season. A tick costs a firing and does
+  // nothing unless a job is due.
+  const TICK = "0,19,38,57 * * * *";
 
   it("is checked in beside the jobs, because a schedule means nothing without it", () => {
     const c = loadOpsConfig();
@@ -208,8 +291,9 @@ describe("the tick that observes the schedules", () => {
     // slot is observed" - which the raw check would fail it on.
     expect(dueAtEveryTick("43 * * * *", TICK, 60)).toBe(true);
     expect(missedSlots("43 * * * *", TICK, 60)).toEqual([]);
-    // 21 tick hours a day leaves three unobserved: 04, 05 and 06 UTC.
-    expect(unobservedSlots("43 * * * *", TICK, 60).length).toBe(21);
+    // The tick now runs every hour of every day, so nothing is unobserved at
+    // all. Under the old 21-hour tick this was 21.
+    expect(unobservedSlots("43 * * * *", TICK, 60).length).toBe(0);
     expect(dueAtEveryTick("0 10,11,12 * * 3,5", TICK, 60)).toBe(false);
   });
 
@@ -224,13 +308,29 @@ describe("the tick that observes the schedules", () => {
       );
       expect({ job: j, missed }).toEqual({ job: j, missed: [] });
     }
-    // A schedule an hour before the first tick of the day is named.
-    expect(slotBreaches(validateOpsConfig(withJob("distribute", { schedule: "20 5 * * 5" })))).toEqual([
+    // A schedule an hour before the first tick of the day is named. The tick
+    // has to be narrowed for this case now: since 2026-09-11 it runs every 19
+    // minutes of every hour, so with a 60-minute window NOTHING is
+    // unobservable and no job schedule alone can produce a breach. Pairing
+    // the bad slot with the tick that cannot see it is what the check is
+    // actually for.
+    expect(slotBreaches(validateOpsConfig({
+      ...withJob("distribute", { schedule: "20 5 * * 5" }),
+      tickSchedule: "43 7-23,0-3 * * *",
+    }))).toEqual([
+      // The sweep is named too, and that is the point of the whole change:
+      // under the old hourly tick the Friday 8 AM to 2 AM cadence loses its
+      // whole overnight tail in both offsets. This is the gap that let
+      // self-emailed picks sit unread on 2026-09-11.
+      expect.stringMatching(/^sweep: [\s\S]*Sat 01:57 ET[\s\S]*falls outside/),
       expect.stringMatching(/^distribute: Fri 05:20 UTC falls outside/),
     ]);
     // So is a tick that stops observing a schedule that used to be fine: a
     // Routine starting at 13:43 UTC would never see the three morning slots.
     expect(slotBreaches(validateOpsConfig({ ...raw(), tickSchedule: "43 13-23,0-2 * * *" }))).toEqual([
+      // The sweep is named first now that it carries ET slots of its own: a
+      // tick that starts at 13:43 UTC cannot see a Friday 08:00 ET sweep.
+      expect.stringMatching(/^sweep: /),
       expect.stringMatching(/^pick-reminder: Wed 12:00 UTC, Thu 12:00 UTC, Fri 12:00 UTC falls outside/),
       // The scores job is named in BOTH offsets, which is the whole point of
       // stating it in ET: a tick that observes an ET slot in EDT but not in
@@ -245,9 +345,9 @@ describe("the tick that observes the schedules", () => {
     // EXPECTED_ROSTER_ADDRESSES, and picks, chase, remind, distribute, lynne
     // and results all import it. If the loader refused a job/tick mismatch,
     // one bad cron would kill the Week 1 mail intake, not just the tick.
-    const bad = withJob("distribute", { schedule: "20 5 * * 5" });
+    const bad = { ...withJob("distribute", { schedule: "20 5 * * 5" }), tickSchedule: "43 7-23,0-3 * * *" };
     expect(() => validateOpsConfig(bad)).not.toThrow();
-    expect(slotBreaches(validateOpsConfig(bad)).length).toBe(1);
+    expect(slotBreaches(validateOpsConfig(bad)).length).toBe(2);
     // The dispatcher is where it refuses, and it names the job.
     const cli = readFileSync("scripts/ops/cli.ts", "utf8");
     expect(cli).toMatch(/const breaches = slotBreaches\(config\);/);
