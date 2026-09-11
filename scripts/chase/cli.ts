@@ -28,6 +28,7 @@ import {
   loadWeeks,
 } from "../lib/db";
 import { createDraft, gmailClient, profileAddress } from "../lib/gmail";
+import { ccFor, deliveryAddressesFor } from "@/lib/emails/recipient-exceptions";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
 import { splitRecipients, unpickedEntries, type OpenDeadline, entriesOfConfirmedOwners } from "../lib/roster";
@@ -324,7 +325,12 @@ async function main(): Promise<void> {
   const gmail = gmailClient();
   let created = 0;
   for (const c of chases) {
-    const d = await createDraft(gmail, { to: [c.recipient.email], subject: c.subject, body: c.body });
+    const d = await createDraft(gmail, {
+      to: deliveryAddressesFor(c.recipient.email),
+      cc: ccFor(c.recipient.email),
+      subject: c.subject,
+      body: c.body,
+    });
     created++;
     console.log(`draft ${d.draftId} -> ${c.recipient.email} (${c.recipient.entries.length} entries)`);
   }

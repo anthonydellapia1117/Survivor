@@ -324,18 +324,31 @@ describe("the send path refuses a retired address", () => {
 describe("scripts/remind/cli.ts wires the guard in ahead of the gate", () => {
   const src = readFileSync(path.join(__dirname, "../../scripts/remind/cli.ts"), "utf8");
 
-  it("calls assertNoRetiredAddresses on the derived Bcc", () => {
+  it("calls assertNoRetiredAddresses TWICE - on the people and on the expanded Bcc", () => {
+    // Two lists since 2026-09-11, because a multi-address person's extra
+    // mailboxes are checked in by hand and have never been through the
+    // roster: they are exactly the kind of address that can be dead, and the
+    // gated people list does not contain them
+    // (src/lib/emails/recipient-exceptions.ts).
+    expect(src).toContain('assertNoRetiredAddresses(people, "week reminder recipients")');
     expect(src).toContain('assertNoRetiredAddresses(bcc, "week reminder Bcc")');
   });
 
-  it("calls it BEFORE the count gate, and before anything is drafted or sent", () => {
-    const guard = src.indexOf("assertNoRetiredAddresses(bcc");
+  it("guards the people BEFORE the count gate and the Bcc before anything is drafted or sent", () => {
+    const peopleGuard = src.indexOf("assertNoRetiredAddresses(people");
+    const bccGuard = src.indexOf("assertNoRetiredAddresses(bcc");
     const gate = src.indexOf("countGate(EXPECTED_ROSTER_ADDRESSES");
     const send = src.indexOf("sendWeekReminder(");
     const draft = src.indexOf("await createDraft(");
-    for (const [what, at] of [["count gate", gate], ["send", send], ["draft", draft]] as const) {
+    expect(peopleGuard, "the people guard is missing").toBeGreaterThan(-1);
+    expect(bccGuard, "the Bcc guard is missing").toBeGreaterThan(-1);
+    // The gated list is checked first, so a dead address that REPLACED a live
+    // one is caught while the count still adds up - counting is not reading.
+    expect(peopleGuard, "the people guard must run before the count gate").toBeLessThan(gate);
+    // And nothing reaches Gmail before the expanded list has been checked.
+    for (const [what, at] of [["send", send], ["draft", draft]] as const) {
       expect(at, `${what} not found in the CLI`).toBeGreaterThan(-1);
-      expect(guard, `the guard must run before the ${what}`).toBeLessThan(at);
+      expect(bccGuard, `the Bcc guard must run before the ${what}`).toBeLessThan(at);
     }
   });
 

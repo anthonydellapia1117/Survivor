@@ -343,6 +343,13 @@ export async function getAttachment(gmail: gmail_v1.Gmail, messageId: string, at
 
 export interface OutboundMessage {
   to?: string[];
+  /**
+   * Visible copies. Used only by the named exceptions in
+   * src/lib/emails/recipient-exceptions.ts - an owner who is deliberately
+   * shown a giftee's message. CC and not Bcc on purpose: John can see that
+   * Ray is reading it, which is the point of showing it to him.
+   */
+  cc?: string[];
   bcc?: string[];
   subject: string;
   body: string;
@@ -378,9 +385,13 @@ const MIME_BOUNDARY = "survivor-alt-boundary-2b7f4c";
  * near the derivation or its guard.
  */
 export function encodeRaw(m: OutboundMessage): string {
-  assertNoRetiredAddresses([...(m.to ?? []), ...(m.bcc ?? [])], `message "${m.subject}"`);
+  assertNoRetiredAddresses(
+    [...(m.to ?? []), ...(m.cc ?? []), ...(m.bcc ?? [])],
+    `message "${m.subject}"`,
+  );
   const headers = [
     m.to && m.to.length ? `To: ${m.to.join(", ")}` : "",
+    m.cc && m.cc.length ? `Cc: ${m.cc.join(", ")}` : "",
     m.bcc && m.bcc.length ? `Bcc: ${m.bcc.join(", ")}` : "",
     `Subject: ${m.subject}`,
     m.inReplyTo ? `In-Reply-To: ${m.inReplyTo}` : "",

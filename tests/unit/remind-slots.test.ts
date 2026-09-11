@@ -299,8 +299,8 @@ describe("the command that runs a slot", () => {
     expect(cli).toMatch(/findSlot\(weeks, args\.week, args\.slot\)/);
     // Derived live, never a saved or hand-built list: a hand-built Bcc is how
     // a dead address survived and hard-bounced on 2026-09-09.
-    expect(cli).toMatch(/const bcc = reminderAddresses\(owners, entries\);/);
-    expect(cli).toMatch(/countGate\(EXPECTED_ROSTER_ADDRESSES, bcc\)/);
+    expect(cli).toMatch(/const people = reminderAddresses\(owners, entries\);/);
+    expect(cli).toMatch(/countGate\(EXPECTED_ROSTER_ADDRESSES, people\)/);
     expect(cli).toMatch(/if \(!gate\.ok\) \{[\s\S]{0,600}?throw new Error\(`Count gate:/);
     // The slot reaches the send, so the audit key is the slot's and not the
     // boundary's. Without this line the key silently falls back.
