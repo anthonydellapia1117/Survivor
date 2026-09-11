@@ -5,6 +5,7 @@ import type { gmail_v1 } from "googleapis";
 import { loadAuditByAction, recordAudit, type WeekBoundsRow } from "../../scripts/lib/db";
 import { sendWeekReminder, weekReminderKey, WEEK_REMINDER_CLAIM_ACTION, type WeekReminderRequest } from "../../scripts/lib/send";
 import { dueSlot, etDateKey, findSlot, isSlotName, slotKey, slotsOf, SLOT_NAMES } from "../../scripts/remind/lib/due";
+import { SITE_LINK_TEXT } from "../../scripts/lib/site-link";
 import { reminderBody, reminderSubject } from "../../scripts/remind/lib/message";
 import type { GameLite, WeekBounds } from "../../scripts/picks/lib/deadline";
 import { loadOpsConfig, jobSchedule} from "../../scripts/ops/lib/config";
@@ -164,12 +165,16 @@ describe("the words each slot carries", () => {
   });
 
   it("says reply or text on every slot, and links the site only on the line that denies it", () => {
+    // The link is the anchor "AD-26-Survivor" since 2026-09-11, and the plain
+    // part carries no address at all - so the line is found by the site's
+    // NAME, and the absence of any URL is asserted beside it.
     for (const [s, now] of [[wed, WED_AM], [thu, THU_AM], [fri, FRI_AM]] as const) {
       const body = reminderBody(s, BOUNDS, GAMES, now, { outstanding: 0 });
       expect(body).toContain("Reply to this email with your team - reply to me, not reply all.");
       expect(body).toContain("Or text 215-384-8335.");
-      const linked = body.split("\n").filter((l) => l.includes("ad-26-survivor.vercel.app"));
-      expect(linked).toEqual(["You do not make picks in the app. It is there to look at: https://ad-26-survivor.vercel.app"]);
+      const linked = body.split("\n").filter((l) => l.includes(SITE_LINK_TEXT));
+      expect(linked).toEqual([`You do not make picks in the app. It is there to look at: ${SITE_LINK_TEXT}`]);
+      expect(body).not.toMatch(/https?:\/\//);
     }
   });
 });

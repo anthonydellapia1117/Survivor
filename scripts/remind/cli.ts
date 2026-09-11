@@ -25,7 +25,7 @@ import { autosendEnabled, sendWeekReminder } from "../lib/send";
 import { assertNoRetiredAddresses, entriesOfConfirmedOwners, unpickedEntries } from "../lib/roster";
 import { formatEt, type GameLite, type WeekBounds } from "../picks/lib/deadline";
 import { dueSlot, findSlot, isSlotName, slotKey, SLOT_NAMES, type ReminderSlot, type SlotName } from "./lib/due";
-import { reminderBody, reminderSubject } from "./lib/message";
+import { reminderBody, reminderHtml, reminderSubject } from "./lib/message";
 import { countGate, reminderAddresses } from "./lib/recipients";
 
 interface Args {
@@ -127,6 +127,9 @@ async function main(): Promise<void> {
   console.log(`${outstanding} of ${entriesOfConfirmedOwners(owners, entries).length} entries have no Week ${b.week} pick.`);
   const subject = reminderSubject(b, now);
   const body = reminderBody(b, bounds, games, now, { outstanding });
+  // The same words with the site's name as the one anchor; the two go out as
+  // the two parts of one message (scripts/lib/site-link.ts).
+  const html = reminderHtml(b, bounds, games, now, { outstanding });
 
   console.log(`\nTo: ${ADMIN_MAILBOX}\nBcc: ${bcc.length} recipients\nSubject: ${subject}\n\n${body}\n`);
 
@@ -148,6 +151,7 @@ async function main(): Promise<void> {
       bcc,
       subject,
       body,
+      html,
       week: b.week,
       boundary: b.kind,
       slot: b.slot,
@@ -172,7 +176,7 @@ async function main(): Promise<void> {
     await notify(summary("not approved, nothing created"));
     return;
   }
-  const d = await createDraft(gmailClient(), { to: [ADMIN_MAILBOX], bcc, subject, body });
+  const d = await createDraft(gmailClient(), { to: [ADMIN_MAILBOX], bcc, subject, body, html });
   console.log(`draft ${d.draftId} -> ${ADMIN_MAILBOX}, ${bcc.length} recipients on Bcc`);
   console.log("Not sent: open Gmail, check it, and send it yourself.");
   await notify(summary(`1 bcc draft created for ${bcc.length} recipients (${key})`));

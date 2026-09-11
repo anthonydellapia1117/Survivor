@@ -7,10 +7,12 @@ import { countGate, reminderAddresses } from "../../scripts/remind/lib/recipient
 import {
   clockTime,
   NOT_THE_APP,
+  reminderHtml,
   relativeDay,
   reminderBody,
   reminderSubject,
 } from "../../scripts/remind/lib/message";
+import { SITE_LINK_TEXT, siteAnchor } from "../../scripts/lib/site-link";
 import type { GameLite, WeekBounds } from "../../scripts/picks/lib/deadline";
 
 // The week reminder is driven by the weeks table and the live roster and
@@ -226,8 +228,12 @@ describe("the reminder's words", () => {
     expect(lines[0]).toBe("Week 1 is here.");
     expect(body).toContain("Reply to this email with your team - reply to me, not reply all. Or text 215-384-8335. Email is better.");
     expect(body).toContain("More than one entry means one team for each.");
-    const linkLines = lines.filter((l) => l.includes("ad-26-survivor.vercel.app"));
-    expect(linkLines).toEqual([`${NOT_THE_APP} https://ad-26-survivor.vercel.app`]);
+    // One link line, and it names the site rather than printing its address
+    // (Anthony, 2026-09-11): the anchor lives in the HTML part.
+    const linkLines = lines.filter((l) => l.includes(SITE_LINK_TEXT));
+    expect(linkLines).toEqual([`${NOT_THE_APP} ${SITE_LINK_TEXT}`]);
+    expect(body).not.toMatch(/https?:\/\//);
+    expect(reminderHtml(EARLY, BOUNDS, GAMES, WED_8AM, { outstanding: 0 })).toContain(siteAnchor());
     expect(lines[lines.length - 1]).toBe("- Anthony");
     // Hyphens only, nothing else in the dash family.
     expect(body).not.toMatch(/[–—]/);

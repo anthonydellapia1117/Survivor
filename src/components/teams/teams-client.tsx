@@ -21,7 +21,7 @@ import { useMemo } from "react";
 import type { GameRow, GridCell } from "@/lib/data/types";
 import { NFL_TEAMS, SKIP_WEEK } from "@/lib/standing";
 import { teamResults } from "@/lib/master-list";
-import { toneOfTeamResult, TONE_FILL_CLASS } from "@/lib/result-colour";
+import { toneOfTeamResult, TONE_FILL_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
 import { TeamLabel } from "@/components/team-label";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +60,19 @@ export function TeamsClient({ cells, weekCount, games }: Props) {
     [heat],
   );
 
+  // The weekly total: how many picks across the pool that week carries, which
+  // is the column read the other way and the one number the per-team cells
+  // cannot give you (Anthony, 2026-09-11). Over FINISHED games only, exactly
+  // like the cells above it, so a week still in play sums to nothing rather
+  // than to a number that will move.
+  const weekTotals = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const wm of heat.values()) {
+      for (const [w, n] of wm) m.set(w, (m.get(w) ?? 0) + n);
+    }
+    return m;
+  }, [heat]);
+
   return (
     <section className="space-y-3">
       <div>
@@ -67,7 +80,8 @@ export function TeamsClient({ cells, weekCount, games }: Props) {
         <p className="mt-1 text-sm text-muted-foreground">
           How many entries picked each team, counting only games that have
           finished. Green is a team that won that week, yellow one that lost.
-          A week still in play carries no number yet.
+          A week still in play carries no number yet. The bottom row is each
+          week&apos;s total across the pool.
         </p>
       </div>
       {total === 0 ? (
@@ -110,7 +124,12 @@ export function TeamsClient({ cells, weekCount, games }: Props) {
                       key={w}
                       className={cn(
                         "h-8 min-w-8 border-b border-border/60 text-center font-semibold tabular-nums",
+                        // The fill AND the number's colour: the fills sit about
+                        // 1.1:1 apart on this palette, so on a phone in
+                        // daylight the fill alone is not the difference this
+                        // page says it is.
                         n > 0 && TONE_FILL_CLASS[tone],
+                        n > 0 && TONE_TEXT_CLASS[tone],
                       )}
                       title={
                         n > 0
@@ -125,6 +144,32 @@ export function TeamsClient({ cells, weekCount, games }: Props) {
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <th
+                scope="row"
+                className="sticky bottom-0 left-0 z-20 border-r border-t border-border bg-surface-2 px-2 py-1 text-left font-semibold"
+              >
+                All teams
+              </th>
+              {weeks.map((w) => {
+                const n = weekTotals.get(w) ?? 0;
+                return (
+                  <td
+                    key={w}
+                    className="sticky bottom-0 z-10 h-8 min-w-8 border-t border-border bg-surface-2 text-center font-semibold tabular-nums"
+                    title={
+                      n > 0
+                        ? `Week ${w}: ${n} ${n === 1 ? "pick" : "picks"} across the pool, over finished games`
+                        : `Week ${w}: no finished game carries a pick yet`
+                    }
+                  >
+                    {n > 0 ? n : ""}
+                  </td>
+                );
+              })}
+            </tr>
+          </tfoot>
         </table>
       </div>
     </section>

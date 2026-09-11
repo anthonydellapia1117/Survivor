@@ -369,6 +369,8 @@ vi.mock("../../src/lib/data", () => ({
       poolPaidCount: null,
       poolPotCents: null,
     }),
+    // Her weekly result files moved under the merged table with it.
+    getLynneImports: async () => [],
   }),
 }));
 

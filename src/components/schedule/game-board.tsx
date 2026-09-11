@@ -1,13 +1,15 @@
 "use client";
 
-// D1-D4: the week-by-week game board. Every game as a card - winners and
-// losers visually distinct, pick counts revealed once that game KICKS OFF
-// (per-game visibility, override-aware), and elimination impact per final
-// game.
+// The week-by-week game board. Every game as a card - winners and losers
+// visually distinct, and what each final game COST: the entries it eliminated.
+//
+// The per-team pick count came off on 2026-09-11 (Anthony). With it went the
+// reveal plumbing it needed: the elimination list is built only from cells
+// already carrying a loss or a tie, which cannot exist before the game is
+// scored, so nothing here can show a pick early.
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { gameIsRevealed } from "@/lib/data/types";
 import type { EntrySummary, GameRow, GridCell, WeekRow } from "@/lib/data/types";
 import { TEAM_NAME } from "@/lib/standing";
 import { TEAM_PALETTE } from "@/lib/team-colors";
@@ -41,34 +43,10 @@ export function GameBoard({
   const router = useRouter();
   const [week, setWeek] = useState(initialWeek);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const now = Date.now();
-
   const weekGames = useMemo(
     () => games.filter((g) => g.week === week),
     [games, week],
   );
-
-  const nameById = useMemo(
-    () => new Map(entries.map((e) => [e.id, e.entryName])),
-    [entries],
-  );
-
-  // Current picks for the selected week, keyed by team.
-  const pickersByTeam = useMemo(() => {
-    const m = new Map<string, string[]>();
-    for (const c of cells) {
-      if (
-        c.week !== week ||
-        c.team === "SKIP_WEEK" ||
-        c.team === "MISSED" ||
-        c.team === "LOCKED"
-      )
-        continue;
-      if (!m.has(c.team)) m.set(c.team, []);
-      m.get(c.team)!.push(nameById.get(c.entryId) ?? "?");
-    }
-    return m;
-  }, [cells, week, nameById]);
 
   // Entries this game eliminated: losing-side pickers whose elimination
   // week is this week.
@@ -94,13 +72,6 @@ export function GameBoard({
     }
     return m;
   }, [cells, entries, week]);
-
-  // Picks for a game are public once it kicks off (or the admin's manual
-  // reveal override says so) - never at the pick deadline, which can be
-  // hours before kickoff.
-  function picksRevealed(g: GameRow): boolean {
-    return gameIsRevealed(g, new Date(now));
-  }
 
   function changeWeek(w: number) {
     setWeek(w);
@@ -134,9 +105,6 @@ export function GameBoard({
 
       <div className="grid gap-3 md:grid-cols-2">
         {weekGames.map((g) => {
-          const revealed = picksRevealed(g);
-          const homePickers = pickersByTeam.get(g.homeTeam) ?? [];
-          const awayPickers = pickersByTeam.get(g.awayTeam) ?? [];
           const elim = [
             ...(elimByTeam.get(g.homeTeam) ?? []),
             ...(elimByTeam.get(g.awayTeam) ?? []),
@@ -218,30 +186,13 @@ export function GameBoard({
                 {row(g.homeTeam, g.homeScore, homeWon)}
               </div>
 
+              {/* The per-team pick count came off on 2026-09-11: how many
+                  entries took a team is a question about the POOL, and the
+                  Teams page answers it week by week for all 32. Two places
+                  counting the same thing is two numbers that can disagree.
+                  What stays is what only this card can say - what the result
+                  COST, which is the elimination list below. */}
               <div className="mt-2 border-t border-border/60 pt-2 text-xs text-muted-foreground">
-                {revealed ? (
-                  awayPickers.length + homePickers.length > 0 ? (
-                    <p>
-                      {awayPickers.length > 0
-                        ? `${awayPickers.length} picked ${g.awayTeam}`
-                        : null}
-                      {awayPickers.length > 0 && homePickers.length > 0
-                        ? " · "
-                        : null}
-                      {homePickers.length > 0
-                        ? `${homePickers.length} picked ${g.homeTeam}`
-                        : null}
-                    </p>
-                  ) : (
-                    <p>No entries on this game.</p>
-                  )
-                ) : (
-                  <p>
-                    <span aria-hidden>🔒</span> Picks unlock when this game
-                    kicks off.
-                  </p>
-                )}
-
                 {elim.length > 0 ? (
                   <button
                     type="button"

@@ -180,6 +180,7 @@ async function main(): Promise<void> {
     bcc: list.addresses,
     subject: msg.subject,
     body: msg.body,
+    html: msg.html,
   });
   console.log(`draft ${draftId} created, BCC ${k} addresses. Not sent: open Gmail, check it, send it yourself.`);
   await recordAudit(client, {

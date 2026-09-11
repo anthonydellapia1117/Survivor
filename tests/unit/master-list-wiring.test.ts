@@ -1,7 +1,11 @@
-// Standing rules for the Master List, read from the source: the public
-// surfaces print her four figures and never a rate; the public view
-// exposes exactly five columns of lynne_roster; the tab is the Master List
-// everywhere and the old name is gone.
+// Standing rules for the master pool's data, read from the source: the public
+// surfaces print her four figures and never a rate; the public view exposes
+// exactly five columns of lynne_roster; and every old address for the list
+// reaches the table.
+//
+// The PAGE is gone - on 2026-09-11 the Master List and the Grid became one
+// table at /grid - so what these rules are checked against moved with it. The
+// rules themselves did not move.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -24,7 +28,7 @@ describe("Master List wiring", () => {
     const src = walk(path.join(ROOT, "src"));
     const mention = src.filter((f) => /\bperEntry\b|Implied .* per/.test(fs.readFileSync(f, "utf8")));
     expect(mention.map((f) => path.relative(ROOT, f))).toEqual(["src/components/admin/pool-pot-form.tsx"]);
-    for (const f of ["src/lib/master-list.ts", "src/app/master-list/page.tsx", "src/components/master-list/master-list-table.tsx", "src/app/page.tsx"]) {
+    for (const f of ["src/lib/master-list.ts", "src/app/grid/page.tsx", "src/components/grid/grid-view.tsx", "src/app/page.tsx"]) {
       expect(read(f), f).not.toMatch(/22\.5|\/\s*(?:[\w$.]+\.)?pool(Paid|Entry)Count\b|poolPotCents\s*\/|per (paying )?entry/i);
     }
   });
@@ -50,20 +54,27 @@ describe("Master List wiring", () => {
     expect(read("src/components/teams/teams-source.tsx")).toMatch(/useState<Source>\(defaultTeamsSource\(poolLoaded, poolHasPicks\)\)/);
   });
 
-  it("the tab reads Master List and the old name is gone from the app", () => {
-    expect(read("src/lib/site-copy.ts")).toMatch(/tab: "Master List"/);
-    expect(read("src/components/site-header.tsx")).toContain('href: "/master-list"');
-    expect(read("next.config.ts")).toMatch(/source: "\/official", destination: "\/master-list"/);
+  it("every old address for the list reaches the one table, and the old name is still gone", () => {
+    // The tab went with the merge; the addresses did not. All three land on
+    // /grid, and nothing in the app carries the runner's own wording.
+    const cfg = read("next.config.ts");
+    for (const src of ["/master-list", "/lynne", "/official"]) {
+      expect(cfg, src).toMatch(new RegExp(`source: "${src}", destination: "/grid"`));
+    }
+    expect(read("src/components/site-header.tsx")).not.toContain('href: "/master-list"');
     for (const f of walk(path.join(ROOT, "src"))) {
       expect(fs.readFileSync(f, "utf8"), path.relative(ROOT, f)).not.toMatch(/Official Results|Official Board|"\/official"/);
     }
   });
 
   it("carries no em dash, en dash or emoji", () => {
+    // grid-view.tsx is deliberately NOT on this list: the padlock on a locked
+    // cell is the Grid's own, it predates the merge, and the legend explains
+    // it. The rule here is about her data's copy, not about that one glyph.
     for (const f of [
       "src/lib/master-list.ts",
-      "src/app/master-list/page.tsx",
-      "src/components/master-list/master-list-table.tsx",
+      "src/app/grid/page.tsx",
+      "src/lib/grid-sort.ts",
       "src/components/master-list/weekly-result-files.tsx",
       "src/components/teams/teams-source.tsx",
       "src/components/admin/pool-pot-form.tsx",

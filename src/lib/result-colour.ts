@@ -71,6 +71,21 @@ export const TONE_FILL_CLASS: Record<ResultTone, string> = {
 };
 
 /** The legend's swatch per tone. Same colours, as a solid chip. */
+/**
+ * The tone as TEXT, for a surface that fills a cell but writes its own
+ * content into it - the Teams table's counts. The fills are 1.1:1 apart
+ * against the page, so on their own they are not a difference a phone in
+ * daylight can show; the Grid gets away with it because TONE_CELL_CLASS
+ * colours the team code too. This is that half, for the surfaces that need it
+ * without the border and the background.
+ */
+export const TONE_TEXT_CLASS: Record<ResultTone, string> = {
+  won: "text-win",
+  lost: "text-tie",
+  bye: "text-bye",
+  none: "",
+};
+
 export const TONE_SWATCH_CLASS: Record<ResultTone, string> = {
   won: "bg-win/70",
   lost: "bg-tie/70",

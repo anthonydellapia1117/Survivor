@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { lockPassed } from "../../scripts/distribute/lib/lock";
-import { distributeMessage, GRID_URL } from "../../scripts/distribute/lib/message";
+import { distributeMessage } from "../../scripts/distribute/lib/message";
+import { SITE_LINK_HREF, SITE_LINK_TEXT, siteAnchor } from "../../scripts/lib/site-link";
 import { countStandings, standingsSentence, type StandingInput } from "../../scripts/distribute/lib/standings";
 import { SITE_URL } from "../../scripts/lib/constants";
 import type { WeekBounds } from "../../scripts/picks/lib/deadline";
@@ -97,14 +98,18 @@ describe("distributeMessage", () => {
     expect(msg.subject).toBe("Survivor - Week 3 picks posted");
   });
 
-  it("links the grid on the only public URL", () => {
-    expect(GRID_URL).toBe("https://ad-26-survivor.vercel.app/grid");
-    expect(GRID_URL).toBe(`${SITE_URL}/grid`);
-    expect(msg.body).toContain(GRID_URL);
+  it("carries the one link, as an anchor and never as an address", () => {
+    // Anthony, 2026-09-11: one link, anchor text AD-26-Survivor, the site's
+    // root. It was a bare https://.../grid - a second destination AND an
+    // address in front of the reader; both are out.
+    expect(msg.body).toContain(SITE_LINK_TEXT);
+    expect(msg.body).not.toMatch(/https?:\/\//);
+    expect(msg.html).toContain(siteAnchor());
+    expect([...new Set(msg.html.match(/https?:\/\/[^\s"'<>]+/g) ?? [])]).toEqual([SITE_LINK_HREF]);
   });
 
   it("is the link, the standings sentence and the sign-off, nothing else", () => {
-    expect(msg.body).toBe(`Week 3 picks are locked. Each one posts on the grid as its game kicks off: ${GRID_URL}\n\n${EXPECTED}\n\nAD\n`);
+    expect(msg.body).toBe(`Week 3 picks are locked. Each one posts as its game kicks off: ${SITE_LINK_TEXT}\n\n${EXPECTED}\n\nAD\n`);
     expect(msg.body.trimEnd().endsWith("\nAD")).toBe(true);
   });
 
@@ -120,7 +125,9 @@ describe("distributeMessage", () => {
     // Everything numeric in the body, once the link and the week are taken
     // out, is the three buckets and the survivor count. The "1" is the fixed
     // "1 Loss/Bye used" label, not a count.
-    const numbers = msg.body.replace(GRID_URL, "").replace("Week 3", "").match(/\d+/g) ?? [];
+    // The anchor text carries a 26, so it comes out with the week before the
+    // digits are counted - the same reason the link came out before.
+    const numbers = msg.body.replace(SITE_LINK_TEXT, "").replace("Week 3", "").match(/\d+/g) ?? [];
     expect(numbers).toEqual(["3", "1", "2", "2", "5"]);
   });
 });
