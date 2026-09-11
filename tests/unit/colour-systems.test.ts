@@ -88,13 +88,15 @@ describe("the window vocabulary and the result vocabulary", () => {
   });
 
   it("keeps the RESULT classes to the three result surfaces, with no window colour in any of them", () => {
-    // The Grid, the Master List and the Teams table all colour results now
-    // (Anthony, 2026-09-10). None of them shows a broadcast window, so none
-    // may name one - amber on a Thursday cell and amber on a losing pick
-    // would be the same collision one page further along.
+    // The one table and the Teams table both colour results (Anthony,
+    // 2026-09-10; merged into one page 2026-09-11). Neither shows a broadcast
+    // window, so neither may name one - amber on a Thursday cell and amber on
+    // a losing pick would be the same collision one page further along.
+    // Two surfaces since 2026-09-11, not three: the Grid and the Master List
+    // became one table, so the third file is the one that used to hold half
+    // of it.
     for (const file of [
       "src/components/grid/grid-view.tsx",
-      "src/components/master-list/master-list-table.tsx",
       "src/components/teams/teams-client.tsx",
     ]) {
       const src = read(file);

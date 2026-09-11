@@ -113,9 +113,11 @@ describe("the row", () => {
 
 describe("the surfaces", () => {
   it("colour a result only through this module, never by writing the class inline", () => {
+    // Two surfaces since 2026-09-11, not three: the Grid and the Master List
+    // became one table, so the third file is the one that used to hold half
+    // of it.
     for (const file of [
       "src/components/grid/grid-view.tsx",
-      "src/components/master-list/master-list-table.tsx",
       "src/components/teams/teams-client.tsx",
     ]) {
       const src = read(file).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");

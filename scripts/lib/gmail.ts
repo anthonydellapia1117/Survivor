@@ -346,10 +346,26 @@ export interface OutboundMessage {
   bcc?: string[];
   subject: string;
   body: string;
+  /**
+   * An HTML alternative for the same words. Given one, the message goes out
+   * multipart/alternative: `body` stays the plain part and this is what a
+   * reader actually sees, which is how a link can be an anchor rather than a
+   * bare address (scripts/lib/site-link.ts). Omitted, the message is plain
+   * text exactly as before - every existing caller is byte-identical.
+   */
+  html?: string;
   /** Reply headers, when the message continues a thread. */
   inReplyTo?: string;
   references?: string;
 }
+
+/**
+ * Fixed rather than random: Math.random in an encoder makes the same message
+ * encode differently every call, which a test cannot compare and a person
+ * cannot diff. It only has to not appear in the body, and no body of this
+ * project's carries it.
+ */
+const MIME_BOUNDARY = "survivor-alt-boundary-2b7f4c";
 
 /**
  * RFC 822 text, base64url, the shape drafts.create and messages.send take.
@@ -363,16 +379,34 @@ export interface OutboundMessage {
  */
 export function encodeRaw(m: OutboundMessage): string {
   assertNoRetiredAddresses([...(m.to ?? []), ...(m.bcc ?? [])], `message "${m.subject}"`);
-  const lines = [
+  const headers = [
     m.to && m.to.length ? `To: ${m.to.join(", ")}` : "",
     m.bcc && m.bcc.length ? `Bcc: ${m.bcc.join(", ")}` : "",
     `Subject: ${m.subject}`,
     m.inReplyTo ? `In-Reply-To: ${m.inReplyTo}` : "",
     m.references ? `References: ${m.references}` : "",
-    "Content-Type: text/plain; charset=UTF-8",
     "MIME-Version: 1.0",
   ].filter((l) => l !== "");
-  return Buffer.from([...lines, "", m.body].join("\r\n"), "utf8")
+  // multipart/alternative, plain part FIRST: the parts are ordered worst to
+  // best and a reader takes the last one it understands, so HTML last is what
+  // makes the anchor the thing people see.
+  const body =
+    m.html === undefined
+      ? ["Content-Type: text/plain; charset=UTF-8", "", m.body]
+      : [
+          `Content-Type: multipart/alternative; boundary="${MIME_BOUNDARY}"`,
+          "",
+          `--${MIME_BOUNDARY}`,
+          "Content-Type: text/plain; charset=UTF-8",
+          "",
+          m.body,
+          `--${MIME_BOUNDARY}`,
+          "Content-Type: text/html; charset=UTF-8",
+          "",
+          m.html,
+          `--${MIME_BOUNDARY}--`,
+        ];
+  return Buffer.from([...headers, ...body].join("\r\n"), "utf8")
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")

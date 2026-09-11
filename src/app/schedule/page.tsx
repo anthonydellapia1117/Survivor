@@ -64,16 +64,7 @@ export default async function SchedulePage(props: {
       <WindowLegend />
 
       {season ? (
-        <ScheduleGrid
-          games={games}
-          entries={entries.map((e) => ({
-            id: e.id,
-            entryName: e.entryName,
-            teamsUsed: e.teamsUsed,
-            status: e.status,
-          }))}
-          currentWeek={playWeek}
-        />
+        <ScheduleGrid games={games} weeks={weeks} currentWeek={playWeek} />
       ) : (
         <GameBoard
           games={games}

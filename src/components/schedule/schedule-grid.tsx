@@ -1,31 +1,23 @@
 "use client";
 
 // Team-by-week schedule grid, survivorgrid-style: 32 team rows, 18 week
-// columns, opponent in each cell. An entry selector strikes out the teams
-// that entry has burned; "All entries" shows how many entries have used
-// each team instead.
+// columns, opponent in each cell.
+//
+// THE SCHEDULE, AND ONLY THE SCHEDULE (Anthony, 2026-09-11). The entry
+// selector and the per-team usage count came off together: how many entries
+// have used a team is a question about the POOL, the Teams page answers it
+// properly week by week, and answering it a second way here meant two numbers
+// that could disagree. What is left is where each team plays, when, and which
+// deadline that day carries.
 
-import { useMemo, useState } from "react";
-import type { GameRow } from "@/lib/data/types";
+import { useMemo } from "react";
+import type { GameRow, WeekRow } from "@/lib/data/types";
 import { NFL_TEAMS, TEAM_NAME } from "@/lib/standing";
 import { TEAM_COLOR } from "@/lib/team-colors";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { deadlineTier, TIER_LABEL } from "@/lib/deadlines";
+import { deadlineTier, pickDeadlineIso, TIER_LABEL } from "@/lib/deadlines";
+import { formatDeadline } from "@/lib/format";
 import { gameWindow, WINDOW_CELL_CLASS, WINDOW_TEXT_CLASS } from "@/lib/game-window";
-
-interface SlimEntry {
-  id: string;
-  entryName: string;
-  teamsUsed: string[];
-  status: string;
-}
 
 interface CellGame {
   opp: string;
@@ -62,14 +54,15 @@ function kickoffLabel(iso: string): string {
 
 export function ScheduleGrid({
   games,
-  entries,
+  weeks,
   currentWeek,
 }: {
   games: GameRow[];
-  entries: SlimEntry[];
+  /** The stored boundaries, so a tooltip states the real time and never a literal hour. */
+  weeks: WeekRow[];
   currentWeek: number | null;
 }) {
-  const [entryId, setEntryId] = useState<string>("all");
+  const boundsByWeek = useMemo(() => new Map(weeks.map((w) => [w.week, w])), [weeks]);
 
   const byTeam = useMemo(() => {
     const m = new Map<string, Map<number, CellGame>>();
@@ -91,57 +84,15 @@ export function ScheduleGrid({
     return m;
   }, [games]);
 
-  const heat = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const e of entries) {
-      for (const t of e.teamsUsed) m.set(t, (m.get(t) ?? 0) + 1);
-    }
-    return m;
-  }, [entries]);
-
-  const selected = entries.find((e) => e.id === entryId) ?? null;
-  const used = useMemo(
-    () => new Set(selected?.teamsUsed ?? []),
-    [selected],
-  );
-
-  const sorted = useMemo(
-    () =>
-      [...entries].sort((a, b) => a.entryName.localeCompare(b.entryName)),
-    [entries],
-  );
+  /** "Friday September 11, 2:00 PM ET" for the tier that game day closes on. */
+  function deadlineLabel(week: number, day: GameRow["dayOfWeek"]): string {
+    const b = boundsByWeek.get(week);
+    if (!b) return `${TIER_LABEL[deadlineTier(day)]} - deadline not stored`;
+    return formatDeadline(pickDeadlineIso(day, b.earlyDeadlineAt, b.lateDeadlineAt));
+  }
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={entryId} onValueChange={setEntryId}>
-          <SelectTrigger size="sm" className="w-64">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All entries - teams-used heat</SelectItem>
-            {sorted.map((e) => (
-              <SelectItem key={e.id} value={e.id}>
-                {e.entryName}
-                {e.status === "eliminated" ? " (eliminated)" : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          {selected ? (
-            <>
-              <span className="font-medium text-foreground">
-                {32 - used.size}
-              </span>{" "}
-              teams left for {selected.entryName} - struck rows are burned.
-            </>
-          ) : (
-            "The count beside each team is how many entries have used it."
-          )}
-        </p>
-      </div>
-
       <div className="relative max-h-[75dvh] overflow-auto rounded-lg border border-border">
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead>
@@ -167,10 +118,8 @@ export function ScheduleGrid({
           <tbody>
             {NFL_TEAMS.map((t) => {
               const row = byTeam.get(t.abbr)!;
-              const burned = selected !== null && used.has(t.abbr);
-              const count = heat.get(t.abbr) ?? 0;
               return (
-                <tr key={t.abbr} className={cn(burned && "opacity-40")}>
+                <tr key={t.abbr}>
                   <th
                     scope="row"
                     className="sticky left-0 z-10 border-b border-r border-border/60 bg-surface px-3 text-left font-medium"
@@ -182,33 +131,7 @@ export function ScheduleGrid({
                         className="h-5 w-1 shrink-0 rounded-full"
                         style={{ background: TEAM_COLOR[t.abbr] }}
                       />
-                      <span className={cn(burned && "line-through")}>
-                        {t.abbr}
-                      </span>
-                      {selected === null && count > 0 ? (
-                        <span
-                          // How many entries have USED this team. That is
-                          // neither a broadcast window nor a result, and it
-                          // used to be drawn in bg-loss/text-loss and
-                          // bg-tie/text-tie - so on this one page red meant
-                          // "popular", amber meant both "popular" and "TNF",
-                          // and neither meant what those tokens mean
-                          // everywhere else. The count is the information;
-                          // weight carries the emphasis and no colour lies
-                          // (2026-09-11).
-                          className={cn(
-                            "ml-auto rounded bg-surface-2 px-1 text-[10px] tabular-nums",
-                            count >= 8
-                              ? "font-bold text-foreground"
-                              : count >= 4
-                                ? "font-semibold text-foreground/80"
-                                : "font-semibold text-muted-foreground",
-                          )}
-                          title={`${count} ${count === 1 ? "entry has" : "entries have"} used ${t.abbr}`}
-                        >
-                          {count}
-                        </span>
-                      ) : null}
+                      <span>{t.abbr}</span>
                     </span>
                   </th>
                   {WEEKS.map((w) => {
@@ -223,7 +146,6 @@ export function ScheduleGrid({
                       );
                     }
                     const tag = DAY_TAG[g.day] ?? g.day.slice(0, 2);
-                    const tier = deadlineTier(g.day);
                     // The cell's colour is its game window: TNF amber, SNF,
                     // MNF, Wed/Fri/Sat; a Sunday daytime game stays plain.
                     const win = gameWindow({ dayOfWeek: g.day, kickoffAt: g.kickoffAt });
@@ -234,9 +156,12 @@ export function ScheduleGrid({
                           "h-11 min-w-11 border-b border-border/40 px-1 text-center text-xs tabular-nums",
                           win !== null && WINDOW_CELL_CLASS[win],
                           w === currentWeek && win === null && "bg-primary/[0.07]",
-                          burned && "line-through",
                         )}
-                        title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} - ${kickoffLabel(g.kickoffAt)} ET · picks close ${TIER_LABEL[tier]} noon ET`}
+                        // The stored boundary, never a written-down hour: this
+                        // read "noon ET" for two days after every deadline of
+                        // all eighteen weeks moved to 2 PM (2026-09-09), and a
+                        // literal would go stale again the next time it moves.
+                        title={`${g.home ? "vs" : "@"} ${TEAM_NAME[g.opp]} - ${kickoffLabel(g.kickoffAt)} ET · picks close ${deadlineLabel(w, g.day)}`}
                       >
                         <span className={cn(!g.home && "text-muted-foreground")}>
                           {g.home ? "" : "@"}
@@ -265,7 +190,7 @@ export function ScheduleGrid({
         window - TNF, SNF, MNF, Wed/Fri/Sat; Sunday daytime stays plain. The
         deadline follows the day the team plays, in every week, Week 1
         included: We, Th and Fr close a day apart, Sa/Su/Mo share the Friday
-        cutoff. Hover a cell for kickoff time and which deadline applies.
+        cutoff. Tap a cell for kickoff time and the exact deadline.
       </p>
     </div>
   );

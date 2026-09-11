@@ -4,16 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { MASTER_POOL } from "@/lib/site-copy";
 
-// Six top-level tabs (Anthony, 2026-09-09). Records is a parent: its two
-// subpages, Roster and 2025, are chosen inside it.
+// Five top-level tabs. Six until 2026-09-11, when the Master List and the
+// Grid became one table and the second tab stopped naming a second page.
+// Records is a parent: its two subpages, Roster and 2025, are chosen inside it.
 const links = [
   { href: "/", label: "Dashboard" },
   { href: "/grid", label: "Grid" },
   { href: "/schedule", label: "Schedule" },
   { href: "/teams", label: "Teams" },
-  { href: "/master-list", label: MASTER_POOL.tab },
   { href: "/records/roster", label: "Records", prefix: "/records" },
 ];
 
@@ -84,7 +83,9 @@ export function SiteHeader() {
         </div>
         <Link
           href="/admin"
-          className="text-sm font-medium text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground"
+          // Every other header item is stretched to the bar by items-stretch;
+          // this one was a bare 42x20 tap target.
+          className="flex h-10 items-center px-1 text-sm font-medium text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground"
         >
           Admin
         </Link>

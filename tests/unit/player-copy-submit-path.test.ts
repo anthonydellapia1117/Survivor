@@ -14,8 +14,12 @@ import { describe, expect, it } from "vitest";
 import { buildPickRequests, CONTACT_PHONE } from "@/lib/emails/pick-request";
 import type { GameRow, WeekRow } from "@/lib/data/types";
 import { bccBody, recipientBody } from "../../scripts/chase/lib/message";
-import { NOT_THE_APP, reminderBody } from "../../scripts/remind/lib/message";
+import { NOT_THE_APP, reminderBody, reminderHtml } from "../../scripts/remind/lib/message";
+import { SITE_LINK_TEXT, siteAnchor } from "../../scripts/lib/site-link";
 import type { GameLite, WeekBounds } from "../../scripts/picks/lib/deadline";
+// One scanner, shared: see tests/helpers/source-literals.ts for why copy
+// guards read literals and never whole files.
+import { literals } from "../helpers/source-literals";
 
 const here = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(here(rel), "utf8");
@@ -23,10 +27,11 @@ const read = (rel: string) => readFileSync(here(rel), "utf8");
 // Every module that puts words in front of a player.
 const PICK_REQUEST = "../../src/lib/emails/pick-request.ts";
 const CHASE = "../../scripts/chase/lib/message.ts";
-// Post-lock standings. This one MAY carry the site link: it points at /grid,
-// which shows picks as their games kick off. A results link is not a
-// submission instruction, so it is exempt from the link rule below and held
-// to the phrase rule like the rest.
+// Post-lock standings. This one MAY carry the site link - a results link is
+// not a submission instruction - so it is exempt from the link rule below and
+// held to the phrase rule like the rest. Since 2026-09-11 the link is the one
+// anchor, "AD-26-Survivor" on the site's root, and the plain part carries no
+// address at all (tests/unit/outbound-link-rule.test.ts).
 const DISTRIBUTE = "../../scripts/distribute/lib/message.ts";
 // The week reminder. It asks for picks and it MAY carry the site link, on one
 // line only: the one that says picks are not made there (CLAUDE.md, set by
@@ -41,47 +46,6 @@ function copyOf(file: string): string {
   if (file !== REMIND) return copy;
   expect(copy.split(NOT_THE_APP)).toHaveLength(2);
   return copy.replace(NOT_THE_APP, "");
-}
-
-// Walk the source once rather than pattern-matching quotes: an apostrophe in
-// a comment ("picks.source = 'text'", or any possessive) pairs with the next
-// real quote and drags comment prose into the result, which then matches the
-// very phrases these rules forbid. Comments are dropped first, then the
-// string literals are collected as the copy they are.
-function literals(src: string): string {
-  const out: string[] = [];
-  let i = 0;
-  while (i < src.length) {
-    if (src.startsWith("//", i)) {
-      const nl = src.indexOf("\n", i);
-      i = nl < 0 ? src.length : nl;
-      continue;
-    }
-    if (src.startsWith("/*", i)) {
-      const end = src.indexOf("*/", i + 2);
-      i = end < 0 ? src.length : end + 2;
-      continue;
-    }
-    const quote = src[i];
-    if (quote === '"' || quote === "'" || quote === "`") {
-      i += 1;
-      let text = "";
-      while (i < src.length && src[i] !== quote) {
-        if (src[i] === "\\") {
-          text += src[i + 1] ?? "";
-          i += 2;
-          continue;
-        }
-        text += src[i];
-        i += 1;
-      }
-      i += 1;
-      out.push(text);
-      continue;
-    }
-    i += 1;
-  }
-  return out.join("\n");
 }
 
 // The app's own host, however it is written.
@@ -123,6 +87,10 @@ const remindEarly = () =>
   reminderBody({ week: 1, kind: "early", deadlineIso: WEEK1.earlyDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-09T10:00:00Z"), { outstanding: 7 });
 const remindLate = () =>
   reminderBody({ week: 1, kind: "late", deadlineIso: WEEK1.lateDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-11T10:00:00Z"), { outstanding: 7 });
+const remindEarlyHtml = () =>
+  reminderHtml({ week: 1, kind: "early", deadlineIso: WEEK1.earlyDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-09T10:00:00Z"), { outstanding: 7 });
+const remindLateHtml = () =>
+  reminderHtml({ week: 1, kind: "late", deadlineIso: WEEK1.lateDeadlineAt }, REMIND_BOUNDS, REMIND_GAMES, new Date("2026-09-11T10:00:00Z"), { outstanding: 7 });
 const chaseInput = (entryNames: string[]) => ({
   week: 1,
   greetingName: "Tom",
@@ -193,7 +161,7 @@ function builtOfKind(kind: "owner" | "player" | "mixed") {
 
 // Every message a recipient can actually receive that ASKS for a pick, each
 // branch built on its own. The post-lock message is not one of them: by then
-// there is nothing to ask for, and it carries the /grid link by design.
+// there is nothing to ask for, and it carries the site link by design.
 function pickAsks(): { what: string; body: string }[] {
   const asks: { what: string; body: string }[] = [
     { what: "chase, one entry", body: recipientBody(chaseInput(["Solo"])) },
@@ -256,12 +224,25 @@ describe("player-facing copy", () => {
     // The second exemption, narrower than DISTRIBUTE's: the link may appear,
     // but only after the sentence that says picks are not made there. Checked
     // on the RENDERED bodies, every line, both boundaries.
-    for (const [what, body] of [["early", remindEarly()], ["late", remindLate()]] as const) {
+    //
+    // Since 2026-09-11 the plain part names the site rather than printing its
+    // address, and the HTML part makes that word the one anchor. Both parts
+    // are checked: holding only the plain one would let the HTML part grow a
+    // second link nobody scanned.
+    for (const [what, body, html] of [
+      ["early", remindEarly(), remindEarlyHtml()],
+      ["late", remindLate(), remindLateHtml()],
+    ] as const) {
       const linked = body.split("\n").filter((l) => APP_DOMAIN.test(l));
-      expect({ what, linked }).toEqual({ what, linked: [`${NOT_THE_APP} https://ad-26-survivor.vercel.app`] });
+      expect({ what, linked }).toEqual({ what, linked: [`${NOT_THE_APP} ${SITE_LINK_TEXT}`] });
       // And the denial itself is intact: nothing between "You do not make
       // picks in the app" and the link.
-      expect(body).toContain("You do not make picks in the app. It is there to look at: https://ad-26-survivor.vercel.app");
+      expect(body).toContain(`You do not make picks in the app. It is there to look at: ${SITE_LINK_TEXT}`);
+      // No address in front of a plain-text reader, and exactly one anchor in
+      // front of everyone else.
+      expect({ what, urls: body.match(/https?:\/\/[^\s]+/g) ?? [] }).toEqual({ what, urls: [] });
+      expect({ what, anchors: html.match(/<a\s/g)?.length ?? 0 }).toEqual({ what, anchors: 1 });
+      expect(html).toContain(siteAnchor());
     }
   });
 

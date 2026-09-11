@@ -211,7 +211,9 @@ export default async function DashboardPage() {
           without a loss, so the label follows her wording. */}
       {master.rows.length > 0 ? (
         <div>
-          <div className="grid grid-cols-3 gap-3">
+          {/* One column on a phone: at 380px three of these left 76px of
+          content for a four-digit number and a two-line label. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Card className="bg-surface">
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -278,41 +280,12 @@ export default async function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card className="bg-surface">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Entries
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl tabular-nums">{entries.length}</div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              in this group
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-surface">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Alive
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl tabular-nums">
-              {alive}
-              <span className="text-sm text-muted-foreground">
-                {" "}
-                of {entries.length}
-              </span>
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              active + at-risk entries
-            </p>
-          </CardContent>
-        </Card>
-
+      {/* Entries and Alive came off on 2026-09-11: "121" and "121 of 121" are
+          what Anthony manages, not what a viewer came to see, and they read
+          the same every week until somebody dies. What is left gets MORE
+          useful as the season runs - the countdown, this week's damage, and
+          the pool-wide rolling counts above. */}
+      <div className="grid grid-cols-2 gap-3">
         <Card className="bg-surface">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

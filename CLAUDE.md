@@ -310,7 +310,7 @@ that is public by design.
 ### What the colours mean
 
 Set by Anthony on 2026-09-10, once game results were being stored. **One
-scheme, on the Grid, the Master List and the Teams table alike:**
+scheme, on the one table at /grid and on the Teams table alike:**
 
 | State                | Reads as                                     |
 | -------------------- | -------------------------------------------- |
@@ -331,13 +331,21 @@ move. And **her cells obey the reveal gate before any of this**: `v_master_list`
 decides what is visible, the colour only decides what a visible cell looks
 like, so no fill can imply a pick the reader cannot see.
 
-`src/lib/result-colour.ts` is the only place a result class is written.
+`src/lib/result-colour.ts` is the only place a result class is written. Its
+`TONE_TEXT_CLASS` is for a surface that fills a cell and writes its own
+content into it - the Teams counts. The fills sit about 1.1:1 apart on this
+palette, so the fill ALONE is not a difference a phone in daylight can show;
+the Grid gets away with it because its cell class colours the team code too.
 **This is the RESULT vocabulary and it must never meet the WINDOW vocabulary**
 (`src/lib/game-window.ts`, the broadcast windows on the season grid) on one
 screen - `tests/unit/colour-systems.test.ts` holds them apart, and
-`tests/unit/result-colour.test.ts` holds the scheme itself. The Master List's
-variance chip is deliberately outside both, neutral and high contrast: it was
-amber, which is now what a losing pick is filled with.
+`tests/unit/result-colour.test.ts` holds the scheme itself. The variance chip
+is deliberately outside both, neutral and high contrast: it was amber, which
+is now what a losing pick is filled with.
+
+**The Teams page has a totals row**, added 2026-09-11: each week's column
+summed across the pool, over finished games like the cells above it, so a week
+still in play sums to nothing rather than to a number that will move.
 
 **The Teams page counts, it no longer filters.** The per-entry picker and the
 teams-in-hand grid were removed with the same change: the question that page
@@ -347,21 +355,39 @@ finished games only** - a week still in play carries no number - green where
 that team won and yellow where it lost. **Never red on that page:** a team
 losing is a fact about a game, not an elimination.
 
-### The Master List is the public default
+### One table, at /grid, and it opens on everyone
 
-Set by Anthony on 2026-09-08. **His group is interested in every entry in
-her pool, not in his 121.** The 121 are what he manages: picked, complete,
-sent to her, updated. What the group wants when he sends the link is the
-whole pool, so the public site defaults to it.
+Set by Anthony on 2026-09-08 and **merged into one page on 2026-09-11.**
+**His group is interested in every entry in her pool, not in his 121.** The
+121 are what he manages: picked, complete, sent to her, updated. What the
+group wants when he sends the link is the whole pool, so the public site
+defaults to it.
 
-- **`/master-list`** (the tab reads "Master List") shows her newest sheet
-  from `lynne_roster` through the public view `v_master_list`: every NO.
-  and NAMES verbatim, her week cells as she publishes them, our rows
-  marked, and where we hold a revealed pick for one of ours it sits beside
-  her cell - a pick she has not published reads "ours XXX", a pick that
-  differs from hers is highlighted and reported, never changed. The weekly
-  result files (`lynne_imports`) sit below it. `/official` and `/lynne`
-  redirect there.
+**The Grid and the Master List rendered the same rows with different chrome,
+so they are one table now.** It keeps the best half of each: her NO. and her
+NAMES as the first two columns, and the week cells drawn the way the Grid drew
+them - a team chip with its result colour. **Every header sorts on click** -
+NO., Name, and each week - and NO. ascending is what the page opens on. The
+week columns are sized to their content so eighteen of them stay readable;
+**the Name column is the only one that stretches**, which is what keeps them
+tight. The Comfortable toggle is gone: it underlined a cell and did nothing on
+a phone.
+
+Two consequences of drawing her cells the Grid's way, both deliberate:
+**a week cell shows the mapped team code, not her word** - her word is still
+what is STORED and still what the view's reveal gate matches on - and **a cell
+of hers that is not a team name** (OUT, a note) **has no chip**; her OUT still
+eliminates the row, which reads as the red struck row and its OUT badge.
+
+- **`/grid`** shows her newest sheet from `lynne_roster` through the public
+  view `v_master_list`: every NO. and NAMES verbatim, her week cells as she
+  publishes them, our rows marked, and where we hold a revealed pick for one
+  of ours it sits beside her cell - a pick she has not published reads
+  "ours XXX", a pick that differs from hers is highlighted and reported,
+  never changed. The weekly result files (`lynne_imports`) sit below it.
+  **`/master-list`, `/official` and `/lynne` all redirect there**, one hop
+  each: the address is in emails, in his messages and in people's history,
+  and a 404 would strand every one of them. There is no Master List tab.
 - **Public stats default to the whole pool.** The dashboard's pick
   distribution and the Teams table read her sheet's week cells for every
   entry when she has published them, with "Our group" as the other setting;
@@ -389,8 +415,8 @@ whole pool, so the public site defaults to it.
   the two copies together.
 - **Her own row is on the list.** NO. 1 of her sheet is her own entry,
   named as she named it. It is her data as published and the app never
-  rewrites her rows, so that name appears on `/master-list` and in the
-  Teams picker; it is the one place the runner's name reaches a public
+  rewrites her rows, so that name appears on the table at `/grid` and in
+  the Teams picker; it is the one place the runner's name reaches a public
   route, confirmed by Anthony on 2026-09-08 (the "never her name" rule was
   about app copy naming the commissioner, not her own roster row). Copy,
   file names and Gmail ids still never do. Reversing this means excluding
@@ -711,7 +737,7 @@ number cell. Her 1,318 already counts
 it, so our copy carries 1,319 rows until her next sheet, which the loader
 diffs. A one-line note pointing at 1311 and the duplicate Ian Lubin rows
 was drafted in her "Sheet" thread on 2026-09-09; a draft is never a send,
-and it is Anthony's to send. **The Master List is live** at `/master-list` (migration
+and it is Anthony's to send. **The Master List is live** (migration
 `20260908224500`, 67 migrations) and her four figures are set as she
 published them on 2026-09-08 (audit 628): Total in Pool 1,318, Free 46,
 Total 1,272, Total Pay Out $28,620; 1,318 is her 1,320 NO.s less the two
@@ -902,15 +928,31 @@ flood.
   Anthony. That is what `pick-request.ts` already says ("Reply to this address;
   picks are not accepted anywhere else.") and what `scripts/chase` says; the
   rule is written down so a future message cannot quietly add a third.
-  The one link a player may be sent is the **`/grid` link after the lock**,
+  The one link a player may be sent is the **site link after the lock**,
   which shows picks as their games kick off - a results link, never a
   submission instruction. `tests/unit/player-copy-submit-path.test.ts` holds
   every player-facing template to this.
+
+  **THE ONE LINK, set by Anthony on 2026-09-11.** Any outbound message that
+  carries a link carries exactly one: **anchor text `AD-26-Survivor`, href
+  `https://ad-26-survivor.vercel.app/`.** Clickable, **no bare URL in front of
+  a reader, and no second destination** - not `/grid`, which is what the
+  post-lock message used to point at, and no admin path. `scripts/lib/site-link.ts`
+  is the only place either string is written, and
+  `tests/unit/outbound-link-rule.test.ts` fails on any other URL in any
+  template's copy or in any rendered body.
+
+  A message with a link goes out **multipart/alternative**: the HTML part
+  carries the anchor and is what every reader sees, and **the plain part names
+  the site and carries no address at all** - an address there would be the bare
+  URL the rule forbids. Gmail rewrites the href into a `google.com/url`
+  redirect on the way out; that is expected and is the only permitted
+  difference between what is written and what lands.
   **One exception, set by Anthony on 2026-09-09** when he wrote the Week 1
   reminder himself: the `week_reminder` template carries the site link on
   exactly one line, the one that denies it - "You do not make picks in the
-  app. It is there to look at: <url>". The same test holds it to that line
-  and nowhere else; no other template gets the link.
+  app. It is there to look at: AD-26-Survivor". The same test holds it to that
+  line and nowhere else; no other template that asks for a pick gets a link.
 - **Audit every write in the same transaction as the write.** The data row
   and its `audit_log` row commit together or neither does. This is why the
   admin mutations are transactional RPCs rather than plain updates.
@@ -1471,7 +1513,9 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Her master sheet, read-only         | `lynne_roster` table, `scripts/lynne/roster.ts` |
 | Her picks by email (Shape B)        | `src/lib/lynne/pick-email.ts`, `scripts/lynne/picks-email.ts` |
 | The daily reporters                 | `scripts/ops/reporters/`, `scripts/ops/daily.ts` |
-| The Master List, public             | `src/app/master-list/`, `src/lib/master-list.ts`, `v_master_list` |
+| The one table, public               | `src/app/grid/`, `src/components/grid/grid-view.tsx`, `src/lib/master-list.ts`, `v_master_list` |
+| How the one table sorts             | `src/lib/grid-sort.ts`                       |
+| The one outbound link               | `scripts/lib/site-link.ts`                   |
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
 | The sweep's ceiling and filter      | `scripts/picks/lib/resolve.ts`, `scripts/picks/lib/subject-sweep.ts` |
 | His dictated picks by self-email    | `scripts/picks/lib/self-email.ts`, `scripts/picks/self.ts` |

@@ -9,10 +9,15 @@
 // only on the line that says picks are not made there (CLAUDE.md, set by
 // Anthony on 2026-09-09). tests/unit/player-copy-submit-path.test.ts holds it
 // to that.
+//
+// The link is an ANCHOR reading "AD-26-Survivor", never a bare address
+// (Anthony, 2026-09-11): reminderBody writes the sentence, reminderHtml is the
+// same sentence with that one word made clickable, and the two go out as the
+// two parts of one message.
 
 import type { GameDay } from "@/lib/data/types";
 import { CONTACT_PHONE } from "@/lib/emails/pick-request";
-import { SITE_URL } from "../../lib/constants";
+import { htmlBodyOf, SITE_LINK_TEXT } from "../../lib/site-link";
 import { fullTeamName, joinOr, openTiers, type Tier } from "../../chase/lib/message";
 import type { GameLite, WeekBounds } from "../../picks/lib/deadline";
 import { etDateKey, type Boundary, type SlotName } from "./due";
@@ -147,8 +152,26 @@ export function reminderBody(b: ReminderTarget, bounds: WeekBounds, games: GameL
     "",
     "More than one entry means one team for each.",
     "",
-    `${NOT_THE_APP} ${SITE_URL}`,
+    // The site by NAME, not by address. The HTML part turns exactly this
+    // word into the one anchor (scripts/lib/site-link.ts); the plain part
+    // carries no URL at all, which is the rule read literally.
+    `${NOT_THE_APP} ${SITE_LINK_TEXT}`,
     "",
     SIGNOFF,
   ].join("\n");
+}
+
+/**
+ * The HTML part of the same reminder. The words come from reminderBody and
+ * are not written twice - the only difference is that the site's name becomes
+ * the one anchor.
+ */
+export function reminderHtml(
+  b: ReminderTarget,
+  bounds: WeekBounds,
+  games: GameLite[],
+  now: Date,
+  facts: ReminderFacts,
+): string {
+  return htmlBodyOf(reminderBody(b, bounds, games, now, facts));
 }

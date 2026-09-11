@@ -291,6 +291,8 @@ export interface WeekReminderRequest {
   bcc: string[];
   subject: string;
   body: string;
+  /** The HTML part, so the site's name goes out as an anchor rather than an address. */
+  html?: string;
   week: number;
   /** Which stored deadline the message names. Recorded, never the key. */
   boundary: "early" | "late";
@@ -367,7 +369,7 @@ export async function sendWeekReminder(
     note: `week_reminder claim for ${key}; a sent row follows on success`,
   });
 
-  const m: OutboundMessage = { to: [req.to], bcc: recipients, subject: req.subject, body: req.body };
+  const m: OutboundMessage = { to: [req.to], bcc: recipients, subject: req.subject, body: req.body, html: req.html };
   const res = await gmail.users.messages.send({ userId: "me", requestBody: { raw: encodeRaw(m) } });
   const messageId = res.data.id ?? "";
   let auditId: number;

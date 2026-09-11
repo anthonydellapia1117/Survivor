@@ -82,6 +82,52 @@ export function herTeam(cell: string | undefined): string | null {
   return cell === undefined ? null : fromLynneTeamName(cell);
 }
 
+/**
+ * The id a row of her sheet carries in the grid: her own entry id where the
+ * NO. is one of ours - so the row links to its real page and lines up with the
+ * pick we hold for it - and a synthetic one otherwise. The ONE place that
+ * string is built; two copies of it drift and the overlay stops matching.
+ */
+export function poolEntryId(r: Pick<MasterRow, "no" | "entryId">): string {
+  return r.entryId ?? `pool-${r.no}`;
+}
+
+export interface PoolIdentity {
+  /** Her NO. */
+  no: number;
+  /** Her NAMES cell, verbatim. */
+  names: string;
+}
+
+/**
+ * Her NO. and her NAMES for every row, by the id the grid knows the row as.
+ * The merged table shows them as two columns rather than one glued string, and
+ * our group's rows read their NO. from here too - `v_entry_public` does not
+ * carry a Lynne number and this needs no second query to get one.
+ */
+export function poolRowIdentity(list: Pick<MasterList, "rows">): Map<string, PoolIdentity> {
+  return new Map(list.rows.map((r) => [poolEntryId(r), { no: r.no, names: r.names }]));
+}
+
+/**
+ * Her published pick for a week beside the one this group holds, both already
+ * app team codes. `matchPick` does this from her raw text on a sheet-shaped
+ * row; this does it on the grid's cells, where her text has already been
+ * mapped. Same five outcomes and the same standing: a variance is REPORTED,
+ * never resolved (CLAUDE.md, Who is the authority on what).
+ *
+ * A locked cell counts as absent on both sides, so nothing here can show a
+ * pick the reveal gate is still holding back.
+ */
+export function matchTeams(hers: string | undefined, ours: string | undefined): PickMatch {
+  const h = hers === LOCKED_TEAM ? undefined : hers;
+  const o = ours === LOCKED_TEAM ? undefined : ours;
+  if (h === undefined && o === undefined) return { kind: "none" };
+  if (h === undefined) return { kind: "ours", ours: o! };
+  if (o === undefined) return { kind: "hers" };
+  return h === o ? { kind: "match", team: h } : { kind: "variance", hers: h, ours: o };
+}
+
 export type PickMatch =
   | { kind: "none" }
   /** She has the pick and we have no revealed pick for it. */
@@ -239,7 +285,7 @@ export function poolAsEntries(
     // Her own entry id where the row is one of ours, so the Grid can link the
     // row to its real page; a synthetic id otherwise, which the Grid renders
     // without a link because no such page exists.
-    const id = r.entryId ?? `pool-${r.no}`;
+    const id = poolEntryId(r);
     for (const col of columns) {
       const cell = herCell(r, col);
       const team = herTeam(cell);
