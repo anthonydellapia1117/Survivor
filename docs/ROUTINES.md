@@ -468,7 +468,7 @@ one line to ntfy when `NTFY_TOPIC` is set, and prints it otherwise.
 
 Name: **Survivor Ops Tick**
 Cron (America/New_York): `43 3-23 * * *` (every hour at :43, 3 AM to 11 PM ET)
-Cron stored (UTC): `43 7-23,0-3 * * *`
+Cron stored (UTC): `0,19,38,57 * * * *`
 Trigger ID: `trig_01W9BrBAoWKBQm9AjJ9FVVKK` (created 2026-09-09 as the Week
 Reminder, renamed and repointed the same day. **It is ENABLED**, verified
 2026-09-10 against the live trigger list; an earlier draft of this file said
@@ -504,7 +504,7 @@ this table is a copy for reading):
 
 | Job           | Cron (UTC)            | Runs                                  | Sends |
 | ------------- | --------------------- | ------------------------------------- | ----- |
-| sweep         | `43 * * * *`          | `npm run picks -- --yes`              | no    |
+| sweep         | `43 * * * 0-4` ET, `43 0-7 * * 5` ET, `0,19,38,57 8-23 * * 5` ET, `0,19,38,57 0-1 * * 6` ET, `43 2-23 * * 6` ET | `npm run picks -- --yes`              | no    |
 | pick-reminder | `0 12 * * 3,4,5`      | `npm run remind -- --send --yes`      | yes   |
 | chase         | `5 13 * * 2-5`        | `npm run chase -- --send --yes`       | yes   |
 | lynne-import  | `5 21 * * 2,4`        | `npm run lynne:roster -- --file <her newest Football xlsx, fetched> --message-id <id> --yes` | no |
