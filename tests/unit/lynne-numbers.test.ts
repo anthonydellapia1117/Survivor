@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSubmissionCsv, buildSubmitRows } from "@/lib/lynne/submit";
+import { NO_PICK, buildSubmissionCsv, buildSubmitRows } from "@/lib/lynne/submit";
 import { matchNumberPairs, parseNumberPairs } from "@/lib/lynne/numbers";
 
 describe("buildSubmissionCsv", () => {
@@ -29,12 +29,15 @@ describe("buildSubmissionCsv", () => {
 });
 
 describe("buildSubmitRows preconditions", () => {
-  it("splits alive entries into ready / missing pick / missing number", () => {
+  it("emits a row for every entry with a number, and still reports the gaps", () => {
+    // "No Pick" now gets a ROW reading NO PICK rather than being dropped.
+    // Only a missing LYNNE NUMBER can keep an entry off the list, because
+    // there is no number to file it under in her sheet.
     const res = buildSubmitRows(
       [
-        { id: "a", entryName: "Has Both" },
-        { id: "b", entryName: "No Pick" },
-        { id: "c", entryName: "No Number" },
+        { id: "a", entryName: "Has Both", status: "active" },
+        { id: "b", entryName: "No Pick", status: "active" },
+        { id: "c", entryName: "No Number", status: "active" },
       ],
       new Map([
         ["a", "KC"],
@@ -42,18 +45,15 @@ describe("buildSubmitRows preconditions", () => {
       ]),
       new Map([
         ["a", 977],
+        ["b", 978],
         ["c", null],
       ]),
     );
     expect(res.ready).toEqual([
-      {
-        lynneNumber: 977,
-        entryName: "Has Both",
-        team: "KC",
-        isAdminEntry: false,
-      },
+      { lynneNumber: 977, entryName: "Has Both", team: "KC", isAdminEntry: false },
+      { lynneNumber: 978, entryName: "No Pick", team: NO_PICK, isAdminEntry: false },
     ]);
-    expect(res.missingPick).toEqual(["No Pick"]);
+    expect(res.missingPick, "still reported, and now also a row").toEqual(["No Pick"]);
     expect(res.missingNumber).toEqual(["No Number"]);
     expect(res.aliveCount).toBe(3);
   });

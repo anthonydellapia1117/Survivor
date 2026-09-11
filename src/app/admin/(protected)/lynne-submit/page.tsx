@@ -33,8 +33,11 @@ export default async function LynneSubmitPage(props: {
     cells.filter((c) => c.week === week).map((c) => [c.entryId, c.team]),
   );
   const alive = entries.filter((e) => isAliveStatus(e.status));
+  // EVERY live entry, not just the alive ones: an eliminated entry is a row
+  // reading OUT, and a row that is missing entirely is what used to send
+  // Lynne a short list (src/lib/lynne/submit.ts).
   const { ready, missingNumber, missingPick, aliveCount } = buildSubmitRows(
-    alive,
+    entries,
     pickByEntry,
     numberById,
   );
