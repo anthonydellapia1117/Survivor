@@ -13,7 +13,8 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { normalizeSubject, subjectSearchTerms } from "../../scripts/lib/gmail";
+import type { gmail_v1 } from "googleapis";
+import { findThreadBySubject, normalizeSubject, subjectQuery, subjectSearchTerms } from "../../scripts/lib/gmail";
 import { ENTRY_LIST_SUBJECT } from "../../scripts/lib/constants";
 
 describe("the search terms are words, never a quoted phrase", () => {
@@ -55,12 +56,106 @@ describe("the search terms are words, never a quoted phrase", () => {
   });
 });
 
+describe("each word is quoted, because a bare one can be an operator", () => {
+  it("quotes every term, so a subject carrying OR stays an AND", () => {
+    // subject:(a OR b) is an OR. The prefilter relies on AND, and a wider set
+    // against a page cap is how the real thread falls off the end.
+    expect(subjectQuery("Picks OR else")).toBe('subject:("Picks" "OR" "else")');
+    expect(subjectQuery(ENTRY_LIST_SUBJECT)).toBe(
+      'subject:("Survivor" "DellaPia" "2026" "Entry" "List")',
+    );
+  });
+
+  it("gives an empty query for a subject with no words", () => {
+    expect(subjectQuery("---")).toBe("");
+  });
+});
+
+// ------------------------------------------------------- the lookup, behaving
+//
+// Everything above reads a string. These drive findThreadBySubject with a fake
+// Gmail and watch what it asks for - which is the only way to see that the
+// empty-subject guard stops the call, and that a second page is fetched.
+
+interface FakeThread { id: string; subject: string }
+
+function fakeGmail(pages: FakeThread[][]) {
+  const listCalls: { q?: string; pageToken?: string }[] = [];
+  const all = pages.flat();
+  const gmail = {
+    users: {
+      threads: {
+        list: async (p: { q?: string; pageToken?: string }) => {
+          listCalls.push({ q: p.q, pageToken: p.pageToken });
+          const i = p.pageToken ? Number(p.pageToken) : 0;
+          return {
+            data: {
+              threads: (pages[i] ?? []).map((t) => ({ id: t.id })),
+              nextPageToken: i + 1 < pages.length ? String(i + 1) : undefined,
+            },
+          };
+        },
+        get: async (p: { id: string }) => {
+          const t = all.find((x) => x.id === p.id)!;
+          return {
+            data: {
+              messages: [
+                { id: `${t.id}-m1`, payload: { headers: [{ name: "Subject", value: t.subject }] } },
+              ],
+            },
+          };
+        },
+      },
+    },
+  } as unknown as gmail_v1.Gmail;
+  return { gmail, listCalls };
+}
+
+describe("the lookup itself", () => {
+  it("asks Gmail NOTHING when the subject has no words", async () => {
+    // The guard the source-only test could not see: without it this would send
+    // `subject:()`, a syntax error that comes back looking like "no thread".
+    const { gmail, listCalls } = fakeGmail([[{ id: "t1", subject: "---" }]]);
+    await expect(findThreadBySubject(gmail, "---")).resolves.toBeNull();
+    expect(listCalls, "no call was made at all").toHaveLength(0);
+  });
+
+  it("finds the thread on the FIRST page and stops there", async () => {
+    const { gmail, listCalls } = fakeGmail([
+      [{ id: "t1", subject: "something else" }, { id: "t2", subject: ENTRY_LIST_SUBJECT }],
+      [{ id: "t3", subject: ENTRY_LIST_SUBJECT }],
+    ]);
+    const got = await findThreadBySubject(gmail, ENTRY_LIST_SUBJECT);
+    expect(got?.threadId).toBe("t2");
+    expect(listCalls).toHaveLength(1);
+  });
+
+  it("PAGES ON when the exact subject is not on the first page", async () => {
+    // A busy mailbox pushes the real thread past 20 candidates. Stopping at
+    // one page reported it missing - the same wrong answer the quoted query
+    // gave, reached another way.
+    const filler = Array.from({ length: 20 }, (_, i) => ({ id: `f${i}`, subject: "Survivor DellaPia 2026 Entry List extra" }));
+    const { gmail, listCalls } = fakeGmail([filler, [{ id: "real", subject: `Re: ${ENTRY_LIST_SUBJECT}` }]]);
+    const got = await findThreadBySubject(gmail, ENTRY_LIST_SUBJECT);
+    expect(got?.threadId).toBe("real");
+    expect(listCalls).toHaveLength(2);
+    expect(listCalls[1].pageToken, "it followed nextPageToken").toBe("1");
+  });
+
+  it("gives up rather than walking the mailbox forever", async () => {
+    const page = [{ id: "x", subject: "not it" }];
+    const { gmail, listCalls } = fakeGmail(Array.from({ length: 50 }, () => page));
+    await expect(findThreadBySubject(gmail, ENTRY_LIST_SUBJECT)).resolves.toBeNull();
+    expect(listCalls.length).toBeLessThanOrEqual(10);
+  });
+});
+
 describe("the query the lookup actually builds", () => {
   const src = () => readFileSync("scripts/lib/gmail.ts", "utf8");
 
-  it("is subject:(terms), and the quoted form is gone", () => {
-    expect(src()).toContain("q: `subject:(${terms})`");
-    expect(src(), "the quoted subject is what returned zero").not.toContain('q: `subject:"${subject}"`');
+  it("is the quoted-word query, and the quoted SUBJECT is gone", () => {
+    expect(src()).toContain("const q = subjectQuery(subject);");
+    expect(src(), "the quoted subject is what returned zero").not.toContain('subject:"${subject}"');
   });
 
   it("still verifies the subject exactly after the prefilter", () => {

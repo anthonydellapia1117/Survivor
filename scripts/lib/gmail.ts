@@ -487,17 +487,60 @@ export function normalizeSubject(s: string): string {
  * This is a PREFILTER and nothing more. Gmail ANDs the terms, so it returns a
  * superset; the caller still compares the thread's first subject to the one
  * asked for, normalised, and that comparison is what makes the match exact.
+ *
+ * EACH WORD IS QUOTED, because a bare one can still be an OPERATOR. A subject
+ * carrying the word "OR" turns `subject:(a OR b)` from the AND this relies on
+ * into an OR, and the same goes for AND and NOT - the prefilter then returns a
+ * far wider set, and with a page cap on it the real thread can fall off the
+ * end. Quoting is safe here precisely because the stripping above already
+ * removed every character Gmail treats as syntax, so each term is a bare word
+ * inside quotes and nothing else.
  */
 export function subjectSearchTerms(subject: string): string {
   return subject.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
-/** The thread whose subject is exactly `subject`, and its latest message. */
-export async function findThreadBySubject(gmail: gmail_v1.Gmail, subject: string): Promise<ThreadTail | null> {
+/** The terms as a Gmail query fragment: each word quoted, ANDed. */
+export function subjectQuery(subject: string): string {
   const terms = subjectSearchTerms(subject);
-  if (terms === "") return null;
-  const list = await gmail.users.threads.list({ userId: "me", q: `subject:(${terms})`, maxResults: 20 });
-  for (const t of list.data.threads ?? []) {
+  if (terms === "") return "";
+  return `subject:(${terms.split(" ").map((w) => `"${w}"`).join(" ")})`;
+}
+
+/** How many pages of candidates to look through before giving up. */
+const SUBJECT_SEARCH_MAX_PAGES = 10;
+
+/**
+ * The thread whose subject is exactly `subject`, and its latest message.
+ *
+ * PAGES THROUGH THE CANDIDATES. The query is a word prefilter, so it returns a
+ * superset and the exact subject can sit anywhere in it; stopping after one
+ * page meant a busy mailbox could hide a thread that is really there and
+ * report it as missing - the same wrong answer the quoted-subject query gave,
+ * reached a different way. It follows nextPageToken to a bounded number of
+ * pages rather than forever, so a subject whose words are common cannot turn
+ * one lookup into an unbounded walk of the mailbox.
+ */
+export async function findThreadBySubject(gmail: gmail_v1.Gmail, subject: string): Promise<ThreadTail | null> {
+  const q = subjectQuery(subject);
+  if (q === "") return null;
+  let pageToken: string | undefined;
+  for (let page = 0; page < SUBJECT_SEARCH_MAX_PAGES; page++) {
+    const list = await gmail.users.threads.list({ userId: "me", q, maxResults: 20, pageToken });
+    const found = await firstExactThread(gmail, list.data.threads ?? [], subject);
+    if (found) return found;
+    pageToken = list.data.nextPageToken ?? undefined;
+    if (!pageToken) break;
+  }
+  return null;
+}
+
+async function firstExactThread(
+  gmail: gmail_v1.Gmail,
+  threads: gmail_v1.Schema$Thread[],
+  subject: string,
+): Promise<ThreadTail | null> {
+  for (const t of threads) {
     if (!t.id) continue;
     const full = await gmail.users.threads.get({
       userId: "me",

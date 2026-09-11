@@ -1618,11 +1618,23 @@ in any of them.**
   read like a missing thread rather than a wrong query.
 
   `subjectSearchTerms` in `scripts/lib/gmail.ts` strips everything that is not
-  a letter or a digit. It is **a prefilter and nothing more** - Gmail ANDs the
-  terms and hands back a superset; the exactness is still the normalised
-  subject comparison that follows, which is what keeps a near-miss thread out.
-  A subject is free text Anthony writes, so any punctuation he uses has to
-  survive this. `tests/unit/thread-subject-query.test.ts` holds both halves.
+  a letter or a digit, and **`subjectQuery` then QUOTES each word** - a bare
+  one can still be an operator, and a subject carrying `OR` would turn the
+  prefilter's AND into an OR. It is **a prefilter and nothing more** - Gmail
+  ANDs the terms and hands back a superset; the exactness is still the
+  normalised subject comparison that follows, which is what keeps a near-miss
+  thread out. A subject is free text Anthony writes, so any punctuation he uses
+  has to survive this.
+
+  **The lookup PAGES through the candidates**, to `SUBJECT_SEARCH_MAX_PAGES`
+  (10). A superset means the exact subject can sit anywhere in it, so stopping
+  at one page of 20 reports a thread that is really there as missing - the same
+  wrong answer the quoted subject gave, reached a different way. The cap is
+  what stops a subject of common words becoming an unbounded walk.
+
+  `tests/unit/thread-subject-query.test.ts` DRIVES the lookup with a fake
+  Gmail, because the guards that only read the source could not see the
+  empty-subject branch or the paging at all.
 
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
