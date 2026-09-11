@@ -375,10 +375,13 @@ true, so the class is what is asserted.
 
 **Every header sorts on click** -
 NO., Name, and each week - and NO. ascending is what the page opens on. **A
-week's sort key is what the CELL SHOWS**, from either source, her published
-cell winning where both exist: built from her cells alone, a cell reading
-"BUF / ours" sorted as a blank and landed among the twelve hundred empty rows.
-`weekKeys` in `src/lib/grid-sort.ts` owns that. **A blank sorts last in both
+week's sort key is what the CELL SHOWS** - its MAIN text, the big line - and a
+cell has three possible sources, so the key reads all three in the order the
+cell leads with them: **her words, then her published team, then our pick.**
+That has been got wrong twice, once per source, each time leaving a visibly
+filled cell sorting among the twelve hundred empty rows; all three live in
+`weekKeys` in `src/lib/grid-sort.ts` rather than in the component for exactly
+that reason. **A blank sorts last in both
 directions** and a tie falls back to her numbering. The
 week columns are sized to their content so eighteen of them stay readable;
 **the Name column is the only one that stretches**, which is what keeps them
@@ -391,7 +394,9 @@ and still what the view's reveal gate matches on.
 
 **A cell of hers that is NOT a team name** - an OUT, a note, one of her typos -
 **is shown as her words, verbatim, with no result colour**, because there is no
-team to have a result. It is carried by `herTextCells`, not by a GridCell:
+team to have a result. **Verbatim means the CSS too**: never `uppercase`, which
+changes her case, and never `whitespace-nowrap`, which collapses her runs of
+spaces - the same pair that has to stay off her NAMES. It is carried by `herTextCells`, not by a GridCell:
 arbitrary text in a team field would be parsed, coloured and scored as a team.
 Dropping it, as the merge first did, lost two things - **her OUT is how a
 reader sees WHICH WEEK she declared a row out**, which the row badge cannot

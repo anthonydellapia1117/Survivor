@@ -30,24 +30,38 @@ export interface SortableRow {
 }
 
 /**
- * THE SORT KEY OF A WEEK IS WHAT THE CELL SHOWS.
+ * THE SORT KEY OF A WEEK IS WHAT THE CELL SHOWS - its MAIN text, the big line.
  *
- * A row can have a team in a week from either of two places: her published
- * cell, or - where she has published nothing and we hold a revealed pick - our
- * own. The cell draws whichever exists, so the sort has to read both. Built
- * from her cells alone, a cell reading "BUF / ours" sorted as a blank and
- * landed among the twelve hundred genuinely empty rows.
+ * A week's cell can be drawn from three places, and the sort has to read all
+ * three or a visibly filled cell sorts as a blank and lands among the twelve
+ * hundred genuinely empty rows. That has now been got wrong twice, once per
+ * source, which is why all three live here rather than in the component:
  *
- * HER CELL WINS where both exist. That is the chip's main text; the "ours X"
- * beside it is the secondary value, and a variance must sort on what the
- * reader is looking at.
+ *   1. HER WORDS where the cell is not a team - an OUT, a note. Highest,
+ *      because the cell leads with them.
+ *   2. HER PUBLISHED TEAM. Above ours, because a variance draws her team big
+ *      and ours as the small chip beside it.
+ *   3. OUR PICK, where she has published nothing at all for that week.
+ *
+ * Each source only wins where the ones above it are absent, which is exactly
+ * the order the cell itself decides in.
  */
-export function weekKeys(
-  hers: ReadonlyMap<number, string>,
-  ours: ReadonlyMap<number, string>,
-): Map<number, string> {
-  const out = new Map<number, string>(ours);
-  for (const [week, team] of hers) out.set(week, team);
+export interface WeekSources {
+  /** Her cells that are not a team: an OUT, a note. */
+  herText?: ReadonlyMap<number, string>;
+  /** Her published team. */
+  herTeam?: ReadonlyMap<number, string>;
+  /** Our recorded pick, where she has published nothing. */
+  ours?: ReadonlyMap<number, string>;
+}
+
+export function weekKeys(sources: WeekSources): Map<number, string> {
+  const out = new Map<number, string>();
+  // Lowest precedence first, each overwriting the last.
+  for (const src of [sources.ours, sources.herTeam, sources.herText]) {
+    if (!src) continue;
+    for (const [week, value] of src) out.set(week, value);
+  }
   return out;
 }
 
