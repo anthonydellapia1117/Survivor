@@ -31,6 +31,7 @@ import {
   TIER_LABEL,
   type DeadlineTier,
 } from "@/lib/deadlines";
+import { defaultPickWeek } from "@/lib/default-week";
 
 /** A representative game day per tier, to drive the shared derivation. */
 const TIER_DAY: Record<DeadlineTier, GameDay> = {
@@ -84,14 +85,15 @@ export function PicksEntry({
     return () => clearInterval(id);
   }, []);
 
-  const [week, setWeek] = useState<number>(() => {
-    const now = Date.now();
-    return (
-      weeks.find((w) => new Date(w.deadlineAt).getTime() > now)?.week ??
-      weeks[weeks.length - 1]?.week ??
-      1
-    );
-  });
+  // Opens on the week still short of its first main-slate kickoff, NOT the
+  // first week whose deadline is still ahead. Stragglers arrive all Friday
+  // evening and Saturday, past the 2 PM lock, and rolling on the deadline
+  // meant fighting the selector back to the week being worked every time.
+  // The default only - he changes it freely, and a pick recorded after the
+  // deadline is still stamped late and still stored (src/lib/default-week.ts).
+  const [week, setWeek] = useState<number>(() =>
+    defaultPickWeek(weeks, games),
+  );
   const [staged, setStaged] = useState<Record<string, string>>({});
   const [failures, setFailures] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
