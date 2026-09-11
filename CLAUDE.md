@@ -1656,10 +1656,18 @@ in any of them.**
 
   A row is emitted for every entry that carries a Lynne number, and the cell
   says what is true: the team, **BYE** for a bye, **NO PICK** where there is
-  none, **OUT** where the entry is eliminated. OUT beats a stale pick. **Row
-  count equals live entry count**; a missing `lynne_number` is the one thing
-  that can keep an entry off, because there is no number to file it under, and
-  it is reported by name.
+  none, **OUT** where the entry is finished. **Row count equals live entry
+  count**; a missing `lynne_number` is the one thing that can keep an entry
+  off, because there is no number to file it under, and it is reported by
+  name.
+
+  **OUT applies ONLY where there is no pick for that week.** `status` is the
+  entry's standing TODAY and these builders serve an explicitly chosen week,
+  so letting the status win outright rewrote history: re-running Week 1 after
+  a Week 2 elimination replaced that entry's Week 1 team with OUT when the
+  pick was right there. A pick on file is what happened, so it is what she is
+  told; OUT is for a row with nothing for the week AND finished, which is what
+  the current week produces anyway since nobody chases a dead entry.
 
   `cellText` is the ONE place a cell's text is written - the CSV and the copy
   block had a renderer each, which is the same two-copies-of-one-rule shape
@@ -1711,6 +1719,23 @@ in any of them.**
   [the one link](#working-rules) once, by name, with no address in the plain
   part. **No signature is generated**: Gmail appends his when he opens the
   draft, and inventing one would be this repo deciding how he signs off.
+
+  **It CLAIMS the week before the Gmail call.** The tick fires every 19
+  minutes with a **60-minute lookback**, so one Friday 17:30 slot reads as due
+  at 17:38, 17:57, 18:00 and 18:19 - four firings and four identical drafts,
+  with a stale one easy to send. `lynne_weekly_draft_claim` goes in first and
+  `lynne_weekly_drafted` after, the same shape `distribute` uses; `--force`
+  is the only way to draft a week twice.
+
+  **A missing `lynne_number` STOPS it.** Warning and drafting anyway produced
+  exactly the shortened list the command exists to prevent, and a draft in
+  Gmail is one click from sent. `/admin/lynne-submit` blocks its copy on the
+  same condition and this matches it.
+
+  It builds from **entries of CONFIRMED owners** - `loadLiveEntries` filters
+  `voided_at` alone, so a declined owner's un-voided row would default to
+  active and reach her as NO PICK - and sorts the runner's entries to the top
+  by **ownership**, not by `is_free_entry`, which is a different question.
 
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is

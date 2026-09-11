@@ -109,11 +109,22 @@ export function buildSubmitRows(
       continue;
     }
     const pick = pickByEntry.get(e.id);
-    // Eliminated wins over everything: a dead entry's last pick is not this
-    // week's business, and OUT is what tells her the row is finished.
-    const out = !isAliveStatus(e.status);
     // A MISSED week is no pick, which is exactly what it should read as.
     const noPick = !pick || pick === "MISSED";
+    // OUT ONLY WHERE THERE IS NO PICK FOR THIS WEEK.
+    //
+    // `status` is the entry's standing TODAY, not its standing in the week
+    // being submitted, and this function serves an explicitly chosen week -
+    // `--week N` and the admin week selector. Letting a dead entry's status
+    // win outright rewrote HISTORY: re-running Week 1 after a Week 2
+    // elimination replaced that entry's Week 1 team with OUT, when the Week 1
+    // pick is right there and really was its pick. Copilot caught it on #91.
+    //
+    // A pick on file is what happened, so it is what she is told. OUT is for
+    // the row that has nothing for the week AND is finished - which is what
+    // the current week produces for an eliminated entry, since nobody chases
+    // one for a pick.
+    const out = noPick && !isAliveStatus(e.status);
     const team = out ? OUT_OF_POOL : noPick ? NO_PICK : pick;
     if (!out && noPick) missingPick.push(e.entryName);
     ready.push({

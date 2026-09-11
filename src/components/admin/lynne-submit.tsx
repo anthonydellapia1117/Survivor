@@ -70,7 +70,7 @@ export function LynneSubmit({
           </SelectContent>
         </Select>
         <span className="text-xs tabular-nums text-muted-foreground">
-          {ready.length} of {aliveCount} alive entries in the block
+          {ready.length} rows in the block, {aliveCount} of them still alive
         </span>
         <Button
           size="sm"

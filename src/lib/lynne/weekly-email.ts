@@ -59,7 +59,9 @@ export function weeklyPicksBody(input: WeeklyEmailInput): string {
   const lines = [
     "Hey Lynne,",
     "",
-    `Below are my ${rowCount} picks for Week ${week}.`,
+    // ENTRIES, not picks. The rows include NO PICK and OUT, so calling the
+    // count "picks" would be a number that contradicts the table under it.
+    `Below are my ${rowCount} entries for Week ${week}.`,
   ];
   for (const n of notes) lines.push("", n);
   lines.push(

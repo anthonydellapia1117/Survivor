@@ -38,7 +38,7 @@ describe("the body", () => {
   });
 
   it("says how many picks and carries the table", () => {
-    expect(body).toContain("Below are my 121 picks for Week 2.");
+    expect(body, "entries, not picks - the rows include NO PICK and OUT").toContain("Below are my 121 entries for Week 2.");
     expect(body).toContain("Picks below and attached:");
     expect(body).toContain("972  AAA #1  Detroit");
   });
@@ -95,6 +95,57 @@ describe("what the draft actually carries", () => {
     const b = encodeRaw({ to: ["x@example.com"], subject: "s", body: "b", attachments: [] });
     expect(a).toBe(b);
     expect(decode(a)).not.toContain("multipart/mixed");
+  });
+});
+
+describe("the command refuses rather than drafting something wrong", () => {
+  const SRC = readFileSync("scripts/lynne/weekly.ts", "utf8");
+
+  it("STOPS on a missing Lynne number instead of drafting a short list", () => {
+    // It used to warn and carry on, producing exactly the shortened list the
+    // whole command exists to prevent - and a draft in Gmail is one click
+    // from sent. /admin/lynne-submit blocks the copy on the same condition.
+    const warn = SRC.indexOf("missing Lynne number");
+    const stop = SRC.indexOf("no draft created.");
+    const draft = SRC.indexOf("createDraft(gmailClient()");
+    expect(warn).toBeGreaterThan(-1);
+    expect(stop, "it throws").toBeGreaterThan(warn);
+    expect(stop, "before anything is drafted").toBeLessThan(draft);
+    expect(SRC).toMatch(/throw new Error\([^)]*no draft created/);
+  });
+
+  it("CLAIMS the week before the Gmail call, so one slot cannot leave four drafts", () => {
+    // The tick fires every 19 minutes with a 60-minute lookback, so the
+    // Friday 17:30 slot reads as due at 17:38, 17:57, 18:00 and 18:19.
+    const claim = SRC.indexOf("action: WEEKLY_CLAIM_ACTION");
+    const draft = SRC.indexOf("createDraft(gmailClient()");
+    const drafted = SRC.indexOf("action: WEEKLY_DRAFTED_ACTION");
+    expect(claim).toBeGreaterThan(-1);
+    expect(claim, "claim first").toBeLessThan(draft);
+    expect(drafted, "then the drafted row").toBeGreaterThan(draft);
+    // And it reads the prior claim and returns rather than drafting again.
+    expect(SRC).toContain("priorWeeklyDraft(claims, week)");
+    expect(SRC).toContain("Nothing created.");
+  });
+
+  it("builds from CONFIRMED owners, not every un-voided entry", () => {
+    // loadLiveEntries filters voided_at alone; the standings view already
+    // excludes pending and declined owners, so such an entry would default
+    // to active and reach Lynne as NO PICK.
+    expect(SRC).toContain("entriesOfConfirmedOwners(owners, entries)");
+    expect(SRC).toContain("numberById = new Map(onRoster");
+  });
+
+  it("sorts the RUNNER's entries to the top by ownership, not by free-ness", () => {
+    // is_free_entry is not the same question: he could own a paid entry.
+    expect(SRC).toContain("isAdminEntry: runnerIds.has(e.owner_id)");
+    expect(SRC).not.toContain("isAdminEntry: e.is_free_entry");
+  });
+
+  it("refuses a week that is not an integer 1-18", () => {
+    expect(SRC).toContain("--week must be an integer 1-18");
+    // And a week the table does not carry.
+    expect(SRC).toMatch(/is not in the weeks table/);
   });
 });
 
