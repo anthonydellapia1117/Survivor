@@ -21,6 +21,7 @@ import { countGate } from "../remind/lib/recipients";
 import { confirm } from "../lib/prompt";
 import { confirmedOwners } from "../lib/roster";
 import { formatEt, type WeekBounds } from "../picks/lib/deadline";
+import { expandDelivery } from "@/lib/emails/recipient-exceptions";
 import { DRAFTED_ACTION, DRAFT_CLAIM_ACTION, priorDraftFor } from "./lib/drafted";
 import { refusalBeforeLock } from "./lib/lock";
 import { distributeMessage } from "./lib/message";
@@ -177,7 +178,12 @@ async function main(): Promise<void> {
   });
   const { draftId } = await createDraft(gmail, {
     to: [await profileAddress(gmail)],
-    bcc: list.addresses,
+    // Expanded AFTER the count gate above, which counts people. A
+    // multi-address person is one row on that gate and several lines here
+    // (src/lib/emails/recipient-exceptions.ts); passing list.addresses
+    // straight through sent the post-lock announcement to only the one
+    // uncertain roster mailbox.
+    bcc: expandDelivery(list.addresses),
     subject: msg.subject,
     body: msg.body,
     html: msg.html,

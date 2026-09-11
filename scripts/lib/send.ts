@@ -31,7 +31,7 @@ import type { gmail_v1 } from "googleapis";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadEnv } from "./env";
 import { encodeRaw, type OutboundMessage } from "./gmail";
-import { ccFor, deliveryAddressesFor } from "@/lib/emails/recipient-exceptions";
+import { ccFor, deliveryAddressesFor, expandDelivery } from "@/lib/emails/recipient-exceptions";
 import { loadAuditByAction, recordAudit } from "./db";
 import { assertNoRetiredAddresses } from "./roster";
 
@@ -153,7 +153,18 @@ export async function sendAllowlisted(
   }
   // Before the claim row, never after: a claim written and then thrown past
   // would consume the recipient's lock day without a message going anywhere.
-  assertNoRetiredAddresses([req.to], `pick_reminder To for week ${req.week}`);
+  //
+  // THE WHOLE DELIVERY SET, not just req.to. The two named exceptions
+  // (src/lib/emails/recipient-exceptions.ts) add addresses nobody derived
+  // from the roster - a multi-address person's other mailboxes and a CC'd
+  // owner - so those are precisely the ones that can be retired without the
+  // roster knowing. Checking only req.to left them to encodeRaw, which runs
+  // AFTER the claim: the throw would land with the lock day already consumed
+  // and no message sent, and every later run that day would skip the person
+  // as already claimed. Both reviewers caught it on #84.
+  const to = deliveryAddressesFor(req.to);
+  const cc = ccFor(req.to);
+  assertNoRetiredAddresses([...to, ...cc], `pick_reminder addresses for week ${req.week}`);
   const lockDay = lockDayKey(req.deadlineIso);
   const dup = alreadySent(prior, req.to, lockDay);
   if (dup) return { kind: "already_sent", prior: dup, lockDay };
@@ -186,16 +197,11 @@ export async function sendAllowlisted(
   });
   prior.push({ recipient: recipientKey, lockDay, messageId: "", at: new Date().toISOString() });
 
-  // The two named exceptions are applied HERE, at the one send seam, rather
-  // than in each caller: a multi-address person gets every copy and a CC'd
-  // owner is on the header whichever command built the message
-  // (src/lib/emails/recipient-exceptions.ts).
-  const m: OutboundMessage = {
-    to: deliveryAddressesFor(req.to),
-    cc: ccFor(req.to),
-    subject: req.subject,
-    body: req.body,
-  };
+  // The two named exceptions were applied above, at the one send seam and
+  // before the claim, rather than in each caller: a multi-address person gets
+  // every copy and a CC'd owner is on the header whichever command built the
+  // message (src/lib/emails/recipient-exceptions.ts).
+  const m: OutboundMessage = { to, cc, subject: req.subject, body: req.body };
   const res = await gmail.users.messages.send({ userId: "me", requestBody: { raw: encodeRaw(m) } });
   const messageId = res.data.id ?? "";
   let auditId: number;
@@ -298,7 +304,14 @@ export async function priorWeekReminders(client: SupabaseClient): Promise<PriorW
 export interface WeekReminderRequest {
   template: "week_reminder";
   to: string;
-  bcc: string[];
+  /**
+   * The RECIPIENTS - one address per PERSON, exactly as the roster derived
+   * them. NOT the Bcc: this seam expands them to delivery addresses itself,
+   * below, because the count gate is on people and the header is on
+   * mailboxes, and a caller that hands over an already-expanded list makes
+   * those two the same number again.
+   */
+  recipients: string[];
   subject: string;
   body: string;
   /** The HTML part, so the site's name goes out as an anchor rather than an address. */
@@ -318,7 +331,7 @@ export interface WeekReminderRequest {
    */
   slot: WeekReminderSlot;
   deadlineIso: string;
-  /** The count gate's expected number; bcc.length must equal it. */
+  /** The count gate's expected number; recipients.length must equal it. */
   expectedRecipients: number;
   actor: string;
 }
@@ -338,11 +351,11 @@ export async function sendWeekReminder(
   if (!autosendEnabled()) {
     throw new Error("REMINDER_AUTOSEND is not true: drafts only.");
   }
-  if (req.bcc.length === 0) {
-    throw new Error("Nobody to send to: the Bcc list is empty.");
+  if (req.recipients.length === 0) {
+    throw new Error("Nobody to send to: the recipient list is empty.");
   }
-  if (req.bcc.length !== req.expectedRecipients) {
-    throw new Error(`Count gate: ${req.bcc.length} recipients on the Bcc, ${req.expectedRecipients} expected. Not sent.`);
+  if (req.recipients.length !== req.expectedRecipients) {
+    throw new Error(`Count gate: ${req.recipients.length} recipients, ${req.expectedRecipients} expected. Not sent.`);
   }
   if (!/^Survivor\b/.test(req.subject)) {
     throw new Error(`Subject must begin with "Survivor" so replies hit the pool filter: "${req.subject}".`);
@@ -352,14 +365,28 @@ export async function sendWeekReminder(
   // still carry the mailbox that bounced, so the list is READ here too - and
   // read BEFORE the claim row, because a claim written and then thrown past
   // would consume the slot for good with nothing sent.
-  assertNoRetiredAddresses([req.to, ...req.bcc], `week_reminder recipients for week ${req.week}`);
+  assertNoRetiredAddresses(req.recipients, `week_reminder recipients for week ${req.week}`);
+  // THE EXPANSION HAPPENS HERE, AFTER THE GATE AND BEFORE THE CLAIM. The gate
+  // counts PEOPLE and the Bcc carries MAILBOXES, so a multi-address person is
+  // one to the first and several to the second. Doing it at the seam rather
+  // than in the caller is what keeps those two numbers from being compared to
+  // each other: the first version of this passed the expanded list in as the
+  // Bcc and the gate above then rejected 42 against an expected 40, so the
+  // week reminder could not send at all. Both reviewers caught it on #84.
+  const bcc = expandDelivery(req.recipients);
+  // And the expanded list is READ as well as counted, still before the claim:
+  // an extra mailbox is typed in by hand and has never been through the
+  // roster, so it is exactly the kind of address that can be dead. A claim
+  // written and then thrown past would consume the slot with nothing sent.
+  assertNoRetiredAddresses([req.to, ...bcc], `week_reminder delivery addresses for week ${req.week}`);
   const key = weekReminderKey(req.week, req.slot);
   // Read right before the send, never from a caller's snapshot.
   const prior = await priorWeekReminders(client);
   const dup = prior.find((p) => p.key === key);
   if (dup) return { kind: "already_sent", prior: dup, key };
 
-  const recipients = req.bcc.map((a) => a.trim().toLowerCase());
+  const recipients = bcc.map((a) => a.trim().toLowerCase());
+  const peopleCount = req.recipients.length;
   await recordAudit(client, {
     actor: req.actor,
     action: WEEK_REMINDER_CLAIM_ACTION,
@@ -373,7 +400,8 @@ export async function sendWeekReminder(
       slot: req.slot,
       deadline_at: req.deadlineIso,
       subject: req.subject,
-      recipient_count: recipients.length,
+      recipient_count: peopleCount,
+      address_count: recipients.length,
       recipients,
     },
     note: `week_reminder claim for ${key}; a sent row follows on success`,
@@ -398,10 +426,11 @@ export async function sendWeekReminder(
         deadline_at: req.deadlineIso,
         message_id: messageId,
         subject: req.subject,
-        recipient_count: recipients.length,
+        recipient_count: peopleCount,
+        address_count: recipients.length,
         recipients,
       },
-      note: `week_reminder ${key} to ${recipients.length} recipients on Bcc`,
+      note: `week_reminder ${key} to ${peopleCount} recipients on ${recipients.length} addresses`,
     });
   } catch (e: unknown) {
     const why = e instanceof Error ? e.message : String(e);

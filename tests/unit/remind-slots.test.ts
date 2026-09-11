@@ -193,7 +193,7 @@ function fakeGmail() {
 const req: WeekReminderRequest = {
   template: "week_reminder",
   to: "anthonydellapia@gmail.com",
-  bcc: ["a@example.com", "b@example.com", "c@example.com"],
+  recipients: ["a@example.com", "b@example.com", "c@example.com"],
   subject: "Survivor Week 1 - FINAL CALL, picks due today at 2 PM",
   body: "Week 1 - FINAL CALL.\n",
   week: 1,
@@ -274,9 +274,9 @@ describe("sending a slot", () => {
 
   it("stops on a count that is not exactly the expected one, either way round", async () => {
     const { gmail, send } = fakeGmail();
-    await expect(sendWeekReminder(gmail, client, { ...req, expectedRecipients: 4 })).rejects.toThrow(/Count gate: 3 recipients on the Bcc, 4 expected/);
-    await expect(sendWeekReminder(gmail, client, { ...req, expectedRecipients: 2 })).rejects.toThrow(/Count gate: 3 recipients on the Bcc, 2 expected/);
-    await expect(sendWeekReminder(gmail, client, { ...req, bcc: [] })).rejects.toThrow(/Bcc list is empty/);
+    await expect(sendWeekReminder(gmail, client, { ...req, expectedRecipients: 4 })).rejects.toThrow(/Count gate: 3 recipients, 4 expected/);
+    await expect(sendWeekReminder(gmail, client, { ...req, expectedRecipients: 2 })).rejects.toThrow(/Count gate: 3 recipients, 2 expected/);
+    await expect(sendWeekReminder(gmail, client, { ...req, recipients: [] })).rejects.toThrow(/recipient list is empty/);
     expect(send).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();
   });

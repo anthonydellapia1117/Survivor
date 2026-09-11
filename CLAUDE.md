@@ -706,11 +706,34 @@ the point of showing it to him. **Ray still gets his own message for
 1069-1070** - which is exactly what adding him as a second RECIPIENT rather
 than a copy would do.
 
+**THE EXPANSION HAPPENS AT THE SEAM, AFTER THE GATE - never in the caller.**
+`sendWeekReminder` takes the PEOPLE list, gates it, and expands it itself. The
+first version handed it an already-expanded list and its own second count gate
+then rejected 42 against an expected 40, so **the week reminder could not send
+at all**; both reviewers caught it on #84. A caller that pre-expands makes the
+two numbers the same number again, which is the one thing this shape exists to
+prevent.
+
+**Every address a message will carry is READ before the claim row is
+written**, not at encode time after it. A claim consumes the recipient's lock
+day or the week's slot, so a retired address noticed after it is recorded
+leaves the send skipped for good with nothing sent. The extra mailboxes and
+the CC are exactly the addresses that can be dead, because they never came
+through the roster.
+
+**Every whole-roster Bcc expands, not just the first one wired.** `remind`,
+`chase --bcc` and `distribute` each gate their people list and then expand;
+`/admin/emails/picks` carries `toAddresses` and `cc` on the built message, so
+a header Anthony copies and pastes by hand reaches the same addresses a
+command would. A path that skips the expansion sends a multi-address person
+the one uncertain mailbox and says nothing.
+
 Both are applied at the **one send seam** (`scripts/lib/send.ts`) and the one
 draft seam (`scripts/chase/cli.ts`) rather than in each caller, so a future
 command inherits them. `tests/unit/recipient-exceptions.test.ts` holds the
-behaviour - the addresses a message carries and what the gate counts - not the
-shape of the constant, because a constant can be right while nothing reads it.
+behaviour - it SENDS through the seam with a fake Gmail and reads the message
+that came out, because a source-text assertion passes on the right shape with
+the wrong wiring.
 
 **One trap this found:** `normalizeAddress` trims but deliberately does NOT
 lower-case (case-insensitivity lives in `sameAddress`), so a lookup keyed on
