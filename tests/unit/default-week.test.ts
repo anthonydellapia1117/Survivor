@@ -127,8 +127,21 @@ describe("the page reads it, and nothing else moved", () => {
   it("wires the selector's default to this and not to a deadline", () => {
     const src = readFileSync("src/components/admin/picks/picks-entry.tsx", "utf8");
     expect(src).toContain("defaultPickWeek(weeks, games)");
-    // The old reading is gone: no week is chosen by comparing a deadline to now.
-    expect(src).not.toMatch(/weeks\.find\([^)]*deadlineAt/);
+
+    // The old reading is gone. SCOPED to the initialiser, because the file
+    // legitimately mentions both `weeks.find(` and `deadlineAt` elsewhere -
+    // the selector's own options render a deadline - so a whole-file search
+    // for the pair matches innocent code.
+    //
+    // The first version of this was `/weeks\.find\([^)]*deadlineAt/`, which
+    // is DEAD: `[^)]*` stops at the `)` in `weeks.find((w)` and never reaches
+    // deadlineAt, so restoring the old initialiser left it green. It read as
+    // protection and was not, and it survived a mutation only because the
+    // toContain above failed in the same test. Copilot caught it on #88.
+    const init = src.slice(src.indexOf("const [week, setWeek]"));
+    const initialiser = init.slice(0, init.indexOf("const [staged,"));
+    expect(initialiser, "the initialiser was located").toContain("useState");
+    expect(initialiser, "nothing in it reads a deadline").not.toContain("deadlineAt");
   });
 
   it("leaves the banner and the late stamping alone", () => {
