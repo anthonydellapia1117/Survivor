@@ -98,6 +98,19 @@ begin
   if n <> 1 then raise exception 'player_email change not audited'; end if;
 
   -- submit_pick then override -> supersession, never an edit.
+  --
+  -- Week 1's boundaries are pushed INTO THE FUTURE first, the mirror of what
+  -- the late case below does to week 2. They used to be left alone, which
+  -- made the not-late assertion at the end of this block a statement about
+  -- the CALENDAR rather than about the rule: the seeded week 1 late deadline
+  -- is 2026-09-11 18:00Z, and from the minute that passed - 2 PM ET on the
+  -- day of the real Week 1 lock - this suite failed on every branch. A test
+  -- that rots on a date is not testing the thing it names. All of this rolls
+  -- back with the transaction.
+  update weeks set early_deadline_at = now() + interval '2 days',
+                   late_deadline_at = now() + interval '3 days',
+                   deadline_at = now() + interval '3 days'
+   where week = 1;
   v_pick1 := admin_submit_pick(v_entry, 1, 'KC', 'admin', 'test');
   v_pick2 := admin_submit_pick(v_entry, 1, 'BUF', 'override', 'test');
   if (select count(*) from picks where entry_id = v_entry and week = 1) <> 2 then
@@ -113,7 +126,7 @@ begin
   if not r.is_current or r.supersedes_id is distinct from v_pick1 or r.team <> 'BUF' then
     raise exception 'supersession chain broken';
   end if;
-  -- Submitted before the (future) week 1 deadline: not late.
+  -- Submitted before the week 1 deadline set above: not late.
   if r.late then raise exception 'pick wrongly marked late'; end if;
 
   -- SKIP_WEEK pick lands as result=bye.
