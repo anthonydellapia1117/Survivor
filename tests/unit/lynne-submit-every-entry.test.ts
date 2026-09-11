@@ -40,7 +40,8 @@ const PICKS = new Map([
   ["a", "KC"],
   ["b", "MISSED"],
   ["c", SKIP_WEEK],
-  ["d", "SF"],
+  // "Dead" has NO pick this week, which is what a dead entry looks like:
+  // nobody chases one for a pick.
   ["e", "DET"],
 ]);
 const NUMBERS = new Map<string, number | null>([
@@ -64,15 +65,21 @@ describe("every live entry gets a row", () => {
     expect(by.get(972), "a pick is the team").toBe("KC");
     expect(by.get(973), "a missed week is NO PICK").toBe(NO_PICK);
     expect(by.get(974), "a bye is the bye sentinel").toBe(SKIP_WEEK);
-    expect(by.get(975), "an eliminated entry is OUT").toBe(OUT_OF_POOL);
+    expect(by.get(975), "eliminated and no pick this week is OUT").toBe(OUT_OF_POOL);
     expect(by.get(976), "at_risk is still alive and still picks").toBe("DET");
   });
 
-  it("OUT beats the entry's last pick", () => {
-    // "Dead" holds SF. A dead entry's pick is not this week's business, and
-    // sending her a team for a row she has already removed is worse than
-    // saying nothing.
-    expect(res.ready.find((r) => r.lynneNumber === 975)?.team).not.toBe("SF");
+  it("does NOT rewrite a week the entry really did pick", () => {
+    // THE HISTORY RULE. `status` is the standing TODAY, and this function
+    // serves an explicitly chosen week. An entry eliminated in Week 2 still
+    // picked in Week 1, so re-running Week 1 must show that team - letting
+    // the status win outright replaced it with OUT (Copilot on #91).
+    const withPick = buildSubmitRows(
+      [entry("d", "Dead", "eliminated")],
+      new Map([["d", "SF"]]),
+      new Map<string, number | null>([["d", 975]]),
+    );
+    expect(withPick.ready[0].team, "the week's real pick, not OUT").toBe("SF");
   });
 
   it("still reports a missing pick, as a gap to chase", () => {
