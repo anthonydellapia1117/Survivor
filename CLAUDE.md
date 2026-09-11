@@ -1309,6 +1309,7 @@ in any of them.**
 | `npm run picks`                          | Unread mail from any roster address, or pasted text, into a proposed table; writes through `admin_submit_pick` after `y`       |
 | `npm run picks:self`                     | Anthony's own dictated picks from a self-email, subject carrying Survivor, `<lynne_number or entry name> <team>` per line; strict, idempotent on the message, replies as a draft |
 | `npm run lynne -- --week N --deadline d` | The entries that locked at that deadline in her numbering, printed and left as a draft in the Entry List thread                  |
+| `npm run lynne:weekly [-- --week N]`     | The week's picks to Lynne as a DRAFT: subject `DellaPia_Week<N>_Picks`, the table in the body and the same rows attached as the matching `.csv`, To her and Bcc Anthony. Never sends |
 | `npm run lynne:roster -- --file f`      | Her newest Football xlsx into `lynne_roster`, once per sha256; prints the row diff and the week-cell diff before writing              |
 | `npm run lynne:picks -- --message-id m` | Shape B: her plain-text pick email into her own week cells, matched on her NO., idempotent on the message, variances reported          |
 | `npm run chase -- --week N [--bcc]`      | One draft per recipient with no pick (or one BCC draft) naming their entries and the earliest deadline still open               |
@@ -1683,6 +1684,33 @@ in any of them.**
   image is wrong within hours and then stays wrong. The dashboard subtitle
   went for the first reason, being an entry count followed by a list of what
   the page visibly already is.
+
+- **The Friday picks email to Lynne is a job, and it is a DRAFT.** Set by
+  Anthony on 2026-09-11, as he sent Week 1 at 5:56 PM ET; she replied
+  "Got it." `lynne-weekly` fires **Friday 5:30 PM ET** (`npm run lynne:weekly`)
+  and he sends it himself - that is permanent and no flag reaches it.
+
+  | | |
+  | --- | --- |
+  | Subject | `DellaPia_Week<N>_Picks` |
+  | Attachment | `DellaPia_Week<N>_Picks.csv` |
+  | To | Lynne |
+  | Bcc | Anthony, so it lands in his inbox and takes his label |
+
+  **The subject matches the filename exactly**, underscores and all. That is
+  the convention as sent and it is not the repo's to improve.
+
+  **The table goes in the BODY and the same rows are ATTACHED. Both, every
+  week** - a reader who will not open a CSV still sees the picks, and one who
+  wants to paste them into a sheet has the file. `encodeRaw` grew
+  `attachments` for it: a message with none is byte-identical to before, and
+  one with them is `multipart/mixed` wrapping the existing plain/HTML choice.
+
+  It is a **NEW message each week**, not a reply on the Entry List thread -
+  that thread is the roster, this is the week - and it carries
+  [the one link](#working-rules) once, by name, with no address in the plain
+  part. **No signature is generated**: Gmail appends his when he opens the
+  draft, and inventing one would be this repo deciding how he signs off.
 
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is

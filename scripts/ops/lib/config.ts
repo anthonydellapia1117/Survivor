@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { missedSlots, parseCron, unobservedEtSlots } from "./cron";
 
-export const JOB_NAMES = ["sweep", "pick-reminder", "lynne-import", "chase", "results", "distribute", "scores"] as const;
+export const JOB_NAMES = ["sweep", "pick-reminder", "lynne-import", "chase", "results", "distribute", "scores", "lynne-weekly"] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 /** The only jobs that may send mail, and only through scripts/lib/send.ts. */

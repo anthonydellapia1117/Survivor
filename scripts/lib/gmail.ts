@@ -341,8 +341,23 @@ export async function getAttachment(gmail: gmail_v1.Gmail, messageId: string, at
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
+/**
+ * A file carried with the message. TEXT ONLY - the one thing that is attached
+ * anywhere in this repo is Lynne's weekly CSV, and a text-only shape cannot
+ * silently corrupt a binary the way a string round-trip would.
+ */
+export interface OutboundAttachment {
+  filename: string;
+  /** Servable type, e.g. "text/csv". */
+  mimeType: string;
+  /** The file's text. Base64-encoded into the part by encodeRaw. */
+  content: string;
+}
+
 export interface OutboundMessage {
   to?: string[];
+  /** Files carried with the message; omitted leaves the message unchanged. */
+  attachments?: OutboundAttachment[];
   /**
    * Visible copies. Used only by the named exceptions in
    * src/lib/emails/recipient-exceptions.ts - an owner who is deliberately
@@ -373,6 +388,7 @@ export interface OutboundMessage {
  * project's carries it.
  */
 const MIME_BOUNDARY = "survivor-alt-boundary-2b7f4c";
+const MIXED_BOUNDARY = "survivor-mixed-boundary-91d3ae";
 
 /**
  * RFC 822 text, base64url, the shape drafts.create and messages.send take.
@@ -417,7 +433,34 @@ export function encodeRaw(m: OutboundMessage): string {
           m.html,
           `--${MIME_BOUNDARY}--`,
         ];
-  return Buffer.from([...headers, ...body].join("\r\n"), "utf8")
+  // No attachment: the message is exactly what it was before attachments
+  // existed, byte for byte. Everything this repo sends takes this path.
+  const atts = m.attachments ?? [];
+  const lines = atts.length === 0
+    ? [...headers, ...body]
+    : [
+        // multipart/mixed wraps the WHOLE body above - which may itself be a
+        // multipart/alternative - as its first part, so the plain/HTML choice
+        // is untouched and the files sit beside it.
+        ...headers.map((h) =>
+          h === "MIME-Version: 1.0"
+            ? `Content-Type: multipart/mixed; boundary="${MIXED_BOUNDARY}"\r\nMIME-Version: 1.0`
+            : h,
+        ),
+        "",
+        `--${MIXED_BOUNDARY}`,
+        ...body,
+        ...atts.flatMap((a) => [
+          `--${MIXED_BOUNDARY}`,
+          `Content-Type: ${a.mimeType}; charset=UTF-8; name="${a.filename}"`,
+          `Content-Disposition: attachment; filename="${a.filename}"`,
+          "Content-Transfer-Encoding: base64",
+          "",
+          Buffer.from(a.content, "utf8").toString("base64").replace(/(.{76})/g, "$1\r\n"),
+        ]),
+        `--${MIXED_BOUNDARY}--`,
+      ];
+  return Buffer.from(lines.join("\r\n"), "utf8")
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
