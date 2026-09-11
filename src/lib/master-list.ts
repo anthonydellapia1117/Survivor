@@ -110,6 +110,39 @@ export function poolRowIdentity(list: Pick<MasterList, "rows">): Map<string, Poo
 }
 
 /**
+ * Her week cells that are NOT a team: an OUT, a note, one of her typos.
+ * Keyed the way the grid knows the row, then by week.
+ *
+ * `poolAsEntries` cannot carry these - a GridCell holds a team code and
+ * arbitrary text in that field would be parsed, coloured and scored as one.
+ * They still have to reach the page: **her OUT is authoritative** and it is
+ * how a reader sees WHICH WEEK she declared an entry out. Dropping the text
+ * lost that, and it also made her published OUT look, to the cell beside it,
+ * like a week she had published nothing in.
+ *
+ * Only what the public view already served gets here: her non-team cells are
+ * revealed only once every game of that week has kicked off, in the view, and
+ * nothing about that changes on this side.
+ */
+export function herTextCells(list: Pick<MasterList, "rows">): Map<string, Map<number, string>> {
+  const columns = weekColumns(list.rows);
+  const out = new Map<string, Map<number, string>>();
+  for (const r of list.rows) {
+    for (const col of columns) {
+      const cell = herCell(r, col);
+      if (cell === undefined) continue;
+      // A team is a cell the grid draws itself; a bye is a real state with its
+      // own chip. Everything else is her words and belongs here.
+      if (herTeam(cell) !== null || /^\s*bye\s*$/i.test(cell)) continue;
+      const id = poolEntryId(r);
+      if (!out.has(id)) out.set(id, new Map());
+      out.get(id)!.set(col.week, cell);
+    }
+  }
+  return out;
+}
+
+/**
  * Her published pick for a week beside the one this group holds, both already
  * app team codes. `matchPick` does this from her raw text on a sheet-shaped
  * row; this does it on the grid's cells, where her text has already been

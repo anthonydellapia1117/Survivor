@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getData } from "@/lib/data";
-import { countVariance, fullyRevealedWeeks, poolAsEntries, poolRowIdentity } from "@/lib/master-list";
+import { countVariance, fullyRevealedWeeks, herTextCells, poolAsEntries, poolRowIdentity } from "@/lib/master-list";
 import { formatEtDate } from "@/lib/format";
 import { GridView } from "@/components/grid/grid-view";
 import { WeeklyResultFiles } from "@/components/master-list/weekly-result-files";
@@ -31,6 +31,9 @@ export default async function GridPage() {
   // group's rows read their NO. from the same map: v_entry_public does not
   // carry a Lynne number, and her sheet already holds every one of them.
   const identity = poolRowIdentity(master);
+  // Her OUT, her notes, her typos: not teams, so they carry no chip of their
+  // own, and her OUT is how a reader sees WHICH WEEK she declared a row out.
+  const herText = herTextCells(master);
   const revealedWeeks = fullyRevealedWeeks(games);
   const variance = countVariance(pot.poolEntryCount, master.rows.length);
   // No variance means either the two counts agree or she has not published a
@@ -80,6 +83,7 @@ export default async function GridPage() {
             poolEntries={pool.entries}
             poolCells={pool.cells}
             identity={identity}
+            herText={herText}
             poolNote={poolNote}
             revealedWeeks={revealedWeeks}
           />
