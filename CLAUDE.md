@@ -1608,6 +1608,22 @@ in any of them.**
   and a pick entered after the deadline is still `late = true` and still
   stored, never refused. `tests/unit/default-week.test.ts` holds all three.
 
+- **A Gmail subject is searched by its WORDS, never as a quoted phrase.**
+  Found 2026-09-11, when `npm run lynne` reported the entry-list thread "not
+  found" while it sat in the mailbox under exactly that subject. The query was
+  `subject:"Survivor - DellaPia | 2026 Entry List"`, and **Gmail treats `|` as
+  an operator even inside quotes**: probed against the live mailbox, the quoted
+  form returned **0 threads** and the words returned 2. So the entry-list draft
+  had not been creatable by the command at all, and the message it printed
+  read like a missing thread rather than a wrong query.
+
+  `subjectSearchTerms` in `scripts/lib/gmail.ts` strips everything that is not
+  a letter or a digit. It is **a prefilter and nothing more** - Gmail ANDs the
+  terms and hands back a superset; the exactness is still the normalised
+  subject comparison that follows, which is what keeps a near-miss thread out.
+  A subject is free text Anthony writes, so any punctuation he uses has to
+  survive this. `tests/unit/thread-subject-query.test.ts` holds both halves.
+
 - **Every command reports.** A staged NEEDS ANTHONY row and the end of a run
   each produce one line through `npm run notify`'s function; `NTFY_TOPIC` is
   Anthony's to choose and is never invented.

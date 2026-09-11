@@ -469,13 +469,34 @@ export interface ThreadTail {
   references: string;
 }
 
-function normalizeSubject(s: string): string {
+export function normalizeSubject(s: string): string {
   return s.replace(/^\s*((re|fwd?|fw)\s*:\s*)+/i, "").trim().toLowerCase();
+}
+
+/**
+ * The Gmail SEARCH TERMS for a subject - its words, punctuation dropped.
+ *
+ * NOT the subject in quotes. Gmail's search treats `|` as an operator even
+ * inside a quoted phrase, so `subject:"Survivor - DellaPia | 2026 Entry List"`
+ * matches NOTHING - verified against the live mailbox, 0 threads, while the
+ * thread sits there with exactly that subject. The entry-list draft could not
+ * be created at all while the query was built that way, and the command said
+ * only "not found", which reads like the thread is missing rather than like
+ * the query is wrong.
+ *
+ * This is a PREFILTER and nothing more. Gmail ANDs the terms, so it returns a
+ * superset; the caller still compares the thread's first subject to the one
+ * asked for, normalised, and that comparison is what makes the match exact.
+ */
+export function subjectSearchTerms(subject: string): string {
+  return subject.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 /** The thread whose subject is exactly `subject`, and its latest message. */
 export async function findThreadBySubject(gmail: gmail_v1.Gmail, subject: string): Promise<ThreadTail | null> {
-  const list = await gmail.users.threads.list({ userId: "me", q: `subject:"${subject}"`, maxResults: 20 });
+  const terms = subjectSearchTerms(subject);
+  if (terms === "") return null;
+  const list = await gmail.users.threads.list({ userId: "me", q: `subject:(${terms})`, maxResults: 20 });
   for (const t of list.data.threads ?? []) {
     if (!t.id) continue;
     const full = await gmail.users.threads.get({
