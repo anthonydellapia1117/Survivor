@@ -29,6 +29,28 @@ export interface SortableRow {
   teamByWeek: Map<number, string>;
 }
 
+/**
+ * THE SORT KEY OF A WEEK IS WHAT THE CELL SHOWS.
+ *
+ * A row can have a team in a week from either of two places: her published
+ * cell, or - where she has published nothing and we hold a revealed pick - our
+ * own. The cell draws whichever exists, so the sort has to read both. Built
+ * from her cells alone, a cell reading "BUF / ours" sorted as a blank and
+ * landed among the twelve hundred genuinely empty rows.
+ *
+ * HER CELL WINS where both exist. That is the chip's main text; the "ours X"
+ * beside it is the secondary value, and a variance must sort on what the
+ * reader is looking at.
+ */
+export function weekKeys(
+  hers: ReadonlyMap<number, string>,
+  ours: ReadonlyMap<number, string>,
+): Map<number, string> {
+  const out = new Map<number, string>(ours);
+  for (const [week, team] of hers) out.set(week, team);
+  return out;
+}
+
 export function sameSortKey(a: SortKey, b: SortKey): boolean {
   if (typeof a === "string" || typeof b === "string") return a === b;
   return a.week === b.week;

@@ -367,7 +367,12 @@ defaults to it.
 so they are one table now.** It keeps the best half of each: her NO. and her
 NAMES as the first two columns, and the week cells drawn the way the Grid drew
 them - a team chip with its result colour. **Every header sorts on click** -
-NO., Name, and each week - and NO. ascending is what the page opens on. The
+NO., Name, and each week - and NO. ascending is what the page opens on. **A
+week's sort key is what the CELL SHOWS**, from either source, her published
+cell winning where both exist: built from her cells alone, a cell reading
+"BUF / ours" sorted as a blank and landed among the twelve hundred empty rows.
+`weekKeys` in `src/lib/grid-sort.ts` owns that. **A blank sorts last in both
+directions** and a tie falls back to her numbering. The
 week columns are sized to their content so eighteen of them stay readable;
 **the Name column is the only one that stretches**, which is what keeps them
 tight. The Comfortable toggle is gone: it underlined a cell and did nothing on

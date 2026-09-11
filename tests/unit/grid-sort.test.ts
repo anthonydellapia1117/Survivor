@@ -3,7 +3,7 @@
 // and equal values keep her numbering rather than whatever the last sort left.
 
 import { describe, expect, it } from "vitest";
-import { nextSort, sameSortKey, sortKeyId, sortRows, type SortableRow } from "@/lib/grid-sort";
+import { nextSort, sameSortKey, sortKeyId, sortRows, weekKeys, type SortableRow } from "@/lib/grid-sort";
 
 const row = (no: number | null, name: string, weeks: Record<number, string> = {}): SortableRow => ({
   no,
@@ -84,5 +84,30 @@ describe("clicking a header", () => {
     expect(sameSortKey("no", "no")).toBe(true);
     expect(sortKeyId({ week: 7 })).toBe("week:7");
     expect(sortKeyId("name")).toBe("name");
+  });
+});
+
+describe("weekKeys - what the cell shows", () => {
+  it("takes a team from either source, so an ours-only cell is not a blank", () => {
+    // The bug this exists for: she publishes nothing for one of ours in a
+    // week, we hold a revealed pick, the cell draws "BUF / ours" - and sorting
+    // by that week dropped it among the genuinely empty rows.
+    expect([...weekKeys(new Map(), new Map([[2, "BUF"]]))]).toEqual([[2, "BUF"]]);
+    expect([...weekKeys(new Map([[1, "DAL"]]), new Map())]).toEqual([[1, "DAL"]]);
+    expect([...weekKeys(new Map(), new Map())]).toEqual([]);
+  });
+
+  it("lets HER cell win where both exist, because that is the chip's main text", () => {
+    // A variance sorts on what the reader is looking at. Ours is the smaller
+    // chip beside it, not the value of the cell.
+    expect(weekKeys(new Map([[1, "DAL"]]), new Map([[1, "PHI"]])).get(1)).toBe("DAL");
+  });
+
+  it("does not mutate either map it was given", () => {
+    const hers = new Map([[1, "DAL"]]);
+    const ours = new Map([[1, "PHI"], [2, "BUF"]]);
+    weekKeys(hers, ours);
+    expect([...hers]).toEqual([[1, "DAL"]]);
+    expect([...ours]).toEqual([[1, "PHI"], [2, "BUF"]]);
   });
 });
