@@ -722,11 +722,19 @@ the CC are exactly the addresses that can be dead, because they never came
 through the roster.
 
 **Every whole-roster Bcc expands, not just the first one wired.** `remind`,
-`chase --bcc` and `distribute` each gate their people list and then expand;
-`/admin/emails/picks` carries `toAddresses` and `cc` on the built message, so
-a header Anthony copies and pastes by hand reaches the same addresses a
-command would. A path that skips the expansion sends a multi-address person
-the one uncertain mailbox and says nothing.
+`chase --bcc` and `distribute` each gate their people list and then expand,
+and each **prints both numbers** - approving "40 addresses" and creating a
+draft that carries 42 is the operator agreeing to something he was not shown,
+so the prompt, the console lines and the audit rows all carry
+`recipient_count` and `address_count`. A path that skips the expansion sends a
+multi-address person the one uncertain mailbox and says nothing.
+
+**`/admin/emails/picks` carries them on BOTH its paths.** `BuiltEmail` holds
+`toAddresses` and `cc` beside `to` (which stays the identity the screen labels
+a message with), and the whole-batch clipboard AND the per-message toolbar
+render them. That screen has two ways to reach one message and they have to
+agree: the batch copy carried Ray while the per-message strip did not, so a
+message composed from the toolbar dropped him silently.
 
 Both are applied at the **one send seam** (`scripts/lib/send.ts`) and the one
 draft seam (`scripts/chase/cli.ts`) rather than in each caller, so a future
