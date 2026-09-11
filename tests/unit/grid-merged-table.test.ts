@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import React from "react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -43,6 +42,13 @@ vi.mock("../../src/lib/data", () => ({
         // published OUT. Her double space is hers and is kept verbatim.
         { no: 1300, names: "Amy  3", cells: { "Week 1": "OUT" }, entryId: null },
         { no: 1301, names: "Ours With Her Note", cells: { "Week 2": "OUT" }, entryId: "e-1301" },
+        // THE SENTINEL, one row per side of the variance sentence. Her BYE
+        // against our team on 1302, her team against our BYE on 1303: the
+        // tooltip names both sides, so a raw SKIP_WEEK on either reaches a
+        // reader. It did, on the hers side, because the guard was written
+        // inline on one half of the sentence and not the other.
+        { no: 1302, names: "Her Bye Ours DET", cells: { "Week 2": "Bye" }, entryId: "e-1302" },
+        { no: 1303, names: "Hers DAL Ours Bye", cells: { "Week 1": "Dallas" }, entryId: "e-1303" },
       ],
     }),
     getPot: async () => ({
@@ -57,6 +63,8 @@ vi.mock("../../src/lib/data", () => ({
       { entryId: "e-1005", week: 1, team: "LOCKED", result: null, late: true, submittedAt: "2026-09-08T00:00:00Z", source: "email", resultSource: null },
       { entryId: "e-1089", week: 2, team: "BUF", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
       { entryId: "e-1301", week: 2, team: "NYJ", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
+      { entryId: "e-1302", week: 2, team: "DET", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
+      { entryId: "e-1303", week: 1, team: "SKIP_WEEK", result: "bye", late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
       { entryId: "someone-else", week: 7, team: "KC", result: null, late: false, submittedAt: "2026-09-08T00:00:00Z", source: "text", resultSource: null },
     ],
     // Week 1 is final and Dallas lost it; Week 2 has not been played. Both
@@ -73,6 +81,8 @@ vi.mock("../../src/lib/data", () => ({
       { id: "e-1005", entryName: "E.A.T.", nameIsDefault: false, ownerId: "o2", ownerName: "Ed", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: false, teamsUsed: [], lastScoredWeek: null, isAdminEntry: false },
       { id: "e-1089", entryName: "Andrew DiCicco #1", nameIsDefault: false, ownerId: "o3", ownerName: "Andrew DiCicco", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: false, teamsUsed: ["BUF"], lastScoredWeek: null, isAdminEntry: false },
       { id: "e-1301", entryName: "Ours With Her Note", nameIsDefault: false, ownerId: "o4", ownerName: "Owner Four", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: false, teamsUsed: ["NYJ"], lastScoredWeek: null, isAdminEntry: false },
+      { id: "e-1302", entryName: "Her Bye Ours DET", nameIsDefault: false, ownerId: "o5", ownerName: "Owner Five", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: false, teamsUsed: ["DET"], lastScoredWeek: null, isAdminEntry: false },
+      { id: "e-1303", entryName: "Hers DAL Ours Bye", nameIsDefault: false, ownerId: "o6", ownerName: "Owner Six", wins: 0, losses: 0, livesRemaining: 2, status: "active", byeUsed: true, teamsUsed: [], lastScoredWeek: null, isAdminEntry: false },
     ],
     getWeeks: async () => [1, 2].map((week) => ({
       week,
@@ -140,11 +150,11 @@ describe("the one table, signed out", () => {
   });
 
   it("reports the gap between her published total and the rows on the sheet, correcting neither", async () => {
-    // 1,318 published against 4 mocked rows: both numbers, no arithmetic on
+    // 1,318 published against the mocked rows: both numbers, no arithmetic on
     // either (CLAUDE.md - report the variance, never auto-resolve).
     const html = await render();
     expect(html).toContain("1,318");
-    expect(html).toMatch(/this sheet carries 7 rows/);
+    expect(html).toMatch(/this sheet carries 9 rows/);
     expect(html).not.toContain("matches the rows on this sheet");
   });
 
@@ -155,8 +165,8 @@ describe("the one table, signed out", () => {
       let html = await render();
       expect(html).not.toContain("matches the rows on this sheet");
       expect(html).not.toContain("this sheet carries");
-      // Published and equal to the 4 mocked rows: now it is a match.
-      potState.poolEntryCount = 7;
+      // Published and equal to the mocked rows: now it is a match.
+      potState.poolEntryCount = 9;
       html = await render();
       expect(html).toContain("matches the rows on this sheet");
     } finally {
@@ -183,7 +193,7 @@ describe("the one table, signed out", () => {
     // may carry the losing fill and nothing may carry a winning one.
     const html = await render();
     const rows = rowsOf(html);
-    expect((rows.match(/bg-tie\/20/g) ?? []).length, "one fill per revealed, scored cell").toBe(2);
+    expect((rows.match(/bg-tie\/20/g) ?? []).length, "one fill per revealed, scored cell").toBe(3);
     expect(rows, "nothing in this fixture won").not.toContain("bg-win/15");
     // Her Week 2 Buffalo is revealed and unscored: the team is shown and the
     // cell carries no fill. A colour here would be a claim about a game that
@@ -194,7 +204,10 @@ describe("the one table, signed out", () => {
     // green, which is exactly what happened the first time this was written.
     expect((rows.match(/>BUF</g) ?? []).length, "hers on 1200 and ours on 1089").toBe(2);
     expect(rows.match(/border-dashed[^>]*>BUF</g) ?? [], "only ours is dashed").toHaveLength(1);
-    expect((rows.match(/bg-(?:tie|win|bye)\/\d+/g) ?? []).length, "no fill on an unscored cell").toBe(2);
+    // Three losing Dallas cells and one published bye. The bye is a stored
+    // result like any other and takes its own fill; the unscored Buffalo
+    // cells take none, which is the whole point of the count.
+    expect((rows.match(/bg-(?:tie|win|bye)\/\d+/g) ?? []).length, "no fill on an unscored cell").toBe(4);
     // Week 2 is scheduled and she has published no Week 2 cell: our BUF sits
     // in the cell marked as ours, dashed and unfilled.
     expect(html).toContain("ours");
@@ -221,14 +234,24 @@ describe("the one table, signed out", () => {
     expect(html).toContain("Lynne P");
     expect(html).toContain("Adriana Flacco ");
     expect(html).toContain("Andrew Dicicco #1");
-    for (const no of ["1", "983", "1005", "1089", "1200", "1300", "1301"]) {
+    for (const no of ["1", "983", "1005", "1089", "1200", "1300", "1301", "1302", "1303"]) {
       expect(html, `NO. ${no}`).toMatch(new RegExp(`tabular-nums[^>]*">${no}<`));
     }
     // NO. ASCENDING is what the page opens on: 1, 983, 1005, 1089 in that
     // order down the markup.
-    const order = ["Lynne P", "Adriana Flacco ", "E.A.T.", "Andrew Dicicco #1", "Unscored Row", "Amy  3", "Ours With Her Note"].map((n) => html.indexOf(n));
+    const order = [
+      "Lynne P",
+      "Adriana Flacco ",
+      "E.A.T.",
+      "Andrew Dicicco #1",
+      "Unscored Row",
+      "Amy  3",
+      "Ours With Her Note",
+      "Her Bye Ours DET",
+      "Hers DAL Ours Bye",
+    ].map((n) => html.indexOf(n));
     expect(order, "rows in her numbering").toEqual([...order].sort((a, b) => a - b));
-    expect(html).toContain("7 of 7 entries");
+    expect(html).toContain("9 of 9 entries");
     // Her Dallas against our PHI on 983: a variance. Hers stays in the cell -
     // as the team code, because the week columns are drawn the way the Grid
     // draws them - and ours is reported beside it. NEITHER is changed
@@ -344,5 +367,22 @@ describe("the one table, signed out", () => {
     }
     // And the handler does the one thing it is for.
     expect(src).toMatch(/function onHeaderClick[\s\S]{0,120}setSort\(\(s\) => nextSort\(s, key\)\)/);
+  });
+
+  it("never prints the bye sentinel, on either side of the variance sentence", async () => {
+    // SKIP_WEEK is an internal value, not a word. It reached the variance
+    // tooltip because the guard was written inline on the OURS half of the
+    // sentence and not on the HERS half - two copies of one rule, and only
+    // one of them right. Both halves are exercised here, one row each:
+    //   1302 - she published BYE, we hold DET  -> the HERS half
+    //   1303 - she published Dallas, we hold a bye -> the OURS half
+    // A title attribute is not visible text, so nothing else in this file
+    // would have caught it.
+    const html = await render();
+    expect(html, "the sentinel is never a word a reader sees").not.toContain("SKIP_WEEK");
+    expect(html).toContain("Published: Bye. Our record: DET.");
+    expect(html).toContain("Published: DAL. Our record: Bye.");
+    // And the chip beside the cell, which is visible text rather than a title.
+    expect(rowsOf(html)).toMatch(/ours Bye/);
   });
 });

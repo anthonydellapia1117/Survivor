@@ -5,7 +5,6 @@ import { lockPassed } from "../../scripts/distribute/lib/lock";
 import { distributeMessage } from "../../scripts/distribute/lib/message";
 import { SITE_LINK_HREF, SITE_LINK_TEXT, siteAnchor } from "../../scripts/lib/site-link";
 import { countStandings, standingsSentence, type StandingInput } from "../../scripts/distribute/lib/standings";
-import { SITE_URL } from "../../scripts/lib/constants";
 import type { WeekBounds } from "../../scripts/picks/lib/deadline";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
