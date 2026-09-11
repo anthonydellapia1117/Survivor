@@ -253,6 +253,28 @@ describe("the one table, signed out", () => {
     expect((html.match(/aria-sort="none"/g) ?? []).length, "Name and both weeks unsorted").toBe(3);
   });
 
+  it("sorts a week by what its cell SHOWS, overlay included", async () => {
+    // A cell reading "BUF / ours" is a visible team. Sorting by that week used
+    // to drop it among the twelve hundred genuinely blank rows, because the
+    // sort key was built from her published cells alone and our overlay is a
+    // separate map. Found by running the component, not by reading it.
+    const { sortRows } = await import("@/lib/grid-sort");
+    // The rule lives in weekKeys, which is tested on its own including the
+    // precedence; here it is only that the table really uses it.
+    expect(read("src/components/grid/grid-view.tsx")).toContain("weekKeys(hers, oursByWeek)");
+    const rows = [
+      { no: 1089, name: "ours only", teamByWeek: new Map([[2, "BUF"]]) },
+      { no: 1, name: "blank", teamByWeek: new Map<number, string>() },
+      { no: 1200, name: "hers", teamByWeek: new Map([[2, "BUF"]]) },
+    ];
+    for (const dir of ["asc", "desc"] as const) {
+      expect({ dir, nos: sortRows(rows, { week: 2 }, dir).map((r) => r.no) }).toEqual({
+        dir,
+        nos: [1089, 1200, 1],
+      });
+    }
+  });
+
   it("makes every header sort, and really wires each one to the sort", async () => {
     // MARKUP ALONE IS NOT ENOUGH and this test found that out: deleting the
     // onClick handlers left a green run, because a header stripped of its

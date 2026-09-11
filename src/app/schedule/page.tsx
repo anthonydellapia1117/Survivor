@@ -34,7 +34,10 @@ export default async function SchedulePage(props: {
           <p className="mt-1 text-sm text-muted-foreground">
             {season
               ? "Every matchup, all 18 weeks - @ marks a road game, dark cells are byes."
-              : "Every game of the week - scores, who our entries picked, and what each result cost."}
+              // The per-team pick counts came off on 2026-09-11 and this line
+              // still promised them. What the card can say is what the result
+              // COST; who picked what is the Teams page's question.
+              : "Every game of the week - scores, and what each final result cost."}
           </p>
         </div>
         <div className="flex rounded-md border border-border bg-surface p-0.5 text-[11px] leading-4">

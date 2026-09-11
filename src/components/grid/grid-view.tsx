@@ -44,6 +44,7 @@ import {
   nextSort,
   sameSortKey,
   sortRows,
+  weekKeys,
   type SortDir,
   type SortKey,
 } from "@/lib/grid-sort";
@@ -233,8 +234,15 @@ export function GridView({
       activeEntries.map((e) => {
         const id = identity.get(e.id);
         const cellByWeek = cellsByEntry.get(e.id) ?? new Map<number, GridCell>();
-        const teamByWeek = new Map<number, string>();
-        for (const [w, c] of cellByWeek) if (c.team !== LOCKED_TEAM) teamByWeek.set(w, c.team);
+        // The overlay only exists where the two sources sit side by side.
+        const oursByWeek = ours ? new Map<number, string>() : (oursByEntry.get(e.id) ?? new Map<number, string>());
+        // THE SORT KEY IS WHAT THE CELL SHOWS - both sources, her cell
+        // winning. weekKeys owns that rule and is tested on its own; building
+        // it here from her cells alone is what made a chip reading "BUF /
+        // ours" sort as a blank.
+        const hers = new Map<number, string>();
+        for (const [w, c] of cellByWeek) if (c.team !== LOCKED_TEAM) hers.set(w, c.team);
+        const teamByWeek = weekKeys(hers, oursByWeek);
         return {
           entry: e,
           no: id?.no ?? null,
@@ -243,8 +251,7 @@ export function GridView({
           name: ours ? e.entryName : (id?.names ?? e.entryName),
           teamByWeek,
           cellByWeek,
-          // The overlay only exists where the two sources sit side by side.
-          oursByWeek: ours ? new Map() : (oursByEntry.get(e.id) ?? new Map()),
+          oursByWeek,
         };
       }),
     [activeEntries, cellsByEntry, identity, ours, oursByEntry],
