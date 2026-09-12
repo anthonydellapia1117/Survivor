@@ -840,11 +840,35 @@ other column it may write, and only on a collision: it is a per-owner ordinal
 under `UNIQUE (owner_id, entry_index)`, the "#2" a reader sees lives in the
 NAME, and the ordinal steps aside rather than failing the constraint.
 
-**The entitlement cannot move and this was checked, not assumed.**
-`mint_free_entries` counts live non-free entries joined to non-archived
-owners, so moving one such entry between two live owners leaves recruited at
-110 and the free count at 11. Creating the new owner fires the same trigger
-and is equally a no-op.
+**The entitlement does not move for a RECRUITED entry, and a FREE entry is
+refused outright.** Moving a recruited entry between two live owners leaves
+recruited at 110 and the free count at 11, and creating the new owner is
+equally a no-op.
+
+**A free entry is a different question and I got it wrong first time.**
+`20260912000068` shipped with a note claiming the held count is pool-wide,
+read off migration `20260904000048` ("free_entries_counted_pool_wide") on the
+assumption that it was current. **It is not: `20260904000049`
+("entitlement_is_the_runners") came after it** and put the held count back
+onto the runner's own rows, because a free entry under somebody else is not
+part of what he earned and counting it suppresses a mint he is owed. So
+moving a free entry off him drops the held count while the entitlement stands
+still, and the trigger **mints a replacement in the same transaction** -
+reproduced on a fixture, 5 free entries before the move and 6 after. In
+production that is an AAA number Lynne does not hold, a pool holding more
+free entries than it has earned, and a free entry owned by somebody who is
+not Anthony. Codex caught it on #93; `20260912000069` refuses the move.
+**The way somebody else PLAYS a free entry is `player_email`** - the ordinary
+gift, which is what Alexa has on `AAA #3`, `#6` and `#9` - and that moves the
+player without moving the owner, so the held count never changes. Clearing
+`is_free_entry` to permit the move is not the alternative: that converts a
+free entry into a recruited one, bills somebody $25 and changes what is owed
+to Lynne.
+
+**The lesson is the one already written down for numbers, applied to code:
+the LIVE FUNCTION is the answer and a migration file is only the answer if
+nothing later touched it.** `mint_free_entries` is redefined by nine
+migrations; reading one of them is reading a summary.
 
 **Both addresses are derived, so the recipient set grows by one** - Rob stays
 in on one entry, Giletto enters on his. Run live on the day: 40 to **41**,

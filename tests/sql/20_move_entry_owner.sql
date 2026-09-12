@@ -201,3 +201,70 @@ begin
   end if;
 end $$;
 rollback;
+
+-- 4. A FREE entry is refused, and the refusal is load-bearing rather than
+--    tidy. mint_free_entries counts the RUNNER'S OWN free rows, so moving one
+--    off him drops the held count while the entitlement stands still and the
+--    trigger mints a replacement in the same transaction. This block proves
+--    the mechanism first -- by doing the move the RPC forbids, as raw SQL --
+--    and then proves the RPC refuses it. Without the first half the second is
+--    just an assertion that an error is raised, and would keep passing if the
+--    reason for it ever went away.
+begin;
+do $$
+declare
+  runner uuid; other uuid; fe uuid;
+  free_before int; free_after int; ok boolean;
+begin
+  select admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com','','email','',
+         array[]::text[], false, 'test') into runner;
+  select admin_create_owner('Bulk','Recruiter','bulk@x.com','','email','',
+         array['B1','B2','B3','B4','B5','B6','B7','B8','B9','B10'], true, 'test') into other;
+
+  select id into fe from entries where is_free_entry and voided_at is null
+                                   and owner_id = runner order by entry_name limit 1;
+  if fe is null then raise exception 'fixture did not mint a free entry to test with'; end if;
+
+  -- (a) the mechanism, straight at the table, so the trigger fires exactly as
+  --     it would have from inside the RPC.
+  select count(*) into free_before from entries where is_free_entry and voided_at is null;
+  update entries set owner_id = other, entry_index = 99 where id = fe;
+  select count(*) into free_after from entries where is_free_entry and voided_at is null;
+  if free_after <= free_before then
+    raise exception
+      'the premise of this guard no longer holds: moving a free entry off the runner minted nothing (% then %). Re-read mint_free_entries before deleting the guard',
+      free_before, free_after;
+  end if;
+end $$;
+rollback;
+
+begin;
+do $$
+declare
+  runner uuid; other uuid; fe uuid; ok boolean; free_before int;
+begin
+  select admin_create_owner('Anthony','DellaPia','anthonydellapia@gmail.com','','email','',
+         array[]::text[], false, 'test') into runner;
+  select admin_create_owner('Bulk','Recruiter','bulk@x.com','','email','',
+         array['B1','B2','B3','B4','B5','B6','B7','B8','B9','B10'], true, 'test') into other;
+  select id into fe from entries where is_free_entry and voided_at is null
+                                   and owner_id = runner order by entry_name limit 1;
+  if fe is null then raise exception 'fixture did not mint a free entry to test with'; end if;
+  select count(*) into free_before from entries where is_free_entry and voided_at is null;
+
+  -- (b) and the RPC refuses it, so the mechanism above is unreachable.
+  ok := false;
+  begin
+    perform admin_move_entry_owner(fe, other, 'a free entry must not move', 'test');
+  exception when others then ok := true;
+  end;
+  if not ok then raise exception 'a free entry was moved'; end if;
+  if (select owner_id from entries where id = fe) <> runner then
+    raise exception 'the refused free-entry move still wrote';
+  end if;
+  if (select count(*) from entries where is_free_entry and voided_at is null) <> free_before then
+    raise exception 'the refused move still minted: % then %', free_before,
+      (select count(*) from entries where is_free_entry and voided_at is null);
+  end if;
+end $$;
+rollback;
