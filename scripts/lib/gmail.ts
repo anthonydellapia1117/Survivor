@@ -150,7 +150,7 @@ export async function listUnreadFrom(
 /**
  * The searches listUnreadFrom runs, as a pure function so the window can be
  * proved without Gmail. Chunked at 15 addresses because a Gmail query has a
- * length limit and the roster is 40.
+ * length limit and the roster is 41.
  */
 export function unreadFromQueries(addresses: string[], windowDays: number = SWEEP_WINDOW_DAYS): string[] {
   if (!Number.isInteger(windowDays) || windowDays < 1) throw new Error("listUnreadFrom: windowDays must be a positive integer");

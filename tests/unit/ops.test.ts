@@ -69,8 +69,8 @@ describe("the ops config", () => {
   });
 
   it("carries the exact roster count the whole-roster messages gate on", () => {
-    expect(loadOpsConfig().expectedRosterAddresses).toBe(40);
-    expect(EXPECTED_ROSTER_ADDRESSES).toBe(40);
+    expect(loadOpsConfig().expectedRosterAddresses).toBe(41);
+    expect(EXPECTED_ROSTER_ADDRESSES).toBe(41);
     expect(loadOpsConfig().reminderLeadHours).toBe(6);
     // Phrases, not the bare word. "picks" matched "Free stock picks from
     // MarketBeat", "How to Draft from Picks 1-3" and "great picks for your

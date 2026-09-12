@@ -4,7 +4,7 @@
   "tickWindowMinutes": 60,
   "tickSchedule": "0,19,38,57 * * * *",
   "dailySchedule": "30 12 * * *",
-  "expectedRosterAddresses": 40,
+  "expectedRosterAddresses": 41,
   "reminderLeadHours": 6,
   "sweepSubjectTerms": [
     "survivor",

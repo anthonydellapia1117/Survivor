@@ -303,7 +303,7 @@ export class RetiredAddressError extends Error {
  *                                             counting cannot see a SWAP: a
  *                                             dead address typed onto an owner
  *                                             replaces that owner's live one
- *                                             and the total is still 40.
+ *                                             and the total is still 41.
  *
  * The chase and distribute Bcc lists are covered by the encodeRaw backstop
  * alone and deliberately have no call of their own. Two checks on one list is

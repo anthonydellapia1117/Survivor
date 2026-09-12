@@ -544,7 +544,7 @@ now:
   `scripts/lib/send.ts` with `REMINDER_AUTOSEND=true`; the loader refuses a
   config that marks any other job as sending or hands it `--send`. Every
   whole-roster message (reminder, distribute) derives its recipients live and
-  stops unless the count equals `expectedRosterAddresses` (40) exactly.
+  stops unless the count equals `expectedRosterAddresses` (41) exactly.
 
 Environment the tick needs to do anything but report: `ADMIN_EMAIL`,
 `SURVIVOR_ADMIN_PASSWORD`, `GMAIL_OAUTH_CLIENT_ID`,

@@ -647,8 +647,10 @@ holds and no other:
   default stands and nothing is chased on her behalf beyond the ordinary
   reminder.
 - **Her address is a `player_email` like any other, so it is in the derived
-  recipient set.** That set is **40**, not 39, and `expectedRosterAddresses`
-  in `scripts/ops/config.json` was moved to 40 to match. Every count gate
+  recipient set.** That set is **41** and `expectedRosterAddresses`
+  in `scripts/ops/config.json` matches it. (It was 39 before Alexa, 40 after
+  her, and 41 from the 2026-09-12 [owner split](#an-owner-split-is-not-a-gift).)
+  Every count gate
   reads that one number, so there is nothing else to change — and the number
   is only ever moved to match a roster that moved, never to make a failing
   run pass.
@@ -791,10 +793,130 @@ second contact mechanism beside `player_email`** — two columns meaning almost
 the same thing drift, and the day they disagree somebody does not get their
 pick request.
 
+### An owner split is not a gift
+
+Set by Anthony on 2026-09-12, the first time one happened.
+
+Two entries were bought together and turned out to belong to **two people**.
+`Rob & Alanna #2` (Lynne 1072) moved off `Rob & Alanna`
+(`Rf10290@gmail.com`) to a **new owner**, `Ant Giletto`
+(`acgiletto@gmail.com`); `Rob & Alanna #1` (1071) did not move.
+
+**This is the opposite call from [a gift](#gifted-entries), and the
+difference is the MONEY.** A gift leaves ownership, billing and the tier with
+the buyer and moves only who plays. A split moves the ownership itself:
+Giletto is the owner of his entry, bills for it himself, and the two of them
+are two owners on the roster. So the test is not "does somebody else play
+this" but **"whose money is it"** - if the buyer is still paying, it is a
+gift and `player_email` is the whole mechanism; if he is not, it is a split
+and the entry gets a new owner row.
+
+**Nothing Lynne holds moves, so Lynne is not told.** Her sheet is keyed on
+the NUMBER and the LABEL, and a split writes neither - `entry_name`,
+`name_is_default`, `lynne_number`, `lynne_label` and the week's pick all stay
+exactly as they are. Both entries are still named `Rob & Alanna #1` and `#2`
+on her sheet and on ours, and that is correct rather than untidy: the name is
+the owner's wording, not a statement of who pays.
+
+**The pick goes with the ENTRY.** 1072 held JAX for Week 1 before the split
+and holds it after. A split never restages a pick, never re-asks for one, and
+never marks one late again.
+
+**It is one audited transaction through `admin_move_entry_owner`**
+(migration `20260912000068_move_entry_owner`), which exists because nothing
+else could do it: `admin_update_entry` has no `owner_id` parameter at all,
+and `admin_merge_owner` moves EVERY entry off its source and then archives
+it, so using it here would have taken 1071 too and deleted an owner who is
+still playing. Void-and-recreate is worse again - a new entry id, no way to
+reuse the unique `lynne_number`, and the week's pick gone.
+
+The function writes `owner_id` and nothing else that matters. **The note is
+REQUIRED, not optional**: this is the one write whose reason cannot be
+reconstructed from the row afterwards - before/after JSON shows a uuid
+changing and says nothing about which arrangement it settles - so a blank
+note is refused. It also refuses a voided entry, an archived target owner,
+and a move onto the owner the entry already has. `entry_index` is the one
+other column it may write, and only on a collision: it is a per-owner ordinal
+under `UNIQUE (owner_id, entry_index)`, the "#2" a reader sees lives in the
+NAME, and the ordinal steps aside rather than failing the constraint.
+
+**The entitlement cannot move and this was checked, not assumed.**
+`mint_free_entries` counts live non-free entries joined to non-archived
+owners, so moving one such entry between two live owners leaves recruited at
+110 and the free count at 11. Creating the new owner fires the same trigger
+and is equally a no-op.
+
+**Both addresses are derived, so the recipient set grows by one** - Rob stays
+in on one entry, Giletto enters on his. Run live on the day: 40 to **41**,
+delta +1, which is why `expectedRosterAddresses` moved. A new owner defaults
+to `participation_status = 'confirmed'`, so a split never leaves the new
+owner looking declined.
+
+**ONE HAZARD A SPLIT CREATES, ON BOTH SIDES. Never run
+`admin_resync_default_entry_names` on either owner of a split.** Both entries
+are still `name_is_default` - nobody has supplied a real name, which is true
+and is why they are on the chase list - and each owner now holds exactly ONE
+live entry. That function renames a sole live default entry to the owner's
+plain name with no number, so a resync would rewrite `Rob & Alanna #2` to
+`Ant Giletto` and, worse because it looks like a tidy-up, `Rob & Alanna #1` to
+`Rob & Alanna`. Both are names Lynne holds, and the rename would be silent.
+The flag is NOT the thing to change - setting `name_is_default = false` would
+claim a real name had been supplied and would drop both entries off the list
+Anthony works. The rule is simply that a split is not a count change to
+resync against: the count moved, the names deliberately did not.
+
+**Money is carried, never acted on.** Rob & Alanna went from $60 for two
+entries to $30 for one, and Giletto owes $30. Neither had paid and **the
+split marks nothing paid** - it touches no payment row at all. Remittance to
+Lynne is unchanged, because it counts recruited entries and the count did not
+move.
+
+**One trap, recorded because it nearly bit.** The only trace of Giletto
+anywhere in the database was `audit_log` 90, a `payment_sweep_exclude`
+holding a $500 receipt of 2026-08-21 out of this pool partly on the ground
+that "no Survivor owner exists by this name". Creating him makes that clause
+false while **the exclusion itself stays correct and unconditional**: $500 is
+not a tier price and its memo admits no aggregate or split reading, so it is
+not pool money whether or not he owns an entry. The ledger is append-only, so
+the fix is a NEW `payment_sweep_exclude` row naming audit 90 and restating
+the exclusion without the stale clause - never an edit. **Before creating an
+owner, look for what the roster already says about that name**, and correct
+it forward rather than leaving a sweep to rediscover it.
+
 ## Roster state — snapshot, not a rule
 
 These move. The app is authoritative; this is here so a new session starts
 from roughly the right place and can spot a big discrepancy immediately.
+
+**As of 2026-09-12 (Saturday after Week 1's lock):** 121 entries = 110
+recruited + 11 free, Lynne numbers 972-1092 contiguous, **40 owner rows**,
+**72 migrations**, `audit_log` max **4741**, queue 0. Week 1: **121 current
+picks, 0 outstanding.** The derived recipient set is **41** - the
+[owner split](#an-owner-split-is-not-a-gift) took it from 40, and
+`expectedRosterAddresses` moved with it.
+**Her `Football 2026-5.xlsx` is loaded** (sha `77039df3`, Gmail
+`1a0937cc26566022`, "Week 1 picks", 2026-09-11 10:40 PM ET to all eight
+captains), 1,318 rows, and it carries her **Week 1 cells for the whole pool**
+- 1,310 newly filled, 0 changed, 0 cleared. **Her Week 1 against our 121:
+121 matched, 0 differing**, no row of ours missing from her sheet and no cell
+of hers that is not a team name, so nothing was drafted to her. Her `Football
+2026-4.xlsx` (sha `817d0f17`) turned out to have been loaded on 2026-09-10 -
+the 09-10 block below says a load of it was still owed and that was already
+stale when written. **Three sheets are now in `lynne_roster`.**
+Her 15 renames between -4 and -5 include the four Anthony asked for
+(990-993 `Caroline Reichenback #1`-`#4` to `A Car #1`-`#4`) and 1082-1083 to
+`Tommybrads #1` / `tommybrads #2`. **19 of our 121 labels differ from her
+NAMES text** on whitespace, separator or case only (`Adriana Flacco ` with
+her trailing space, `Jim Teti  #1` with her double, `Andrew Dicicco` for our
+`DiCicco`); matching is on the NO. and we never rewrite her rows, so none of
+it is a variance to raise.
+**A GAP THAT IS NOT ABOUT CADENCE:** `npm run picks:self`, the only command
+that can read Anthony's dictated picks, **is on no schedule at all** - it is
+absent from `JOB_NAMES`, from `scripts/ops/config.json` and from every
+Routine prompt, and `intakeAddresses` drops the admin mailbox by design
+(`scripts/lib/roster.ts:177`), so the sweep cannot see those mails however
+often it runs. This is what actually ran the 2026-09-11 deadline down, not
+the sweep's cadence. Nothing has been built for it; it is Anthony's call.
 
 **As of 2026-09-10 (Thursday of Week 1, 9:35 AM ET):** 121 entries = 110
 recruited + 11 free, Lynne numbers 972-1092 contiguous, `audit_log` max **680**.
@@ -1417,7 +1539,7 @@ in any of them.**
     `week_reminder_sent` on the key `week:N:early|late`). Recipients are
     derived on the run - every owner address and every `player_email` on
     a live entry, lowercased, once each - and **the count must equal
-    `EXPECTED_ROSTER_ADDRESSES` (40) exactly or the run stops**
+    `EXPECTED_ROSTER_ADDRESSES` (41) exactly or the run stops**
     with the list and the delta printed; a range is what let a wrong
     count through once in another pool. Subject begins `Survivor` so
     replies hit the filter. The body is his Week 1 text with the deadline
@@ -1463,7 +1585,7 @@ in any of them.**
   - **Only pick-reminder and chase may send**; the config loader refuses any
     other job marked as sending or handed `--send`. Every whole-roster message
     derives its recipients live and stops unless the count equals
-    `expectedRosterAddresses` (40) **exactly** - a range let a wrong count
+    `expectedRosterAddresses` (41) **exactly** - a range let a wrong count
     through once in another pool.
 - **The sweep has a CEILING, and it stops the run.** Set by Anthony on
   2026-09-10, the evening the intake first ran with credentials. It read five
@@ -1824,6 +1946,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Audit rendering                     | `src/lib/audit-format.ts`, `/admin/audit`    |
 | Data backup (one-step restore)      | `src/lib/backup.ts`, `/api/admin/backup`     |
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |
+| One entry to a new owner            | `admin_move_entry_owner`, `tests/sql/20_move_entry_owner.sql` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |
