@@ -408,7 +408,7 @@ names one for a hand run (a slot whose deadline has passed is refused).
 `--dry-run` prints the message and stops. `--yes` skips the y prompt.
 
 9a. **The count gate.** The derived recipient count must equal
-`EXPECTED_ROSTER_ADDRESSES` in `scripts/lib/constants.ts` (40)
+`EXPECTED_ROSTER_ADDRESSES` in `scripts/lib/constants.ts` (41)
 exactly. Anything else prints the whole list and the delta, pushes a NEEDS
 ANTHONY line, and stops before any draft or send. Not a range: a range let a
 wrong count through once. When an address is corrected the count usually
@@ -492,7 +492,7 @@ it is one imported for another week - then her sheet for this week has not
 arrived, and reporting the run as finished would leave the week's standings
 stale.
 
-10d. `expectedRosterAddresses` (40) is the exact count every whole-roster
+10d. `expectedRosterAddresses` (41) is the exact count every whole-roster
 message gates on - the reminder and the distribute draft both stop on any
 other number and print the list. A distribute run that stops earlier, because
 the week is already drafted, does not reach that gate; `--dry-run` does.
