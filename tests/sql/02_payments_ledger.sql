@@ -344,3 +344,44 @@ begin
     raise exception 'payment fixture polluted';
   end if;
 end $$;
+
+-- APPLE PAY, added 2026-09-12. A real rail Anthony is paid on, so the ledger
+-- has to be able to say so. The two wrong answers it replaces are both
+-- corruptions - 'venmo' invents a receipt the Venmo sweep will hunt forever,
+-- 'cash' is simply false - so this asserts the value is accepted AND that it
+-- stays out of the Venmo dedupe, which is the only machinery method feeds.
+begin;
+do $$
+declare o uuid; p1 uuid; p2 uuid; n int; ok boolean;
+begin
+  select admin_create_owner('Apple','Payer','ap@x.com','','email','',
+         array['AP 1','AP 2','AP 3','AP 4'], true, 'test') into o;
+
+  p1 := admin_record_payment(o, 10000, 'apple_pay', current_date, null,
+          'four entries, Apple Pay', null, 'test');
+  if (select method from payments where id = p1) <> 'apple_pay' then
+    raise exception 'apple_pay must be stored as itself';
+  end if;
+  if (select amount_paid_cents from v_owner_finance where owner_id = o) <> 10000 then
+    raise exception 'an apple_pay payment must count toward what is paid';
+  end if;
+
+  -- It carries no venmo_txn_id, so the Venmo dedupe indexes - partial on
+  -- `venmo_txn_id is not null` - must not see it. A SECOND identical Apple
+  -- Pay row is therefore allowed by the index; the ledger is append-only and
+  -- it is the operator who decides, not a unique key.
+  p2 := admin_record_payment(o, 10000, 'apple_pay', current_date, null,
+          'a second one, deliberately', null, 'test');
+  if p2 is null then raise exception 'a second apple_pay row must be possible'; end if;
+  select count(*) into n from payments where owner_id = o;
+  if n <> 2 then raise exception 'expected 2 payment rows, got %', n; end if;
+
+  -- And the constraint still refuses a method nobody defined.
+  ok := false;
+  begin
+    perform admin_record_payment(o, 100, 'zelle', current_date, null, 'nope', null, 'test');
+  exception when others then ok := true;
+  end;
+  if not ok then raise exception 'an undefined method was accepted'; end if;
+end $$;
+rollback;

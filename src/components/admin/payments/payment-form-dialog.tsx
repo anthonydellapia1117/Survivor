@@ -36,7 +36,7 @@ import {
 } from "./payment-format";
 
 const UNMATCHED = "__unmatched__";
-const METHODS = ["venmo", "cash", "check", "correction", "comp"] as const;
+const METHODS = ["venmo", "cash", "check", "apple_pay", "correction", "comp"] as const;
 
 export function PaymentFormDialog({
   owners,
