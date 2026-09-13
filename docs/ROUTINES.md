@@ -5,7 +5,7 @@ code in this repo.**
 
 | Routine             | Cron (UTC)            | Runs                    |
 | ------------------- | --------------------- | ----------------------- |
-| **Survivor Sweep**  | `43 7-23,0-3 * * *`   | `npm run ops -- hourly` |
+| **Survivor Sweep**  | `43 * * * *`          | `npm run ops -- hourly` |
 | **Survivor Daily**  | `30 12 * * *`         | `npm run ops -- daily`  |
 
 `hourly` is what section 10 called the Ops Tick: every job in
@@ -462,13 +462,22 @@ one line to ntfy when `NTFY_TOPIC` is set, and prints it otherwise.
 | Survivor Lynne Echo Check (Thanksgiving)  | once, Thu 2026-11-26 11:05 AM   | section 5 |            |
 | Survivor Final Sheet Watch                | Tue and Thu 5:05 PM             | section 6 |            |
 | Survivor Venmo Wide Sweep                 | Mon 8:05 AM                     | section 7 |            |
-| Survivor Ops Tick                         | hourly at :43, 5 AM to 10 PM    | section 10 | trig_01W9BrBAoWKBQm9AjJ9FVVKK (ENABLED) |
+| Survivor Ops Tick                         | hourly at :43, every hour       | section 10 | trig_01W9BrBAoWKBQm9AjJ9FVVKK (ENABLED) |
 
 ## 10. Ops Tick
 
 Name: **Survivor Ops Tick**
-Cron (America/New_York): `43 3-23 * * *` (every hour at :43, 3 AM to 11 PM ET)
-Cron stored (UTC): `0,19,38,57 * * * *`
+Cron stored (UTC): `0,19,38,57 * * * *` - the cadence `scripts/ops/config.json`
+asks for, set by Anthony on 2026-09-11 for the Friday sweep, and what
+`tests/unit/ops.test.ts` holds this line to.
+Cron on the LIVE Routine (UTC): `43 * * * *` - every hour of every day at :43,
+verified against the live trigger on 2026-09-13. The platform refuses anything
+under an hour, so this is what runs and the line above is what was asked for.
+The hourly-all-day shape is what lets the sweep's Friday tail (midnight to
+2 AM ET, UTC 4-6) and the scores job's Sunday-night slots (11 PM ET to 1 AM
+Monday, UTC 3-6) be observed at all: the earlier `43 7-23,0-3` named UTC hours
+and missed 4, 5 and 6. `tests/unit/cron-et.test.ts` checks every scores slot
+against this live string, not the config's.
 Trigger ID: `trig_01W9BrBAoWKBQm9AjJ9FVVKK` (created 2026-09-09 as the Week
 Reminder, renamed and repointed the same day. **It is ENABLED**, verified
 2026-09-10 against the live trigger list; an earlier draft of this file said
@@ -932,8 +941,9 @@ is exactly two.
      3. Environment: `env_01E2ghUxXKj19qoDX3bTxf3p`.
      4. Source repo: `anthonydellapia1117/Survivor`, branch `main`.
      5. Connectors: **Gmail only**. Nothing else is granted.
-     6. Schedule (UTC): `43 7-23,0-3 * * *` for the Sweep,
-        `30 12 * * *` for the Daily.
+     6. Schedule (UTC): `43 * * * *` for the Sweep - every hour, no hour
+        list, because the ET windows it observes cross midnight and land on
+        UTC 4-6 - and `30 12 * * *` for the Daily.
      7. Prompt, one line and nothing else:
         - Sweep: `Run npm run ops -- hourly and report exactly what it printed.`
         - Daily: `Run npm run ops -- daily and report exactly what it printed.`
@@ -958,7 +968,7 @@ is exactly two.
 
      | Routine                        | State    | Cron (UTC)            |
      | ------------------------------ | -------- | --------------------- |
-     | Survivor Ops Tick              | ENABLED  | `43 7-23,0-3 * * *`   |
+     | Survivor Ops Tick              | ENABLED  | `43 * * * *` (widened 2026-09-11; verified 2026-09-13) |
      | Survivor Gmail Sweep           | paused 2026-09-10 17:27 UTC, `enabled: false` on the live trigger | `43 11-23,0-2 * * *`  |
      | Survivor Pick Gap Check        | paused   | `5 13 * * 1-5`        |
      | Survivor Deadline Close Check  | paused   | `20 18 * * 2-5`       |
