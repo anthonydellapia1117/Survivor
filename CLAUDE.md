@@ -356,16 +356,42 @@ is deliberately outside both, neutral and high contrast: it was amber, which
 is now what a losing pick is filled with.
 
 **The Teams page has a totals row**, added 2026-09-11: each week's column
-summed across the pool, over finished games like the cells above it, so a week
-still in play sums to nothing rather than to a number that will move.
+summed across the pool, over the same weeks as the cells above it.
 
 **The Teams page counts, it no longer filters.** The per-entry picker and the
 teams-in-hand grid were removed with the same change: the question that page
 answers is what the POOL did, and one entry at a time cannot answer it. What
-is there is the count of entries that picked each team each week, **over
-finished games only** - a week still in play carries no number - green where
+is there is the count of entries that picked each team each week, green where
 that team won and yellow where it lost. **Never red on that page:** a team
 losing is a fact about a game, not an elimination.
+
+**A COUNT APPEARS THE MOMENT THE WEEK LOCKS, NOT WHEN THE GAME IS FINAL.**
+Set by Anthony on 2026-09-13, replacing the finished-games-only rule above
+it. The count for every team appears as soon as that week's pick deadline
+has passed - the LATE deadline, the whole week's lock, read from the weeks
+table and never hardcoded - and from that moment the full board shows, every
+team with at least one pick, whether its game is scheduled, in progress or
+final. **Before the deadline the counts stay hidden**: a published count
+before picks lock is strategic information and would change what undecided
+players choose. Colour is unchanged and still needs a stored FINAL - green
+won, yellow lost, a count with no fill where the game is not final.
+
+**The count does not depend on the per-pick reveal gate - an aggregate names
+nobody - and that is why it is a VIEW.** `v_grid_cells` and `v_master_list`
+both serve a pick as `LOCKED` until its own game has kicked off, which is
+right for a cell that names an entry and useless for a count: from Friday
+2 PM to Sunday 1 PM every Sunday team would be a `LOCKED` cell and its count
+would be zero, in exactly the window the board is meant to show. So
+`v_team_pick_counts` (`20260913000072`) serves `scope, week, team, n` for
+every locked week - `ours` from this group's current picks on the same
+entries `v_entry_public` serves, `pool` from her newest sheet's cells mapped
+through her vocabulary exactly as `v_master_list` maps them - and nothing
+about the per-pick gate moves. `tests/sql/21_team_pick_counts.sql` holds the
+count public while the same pick's cell is still `LOCKED` in both views, and
+`tests/unit/team-counts.test.ts` holds the render: no count for an open week
+even if a read handed one over, every team with a pick once locked, fill
+only with a final, never red. `teamHeat` in `src/lib/team-counts.ts` is the
+render's copy of the gate; the view is the source.
 
 ### One table, at /grid, and it opens on everyone
 
@@ -2089,6 +2115,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Her masked cells, the one seam      | `herCell` / `herCellIsLocked` in `src/lib/master-list.ts` |
 | Our standing from the scores, display only | `scoreFromGames` in `src/lib/live-standing.ts` |
 | Her result against the scores, read-only | `compareStoredToScores` in `src/lib/score-variance.ts`, `scripts/ops/reporters/result-variance.ts` |
+| Team counts once a week locks   | `v_team_pick_counts`, `src/lib/team-counts.ts`, `tests/sql/21_team_pick_counts.sql` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |

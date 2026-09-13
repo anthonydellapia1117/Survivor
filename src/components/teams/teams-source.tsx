@@ -7,7 +7,7 @@
 // in and says so. The choice is view state only.
 
 import { useState } from "react";
-import type { EntrySummary, GameRow, GridCell } from "@/lib/data/types";
+import type { EntrySummary, GameRow, GridCell, TeamPickCount, WeekRow } from "@/lib/data/types";
 import { defaultTeamsSource, type TeamsSourceKind as Source } from "@/lib/master-list";
 import { TeamsClient } from "@/components/teams/teams-client";
 import { cn } from "@/lib/utils";
@@ -22,13 +22,15 @@ interface Props {
   pool: Dataset;
   /** The master pool's sheet is loaded (rows exist). */
   poolLoaded: boolean;
-  /** The sheet carries at least one week pick. */
+  /** The sheet carries at least one week pick, revealed or counted. */
   poolHasPicks: boolean;
-  weekCount: number;
+  /** Both scopes' counts for every locked week, from v_team_pick_counts. */
+  counts: TeamPickCount[];
+  weeks: WeekRow[];
   games: GameRow[];
 }
 
-export function TeamsSource({ ours, pool, poolLoaded, poolHasPicks, weekCount, games }: Props) {
+export function TeamsSource({ ours, pool, counts, poolLoaded, poolHasPicks, weeks, games }: Props) {
   const [source, setSource] = useState<Source>(defaultTeamsSource(poolLoaded, poolHasPicks));
   const active = source === "pool" ? pool : ours;
   const options: { key: Source; label: string; n: number; disabled?: boolean }[] = [
@@ -69,12 +71,18 @@ export function TeamsSource({ ours, pool, poolLoaded, poolHasPicks, weekCount, g
         {source === "pool" ? (
           <span className="text-xs text-muted-foreground">
             {poolHasPicks
-              ? "Built from the published picks revealed so far, counted only where the game has finished."
+              ? "Built from the published sheet, counted once the week has locked."
               : "The published sheet carries no week picks yet."}
           </span>
         ) : null}
       </div>
-      <TeamsClient key={source} cells={active.cells} weekCount={weekCount} games={games} />
+      <TeamsClient
+        key={source}
+        counts={counts.filter((c) => c.scope === source)}
+        weeks={weeks}
+        games={games}
+        entryCount={active.entries.length}
+      />
     </div>
   );
 }

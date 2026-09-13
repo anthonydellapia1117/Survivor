@@ -127,6 +127,20 @@ export interface MasterListData {
   rows: MasterListRow[];
 }
 
+/**
+ * How many entries picked a team in a week, served by v_team_pick_counts
+ * once that week's late deadline has passed and never before. "pool" is her
+ * newest sheet (which already carries our rows); "ours" is this group's
+ * current picks. An aggregate names nobody, so it does not wait on the
+ * per-pick reveal gate that v_grid_cells and v_master_list keep.
+ */
+export interface TeamPickCount {
+  scope: "pool" | "ours";
+  week: number;
+  team: string;
+  n: number;
+}
+
 export interface EntryDetail {
   entry: EntrySummary;
   picks: GridCell[];
@@ -161,6 +175,8 @@ export interface DataBackend {
   /** The master pool's newest sheet, every row, in NO. order. */
   getMasterList(): Promise<MasterListData>;
   getLynneImports(): Promise<LynneImportRow[]>;
+  /** Team pick counts for every locked week, both scopes; empty before a week locks. */
+  getTeamPickCounts(): Promise<TeamPickCount[]>;
 }
 
 export interface Archive2025Entry {

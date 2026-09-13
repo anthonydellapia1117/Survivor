@@ -11,6 +11,7 @@ import type {
   MasterListData,
   MasterListRow,
   PotSummary,
+  TeamPickCount,
   WeekRow,
 } from "./types";
 
@@ -169,6 +170,22 @@ export const supabaseBackend: DataBackend = {
       if (data.length < page && (count === null || count === undefined)) break;
     }
     return out;
+  },
+
+  async getTeamPickCounts(): Promise<TeamPickCount[]> {
+    // At most 2 scopes x 18 weeks x 32 teams = 1,152 rows, so one page.
+    const { data, error } = await client()
+      .from("v_team_pick_counts")
+      .select("scope, week, team, n")
+      .order("week")
+      .order("team");
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      scope: r.scope === "pool" ? "pool" : "ours",
+      week: Number(r.week),
+      team: String(r.team),
+      n: Number(r.n),
+    }));
   },
 
   async getPot(): Promise<PotSummary> {
