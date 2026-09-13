@@ -10,6 +10,7 @@ import type {
   EntrySummary,
   GridCell,
   PotSummary,
+  TeamPickCount,
   WeekRow,
 } from "./types";
 
@@ -141,6 +142,18 @@ export const localPgBackend: DataBackend = {
       "select * from v_grid_cells order by week",
     );
     return rows.map(mapCell);
+  },
+
+  async getTeamPickCounts(): Promise<TeamPickCount[]> {
+    const { rows } = await db().query(
+      "select scope, week, team, n from v_team_pick_counts order by week, team",
+    );
+    return rows.map((r) => ({
+      scope: r.scope === "pool" ? ("pool" as const) : ("ours" as const),
+      week: Number(r.week),
+      team: String(r.team),
+      n: Number(r.n),
+    }));
   },
 
   async getPot(): Promise<PotSummary> {

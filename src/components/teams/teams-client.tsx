@@ -3,91 +3,73 @@
 // How many entries picked each team, week by week, across whichever pool is
 // showing.
 //
-// Set by Anthony on 2026-09-10, once results were being stored. The per-entry
-// picker went with it: the question this page answers is what the POOL did,
-// not what one entry has left, and a filter that shows one entry at a time
-// cannot answer it. What is left is one number per team per week -
+// Set by Anthony on 2026-09-10, once results were being stored, and changed
+// by him on 2026-09-13. The per-entry picker went with the first change: the
+// question this page answers is what the POOL did, not what one entry has
+// left, and a filter that shows one entry at a time cannot answer it. What
+// is left is one number per team per week -
 //
-//   the count is over FINISHED games only, so a week still in play shows
-//   nothing rather than a number that will move;
-//   subtle green where that team won, yellow where it lost, and NEVER red -
-//   red on this page would read as an elimination, and a team losing is not
-//   one, it is a fact about a game.
+//   the count appears as soon as the WEEK's pick deadline has passed, read
+//   from the weeks table, never hardcoded. From that moment the full board
+//   shows: every team with at least one pick, whether its game is scheduled,
+//   in progress or final. Before the deadline the counts stay hidden - a
+//   published count before picks lock is strategic information and would
+//   change what undecided players choose;
+//   the count is every live entry in the pool that picked that team that
+//   week. It comes from v_team_pick_counts, an aggregate that names nobody,
+//   so it does not wait on the per-pick reveal gate - the Grid's cells keep
+//   their kickoff-based reveal exactly as it is;
+//   subtle green where that team won, yellow where it lost, NO FILL where
+//   the game is not final, and NEVER red - red on this page would read as an
+//   elimination, and a team losing is not one, it is a fact about a game.
 //
-// Every number is derived on the render from the cells and the schedule.
-// Nothing here is stored.
+// Every number is derived on the render from the counts, the weeks and the
+// schedule. Nothing here is stored.
 
 import { useMemo } from "react";
-import type { GameRow, GridCell } from "@/lib/data/types";
-import { NFL_TEAMS, SKIP_WEEK } from "@/lib/standing";
+import type { GameRow, TeamPickCount, WeekRow } from "@/lib/data/types";
+import { NFL_TEAMS } from "@/lib/standing";
 import { teamResults } from "@/lib/master-list";
+import { teamHeat } from "@/lib/team-counts";
 import { toneOfTeamResult, TONE_FILL_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
 import { TeamLabel } from "@/components/team-label";
 import { cn } from "@/lib/utils";
 
 interface Props {
-  cells: GridCell[];
-  weekCount: number;
+  /** One scope's counts, every locked week. */
+  counts: Pick<TeamPickCount, "week" | "team" | "n">[];
+  weeks: WeekRow[];
   games: GameRow[];
+  /** How many entries the scope holds, for the empty-state sentence. */
+  entryCount: number;
+  /** The render's clock; a test hands one in, the page takes now. */
+  now?: Date;
 }
 
-/** The cell values the grid uses for something other than a team. */
-function isTeamPick(team: string): boolean {
-  return team !== SKIP_WEEK && team !== "MISSED" && team !== "LOCKED";
-}
-
-export function TeamsClient({ cells, weekCount, games }: Props) {
+export function TeamsClient({ counts, weeks, games, entryCount, now }: Props) {
   const results = useMemo(() => teamResults(games), [games]);
-
-  // team -> week -> how many entries picked it, counting only weeks whose
-  // game is final. A team absent from `results` for that week has no final
-  // game, so it contributes no count and gets no fill.
-  const heat = useMemo(() => {
-    const m = new Map<string, Map<number, number>>();
-    for (const c of cells) {
-      if (!isTeamPick(c.team)) continue;
-      if (!results.has(`${c.week}:${c.team}`)) continue;
-      if (!m.has(c.team)) m.set(c.team, new Map());
-      const wm = m.get(c.team)!;
-      wm.set(c.week, (wm.get(c.week) ?? 0) + 1);
-    }
-    return m;
-  }, [cells, results]);
-
-  const weeks = Array.from({ length: weekCount }, (_, i) => i + 1);
-  const total = useMemo(
-    () => [...heat.values()].reduce((n, wm) => n + [...wm.values()].reduce((a, b) => a + b, 0), 0),
-    [heat],
-  );
-
-  // The weekly total: how many picks across the pool that week carries, which
-  // is the column read the other way and the one number the per-team cells
-  // cannot give you (Anthony, 2026-09-11). Over FINISHED games only, exactly
-  // like the cells above it, so a week still in play sums to nothing rather
-  // than to a number that will move.
-  const weekTotals = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const wm of heat.values()) {
-      for (const [w, n] of wm) m.set(w, (m.get(w) ?? 0) + n);
-    }
-    return m;
-  }, [heat]);
+  // The board: team -> week -> count, held to the weeks that have locked. The
+  // view is the gate and this is the guard behind it.
+  const heat = useMemo(() => teamHeat(counts, weeks, now ?? new Date()), [counts, weeks, now]);
+  const weekNumbers = weeks.map((w) => w.week).sort((a, b) => a - b);
 
   return (
     <section className="space-y-3">
       <div>
         <h2 className="text-lg">Picks by team and week</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          How many entries picked each team, counting only games that have
-          finished. Green is a team that won that week, yellow one that lost.
-          A week still in play carries no number yet. The bottom row is each
-          week&apos;s total across the pool.
+          How many entries picked each team, shown once the week&apos;s picks
+          have locked. Green is a team that won that week, yellow one that
+          lost; a game not yet final shows its count with no colour. A week
+          still open carries no number. The bottom row is each week&apos;s
+          total across the pool.
         </p>
       </div>
-      {total === 0 ? (
+      {heat.total === 0 ? (
         <p className="rounded-lg border border-border bg-surface px-3 py-6 text-center text-sm text-muted-foreground">
-          No finished game carries a pick yet. Numbers appear here as games go
-          final.
+          {entryCount > 0
+            ? "No week has locked yet. Numbers appear here the moment a week's picks close."
+            : "No entries in this scope yet."}
         </p>
       ) : null}
       <div className="max-h-[70dvh] overflow-auto rounded-lg border border-border">
@@ -97,7 +79,7 @@ export function TeamsClient({ cells, weekCount, games }: Props) {
               <th className="sticky left-0 top-0 z-30 border-b border-r border-border bg-surface-2 px-2 py-1.5 text-left font-medium text-muted-foreground">
                 Team
               </th>
-              {weeks.map((w) => (
+              {weekNumbers.map((w) => (
                 <th
                   key={w}
                   className="sticky top-0 z-20 min-w-8 border-b border-border bg-surface-2 px-1 py-1.5 text-center font-medium text-muted-foreground"
@@ -113,12 +95,16 @@ export function TeamsClient({ cells, weekCount, games }: Props) {
                 <td className="sticky left-0 z-10 border-b border-r border-border/60 bg-surface px-2 py-1 font-medium">
                   <TeamLabel abbr={t.abbr} />
                 </td>
-                {weeks.map((w) => {
-                  const n = heat.get(t.abbr)?.get(w) ?? 0;
+                {weekNumbers.map((w) => {
+                  const n = heat.byTeam.get(t.abbr)?.get(w) ?? 0;
                   // The tone is the team's own result in that week, read off
-                  // the stored score. No stored result, no fill - which is
-                  // also every week the team did not play.
-                  const tone = toneOfTeamResult(results.get(`${w}:${t.abbr}`));
+                  // the stored FINAL score: teamResults carries a team only
+                  // once its game is final, and toneOfTeamResult gives an
+                  // absent result no fill. So a count on a game not yet
+                  // final shows with no colour, and nothing here guesses one.
+                  const result = results.get(`${w}:${t.abbr}`);
+                  const tone = toneOfTeamResult(result);
+                  const state = result === undefined ? "not final" : tone === "won" ? "won" : "lost";
                   return (
                     <td
                       key={w}
@@ -127,13 +113,13 @@ export function TeamsClient({ cells, weekCount, games }: Props) {
                         // The fill AND the number's colour: the fills sit about
                         // 1.1:1 apart on this palette, so on a phone in
                         // daylight the fill alone is not the difference this
-                        // page says it is.
+                        // page says it is. Both only with a final result.
                         n > 0 && TONE_FILL_CLASS[tone],
                         n > 0 && TONE_TEXT_CLASS[tone],
                       )}
                       title={
                         n > 0
-                          ? `${t.name} - week ${w}: ${n} ${n === 1 ? "entry" : "entries"}, ${tone === "won" ? "won" : "lost"}`
+                          ? `${t.name} - week ${w}: ${n} ${n === 1 ? "entry" : "entries"}, ${state}`
                           : `${t.name} - week ${w}`
                       }
                     >
@@ -152,16 +138,16 @@ export function TeamsClient({ cells, weekCount, games }: Props) {
               >
                 All teams
               </th>
-              {weeks.map((w) => {
-                const n = weekTotals.get(w) ?? 0;
+              {weekNumbers.map((w) => {
+                const n = heat.byWeek.get(w) ?? 0;
                 return (
                   <td
                     key={w}
                     className="sticky bottom-0 z-10 h-8 min-w-8 border-t border-border bg-surface-2 text-center font-semibold tabular-nums"
                     title={
                       n > 0
-                        ? `Week ${w}: ${n} ${n === 1 ? "pick" : "picks"} across the pool, over finished games`
-                        : `Week ${w}: no finished game carries a pick yet`
+                        ? `Week ${w}: ${n} ${n === 1 ? "pick" : "picks"} across the pool`
+                        : `Week ${w}: not locked yet`
                     }
                   >
                     {n > 0 ? n : ""}

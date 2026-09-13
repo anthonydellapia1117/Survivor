@@ -11,12 +11,13 @@ export const dynamic = "force-dynamic";
 
 export default async function TeamsPage() {
   const data = getData();
-  const [storedEntries, storedCells, weeks, games, master] = await Promise.all([
+  const [storedEntries, storedCells, weeks, games, master, counts] = await Promise.all([
     data.getEntries(),
     data.getGridCells(),
     data.getWeeks(),
     data.getSchedule(),
     data.getMasterList(),
+    data.getTeamPickCounts(),
   ]);
   // The whole pool from the published sheet is the default view; our group
   // is the other setting.
@@ -30,7 +31,7 @@ export default async function TeamsPage() {
         <h1 className="text-2xl">Teams</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           How many entries picked each team each week, across the whole master
-          pool or just our group, counting only finished games. Plan against
+          pool or just our group, shown once the week has locked. Plan against
           future matchups on the{" "}
           <Link href="/schedule" className="text-primary underline-offset-2 hover:underline">
             full 2026 schedule
@@ -47,9 +48,10 @@ export default async function TeamsPage() {
         <TeamsSource
           ours={{ entries, cells }}
           pool={pool}
+          counts={counts}
           poolLoaded={pool.entries.length > 0}
-          poolHasPicks={pool.cells.length > 0}
-          weekCount={weeks.length}
+          poolHasPicks={pool.cells.length > 0 || counts.some((c) => c.scope === "pool")}
+          weeks={weeks}
           games={games}
         />
       )}

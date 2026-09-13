@@ -11,6 +11,7 @@ import type {
   MasterListData,
   MasterListRow,
   PotSummary,
+  TeamPickCount,
   WeekRow,
 } from "./types";
 
@@ -163,6 +164,40 @@ export const supabaseBackend: DataBackend = {
         .range(from, from + page - 1);
       if (error) throw error;
       for (const r of data ?? []) out.push(mapCell(r));
+      if (!data || data.length === 0) break;
+      from += data.length;
+      if (count !== null && count !== undefined && out.length >= count) break;
+      if (data.length < page && (count === null || count === undefined)) break;
+    }
+    return out;
+  },
+
+  async getTeamPickCounts(): Promise<TeamPickCount[]> {
+    // At most 2 scopes x 18 weeks x 32 teams = 1,152 rows, which passes
+    // PostgREST's 1,000-row cap late in a season where every team gets
+    // picked, so the view is read a page at a time the way v_grid_cells is:
+    // driven by the exact count, advancing by rows received. A single read
+    // would have dropped the last weeks' rows silently (Codex, #100).
+    const c = client();
+    const out: TeamPickCount[] = [];
+    const page = 1000;
+    for (let from = 0; ; ) {
+      const { data, error, count } = await c
+        .from("v_team_pick_counts")
+        .select("scope, week, team, n", { count: "exact" })
+        .order("week")
+        .order("scope")
+        .order("team")
+        .range(from, from + page - 1);
+      if (error) throw error;
+      for (const r of data ?? []) {
+        out.push({
+          scope: r.scope === "pool" ? "pool" : "ours",
+          week: Number(r.week),
+          team: String(r.team),
+          n: Number(r.n),
+        });
+      }
       if (!data || data.length === 0) break;
       from += data.length;
       if (count !== null && count !== undefined && out.length >= count) break;
