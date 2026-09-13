@@ -1873,6 +1873,47 @@ in any of them.**
   that once put `SKIP_WEEK` on a screen. `NO_PICK` and `OUT_OF_POOL` are
   values like `SKIP_WEEK` and never reach a reader raw.
 
+- **OUR entries are scored for DISPLAY from the game scores, the same way
+  her rows are, and the stored record is not.** Set by Anthony on
+  2026-09-13, on a bug he found on Week 1's Sunday: the Everyone scope of
+  `/grid` coloured every finished game - her rows are scored from
+  `nfl_games` by `poolAsEntries` - while the Our-group scope, `/entry/[id]`,
+  the Teams page's our-group setting and the dashboard's losses and rolling
+  counts all still read pending for the same games. Those read
+  `v_entry_public` and `v_grid_cells`, which carry `picks.result`, and
+  **`picks.result` is written only by `admin_apply_lynne_import` and
+  `admin_set_result`** - her weekly results file on Tuesday and Thursday, or
+  a hand entry. Nothing writes it from a score, and that stays so: she is
+  the authority on results, standings and elimination in her pool, and the
+  local standing is a second, independent calculation that is compared with
+  hers and never merged.
+
+  So the fix is a display layer and not a write. `scoreFromGames` in
+  `src/lib/live-standing.ts` takes our entries and cells as the views serve
+  them and reads every stored `pending` on a FINAL game against
+  `teamResults(games)` - the one function that already colours her rows -
+  and recomputes wins, losses, lives and status from the stored baseline
+  plus exactly that delta, mirroring `v_entry_standing` (two losses or a
+  loss past the double-elimination boundary is out, one loss is at risk).
+  **A stored result is never overridden**, an entry the scores add nothing
+  to comes back as the same object, and a part-scored game contributes
+  nothing. The reveal gate is untouched: a cell reaches it with its team
+  already revealed by the view, and a final game has always kicked off.
+  Every public page that renders one of ours goes through it - `/grid`, the
+  dashboard, `/teams`, `/schedule`, `/records/roster`, `/entry/[id]` - and
+  `tests/unit/live-standing.test.ts` pins the wiring and holds the two
+  scopes to the SAME standing for the same picks. A cell it scored carries
+  `resultSource = nfl_games`, so the grid's cell detail says where the colour
+  came from rather than implying her file.
+
+  **What it deliberately does not touch:** `v_entry_standing` and everything
+  operations build on it - the Lynne submission's OUT cell, the picks
+  intake's eliminated-entry filter, chase and distribute. Those run on the
+  stored record, which is hers. Confirmed live the evening it went in: 10
+  finals, 63 of ours read won, 3 read lost (the same three the Everyone scope
+  showed), 51 still pending on the games in play, 4 still locked, and no row
+  red - which is what Week 1 must show.
+
 - **The share card carries HER two figures, and the dashboard has no
   subtitle.** Set by Anthony on 2026-09-11. `/api/og` shows **Total in Pool**
   and **Total Payout**, read through the same `poolStats()` the dashboard
@@ -2025,6 +2066,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |
 | One entry to a new owner            | `admin_move_entry_owner`, `tests/sql/20_move_entry_owner.sql` |
 | Her masked cells, the one seam      | `herCell` / `herCellIsLocked` in `src/lib/master-list.ts` |
+| Our standing from the scores, display only | `scoreFromGames` in `src/lib/live-standing.ts` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |

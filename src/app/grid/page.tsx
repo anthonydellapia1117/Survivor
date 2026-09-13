@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getData } from "@/lib/data";
 import { countVariance, fullyRevealedWeeks, herTextCells, poolAsEntries, poolRowIdentity } from "@/lib/master-list";
 import { formatEtDate } from "@/lib/format";
+import { scoreFromGames } from "@/lib/live-standing";
 import { GridView } from "@/components/grid/grid-view";
 import { WeeklyResultFiles } from "@/components/master-list/weekly-result-files";
 import { EmptyState } from "@/components/empty-state";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function GridPage() {
   const data = getData();
-  const [entries, weeks, cells, master, games, pot, imports] = await Promise.all([
+  const [storedEntries, weeks, storedCells, master, games, pot, imports] = await Promise.all([
     data.getEntries(),
     data.getWeeks(),
     data.getGridCells(),
@@ -27,6 +28,11 @@ export default async function GridPage() {
   // cells her public view has revealed reach this, so a week still masked on
   // our 121 is masked here too.
   const pool = poolAsEntries(master, games);
+  // Our own rows scored from the same games, so the Our-group scope colours
+  // a finished game the moment the Everyone scope does. The stored record
+  // is her results file and is not changed; a stored pending is read
+  // against the scores for display only (src/lib/live-standing.ts).
+  const { entries, cells } = scoreFromGames(storedEntries, storedCells, games);
   // Her NO. and her NAMES as two columns rather than one glued string. Our
   // group's rows read their NO. from the same map: v_entry_public does not
   // carry a Lynne number, and her sheet already holds every one of them.
