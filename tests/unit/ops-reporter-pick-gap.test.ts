@@ -13,9 +13,9 @@ const LATE = "2026-09-11T16:00:00.000Z"; // Fri 12:00 PM ET
 // so a reporter that named a tier rather than the late boundary - claiming a
 // deadline for a team the entry has not chosen - says "Tue" and is caught.
 const GAMES = [
-  { week: 1, dayOfWeek: "Wednesday", homeTeam: "SEA", awayTeam: "NE", kickoffAt: "2026-09-10T00:20:00.000Z" },
-  { week: 1, dayOfWeek: "Thursday", homeTeam: "LAR", awayTeam: "SF", kickoffAt: "2026-09-11T00:15:00.000Z" },
-  { week: 1, dayOfWeek: "Sunday", homeTeam: "PHI", awayTeam: "DAL", kickoffAt: "2026-09-13T17:00:00.000Z" },
+  { week: 1, dayOfWeek: "Wednesday", homeTeam: "SEA", awayTeam: "NE", kickoffAt: "2026-09-10T00:20:00.000Z", homeScore: null, awayScore: null, status: "scheduled" as const },
+  { week: 1, dayOfWeek: "Thursday", homeTeam: "LAR", awayTeam: "SF", kickoffAt: "2026-09-11T00:15:00.000Z", homeScore: null, awayScore: null, status: "scheduled" as const },
+  { week: 1, dayOfWeek: "Sunday", homeTeam: "PHI", awayTeam: "DAL", kickoffAt: "2026-09-13T17:00:00.000Z", homeScore: null, awayScore: null, status: "scheduled" as const },
 ];
 
 const FAR = new Date("2026-09-09T13:00:00.000Z"); // Wed 9:00 AM ET, two days out
@@ -88,7 +88,7 @@ describe("the open week", () => {
       entries: ownerWith("Owner One", "one@example.com", 1, "a"),
       // The pick is for the week that already locked, so week 2 is open and
       // still silent.
-      picks: [{ entryId: "a1", week: 1, team: "NE", submittedAt: EARLY, late: false, source: "email" }],
+      picks: [{ entryId: "a1", week: 1, team: "NE", submittedAt: EARLY, late: false, source: "email", result: "pending" }],
     });
     expect(texts(s)).toEqual([
       "Week 2 - 1 entry with no pick, 1 to chase - closes Fri 12:00 PM ET",
@@ -103,8 +103,8 @@ describe("what counts as picked", () => {
     const report = reportPickGap(snapshot({
       entries: ownerWith("Owner One", "one@example.com", 2, "a"),
       picks: [
-        { entryId: "a1", week: 1, team: "NE", submittedAt: EARLY, late: false, source: "email" },
-        { entryId: "a2", week: 1, team: "SF", submittedAt: EARLY, late: false, source: "text" },
+        { entryId: "a1", week: 1, team: "NE", submittedAt: EARLY, late: false, source: "email", result: "pending" },
+        { entryId: "a2", week: 1, team: "SF", submittedAt: EARLY, late: false, source: "text", result: "pending" },
       ],
     }));
     expect(report.items).toEqual([]);
@@ -114,7 +114,7 @@ describe("what counts as picked", () => {
   it("does not let another week's pick stand in for this one", () => {
     expect(texts(snapshot({
       entries: ownerWith("Owner One", "one@example.com", 1, "a"),
-      picks: [{ entryId: "a1", week: 2, team: "NE", submittedAt: EARLY, late: false, source: "email" }],
+      picks: [{ entryId: "a1", week: 2, team: "NE", submittedAt: EARLY, late: false, source: "email", result: "pending" }],
     }))).toEqual([
       "Week 1 - 1 entry with no pick, 1 to chase - closes Fri 12:00 PM ET",
       "Owner One (one@example.com) - 1 of 1 entry with no pick - closes Fri 12:00 PM ET",
@@ -129,10 +129,10 @@ describe("escalation by how close the lock is", () => {
   ];
   // Owner One is missing 1 of 4, Owner Two 3 of 4.
   const partial = [
-    { entryId: "a1", week: 1, team: "NE", submittedAt: EARLY, late: false, source: "email" },
-    { entryId: "a2", week: 1, team: "SF", submittedAt: EARLY, late: false, source: "email" },
-    { entryId: "a3", week: 1, team: "DAL", submittedAt: EARLY, late: false, source: "email" },
-    { entryId: "b1", week: 1, team: "PHI", submittedAt: EARLY, late: false, source: "email" },
+    { entryId: "a1", week: 1, team: "NE", submittedAt: EARLY, late: false, source: "email", result: "pending" },
+    { entryId: "a2", week: 1, team: "SF", submittedAt: EARLY, late: false, source: "email", result: "pending" },
+    { entryId: "a3", week: 1, team: "DAL", submittedAt: EARLY, late: false, source: "email", result: "pending" },
+    { entryId: "b1", week: 1, team: "PHI", submittedAt: EARLY, late: false, source: "email", result: "pending" },
   ];
   const ownerOneLine = "Owner One (one@example.com) - 1 of 4 entries with no pick - closes Fri 12:00 PM ET";
   const ownerTwoLine = "Owner Two (two@example.com) - 3 of 4 entries with no pick - closes Fri 12:00 PM ET";
@@ -246,7 +246,7 @@ describe("who is asked for the entry", () => {
         id: "l1", entryName: "Lou Direnzo #1", ownerName: "Nick DiVirgilio", ownerEmail: "nickd@example.com",
         isGifted: true, playerEmail: null,
       })],
-      picks: [{ entryId: "l1", week: 1, team: "NE", submittedAt: EARLY, late: false, source: "text" }],
+      picks: [{ entryId: "l1", week: 1, team: "NE", submittedAt: EARLY, late: false, source: "text", result: "pending" }],
     }));
     expect(report.items).toEqual([]);
   });

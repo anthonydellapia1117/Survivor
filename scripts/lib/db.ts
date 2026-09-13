@@ -144,6 +144,27 @@ export async function loadWeeks(client: SupabaseClient): Promise<WeekBoundsRow[]
   );
 }
 
+export interface ScoredGameRow {
+  week: number;
+  home_team: string;
+  away_team: string;
+  home_score: number | null;
+  away_score: number | null;
+  status: "scheduled" | "in_progress" | "final";
+}
+
+/** One week's games with their stored scores, for comparing her results against them. */
+export async function loadScoredGames(client: SupabaseClient, week: number): Promise<ScoredGameRow[]> {
+  return unwrap(
+    await client
+      .from("nfl_games")
+      .select("week, home_team, away_team, home_score, away_score, status")
+      .eq("week", week)
+      .returns<ScoredGameRow[]>(),
+    "nfl_games",
+  );
+}
+
 export async function loadGames(client: SupabaseClient, week: number): Promise<GameLiteRow[]> {
   return unwrap(
     await client

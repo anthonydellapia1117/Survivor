@@ -1,7 +1,7 @@
 // npm run ops -- <job> [--dry-run]        run one job now
 // npm run ops -- hourly [--dry-run]       every job whose schedule fell in the last window
 // npm run ops -- tick [--dry-run]         the old name for hourly, still accepted
-// npm run ops -- daily                    the six reporters, once a day
+// npm run ops -- daily                    the seven reporters, once a day
 //
 // TWO ENTRY POINTS, and the split is about what is hour-sensitive. `hourly`
 // carries the picks intake (a reply at 1:15 has to be recorded before a 2:00
@@ -140,7 +140,7 @@ async function runJob(job: JobName, cfg: JobConfig, dryRun: boolean): Promise<Jo
 }
 
 /**
- * The six reporters against one read of the roster.
+ * The seven reporters against one read of the roster.
  *
  * Gmail is optional here and its absence is REPORTED rather than swallowed:
  * without it the sheet watch cannot see whether a newer sheet of hers is

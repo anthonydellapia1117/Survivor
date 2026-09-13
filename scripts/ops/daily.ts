@@ -1,4 +1,4 @@
-// The daily entry point: one run, one read of the roster, six reporters.
+// The daily entry point: one run, one read of the roster, seven reporters.
 //
 // This replaces the six claude.ai Routines of docs/ROUTINES.md sections 3-7.
 // Each of those fired its own fresh session with Gmail and the repo and NO
@@ -13,7 +13,7 @@
 // Paid, resolves an identity or resolves a variance; it prints what a person
 // has to decide, once a day, in twelve lines per reporter.
 //
-//   npm run ops -- daily              the six reporters
+//   npm run ops -- daily              the seven reporters
 //   npm run ops -- hourly             every scheduled job due in the last hour
 //   npm run ops -- tick               the old name for hourly, still accepted
 
@@ -26,6 +26,7 @@ import { reportLynneEcho } from "./reporters/lynne-echo";
 import { reportSheetWatch } from "./reporters/sheet-watch";
 import { reportMoneyWatch } from "./reporters/money-watch";
 import { reportRosterIntegrity } from "./reporters/roster-integrity";
+import { reportResultVariance } from "./reporters/result-variance";
 
 /**
  * Ordered by what costs money or a week if it is missed.
@@ -33,14 +34,17 @@ import { reportRosterIntegrity } from "./reporters/roster-integrity";
  * roster-integrity is first because the recipient count gate stops every
  * whole-roster message dead, so a mismatch there means nobody is being mailed
  * at all; pick-gap and deadline-close are next because a missing or late pick
- * takes a loss at the Friday boundary. money-watch is last: a payment has no
- * deadline.
+ * takes a loss at the Friday boundary. result-variance sits after lynne-echo:
+ * it is the same two-documents question asked of her RESULTS rather than her
+ * picks, and it is silent until her file has landed. money-watch is last: a
+ * payment has no deadline.
  */
 export const REPORTERS: { name: string; run: ReporterFn }[] = [
   { name: "roster-integrity", run: reportRosterIntegrity },
   { name: "pick-gap", run: reportPickGap },
   { name: "deadline-close", run: reportDeadlineClose },
   { name: "lynne-echo", run: reportLynneEcho },
+  { name: "result-variance", run: reportResultVariance },
   { name: "sheet-watch", run: reportSheetWatch },
   { name: "money-watch", run: reportMoneyWatch },
 ];
@@ -57,7 +61,7 @@ export interface DailyOutcome {
  * Every reporter against one snapshot.
  *
  * A reporter that throws is reported as a failure and the rest still run: the
- * whole point of a daily report is that it arrives, and five reports plus a
+ * whole point of a daily report is that it arrives, and six reports plus a
  * named failure is worth more than a stack trace and nothing. That is the same
  * reasoning as ops issue #40 - a job that never started must not read as a
  * clean run.

@@ -20,8 +20,10 @@ import {
   importExists,
   loadCurrentPicks,
   loadLiveEntries,
+  loadScoredGames,
   loadStandings,
 } from "../lib/db";
+import { compareStoredToScores, scoreComparisonLines } from "@/lib/score-variance";
 import { LYNNE_EMAIL } from "../lib/constants";
 import { getAttachment, getMessageMeta, gmailClient, searchMessages, type MessageMeta } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
@@ -117,12 +119,35 @@ async function main(): Promise<void> {
   if (duplicate.kind === "other_week") throw new Error(duplicate.line);
 
   // ---- parse and plan, the way /admin/import does
-  const [entries, standings, localPicks] = await Promise.all([
+  const [entries, standings, localPicks, scoredGames] = await Promise.all([
     loadLiveEntries(client),
     loadStandings(client),
     loadCurrentPicks(client, week),
+    loadScoredGames(client, week),
   ]);
   const plan = buildResultsPlan({ buf, filename: attachment.filename, week, entries, standings, localPicks });
+
+  // ---- her results against the scores, set by Anthony on 2026-09-13
+  // The plan cannot see this: a result_conflict needs a local result to
+  // already exist, and nothing writes one from a score, so on import day every
+  // result of hers is a clean apply. This reads what her file is about to
+  // write - the applies laid over the current picks - against what nfl_games
+  // derives, and prints every row where they differ with both values. It is
+  // printed on a dry run and a real one alike, and it resolves nothing: her
+  // word is what gets written either way.
+  const appliedResult = new Map(plan.applies.map((a) => [a.entry_id, a.result]));
+  const scoreCheck = compareStoredToScores(
+    entries.map((e) => ({ id: e.id, entryName: e.entry_name, lynneNumber: e.lynne_number })),
+    localPicks.map((p) => ({ entryId: p.entry_id, week, team: p.team, result: appliedResult.get(p.entry_id) ?? p.result })),
+    scoredGames.map((g) => ({
+      week: g.week,
+      homeTeam: g.home_team,
+      awayTeam: g.away_team,
+      homeScore: g.home_score,
+      awayScore: g.away_score,
+      status: g.status,
+    })),
+  );
 
   // ---- show, before any write
   // An older sheet can carry a Week N column with nothing in it yet: her
@@ -158,6 +183,8 @@ async function main(): Promise<void> {
   }
   console.log("");
   for (const line of varianceTable(plan.variances)) console.log(line);
+  console.log("");
+  for (const line of scoreComparisonLines(scoreCheck, week)) console.log(line);
 
   if (args.dryRun) {
     console.log("\nDry run. Nothing written.");
@@ -195,6 +222,18 @@ async function main(): Promise<void> {
       `week ${week}: ${plan.matchedCount} matched, ${plan.variances.length} variances, ${plan.applies.length} applied, import ${id}`,
     ),
   );
+  if (scoreCheck.differ.length > 0) {
+    await notify(
+      needsAnthonyLine(
+        "results",
+        "score variance",
+        `${scoreCheck.differ.length} of ours where her week ${week} result differs from the scores: ${scoreCheck.differ
+          .map((v) => `NO. ${v.lynneNumber ?? "none"} ${v.entryName} ${v.team} her ${v.stored} / scores ${v.derived}`)
+          .join("; ")}`,
+      ),
+      { tags: "warning" },
+    );
+  }
   if (plan.variances.length || conflictCount) {
     await notify(
       needsAnthonyLine(

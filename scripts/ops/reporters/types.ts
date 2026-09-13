@@ -35,6 +35,8 @@ export interface PickSnapshot {
   submittedAt: string;
   late: boolean;
   source: string;
+  /** picks.result as stored: win | loss | tie_loss | bye | pending | missed, or null. Her file's word, never a score's. */
+  result: string | null;
 }
 
 export interface WeekSnapshot {
@@ -49,6 +51,10 @@ export interface GameSnapshot {
   homeTeam: string;
   awayTeam: string;
   kickoffAt: string;
+  /** The stored score, null until the ingest writes one. */
+  homeScore: number | null;
+  awayScore: number | null;
+  status: "scheduled" | "in_progress" | "final";
 }
 
 /** One of her rows on the newest loaded sheet. */

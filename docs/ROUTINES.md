@@ -10,9 +10,11 @@ code in this repo.**
 
 `hourly` is what section 10 called the Ops Tick: every job in
 `scripts/ops/config.json` whose cron fell in the last hour. It is renamed for
-what it does and `tick` is still accepted. `daily` is new: the six reporters
-in `scripts/ops/reporters`, which replace the six claude.ai Routines that
-sections 3 to 7 of this file describe.
+what it does and `tick` is still accepted. `daily` is new: the seven reporters
+in `scripts/ops/reporters` - six that replace the six claude.ai Routines that
+sections 3 to 7 of this file describe, and `result-variance` (2026-09-13),
+which reads her stored results against the score-derived ones for our rows
+and names every row where they differ, both values, resolving nothing.
 
 **Sections 3 to 7 are now history, not schedule.** Each of those Routines was
 a prompt: a fresh session with Gmail, this repo and no database at all
