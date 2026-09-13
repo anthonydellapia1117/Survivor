@@ -510,7 +510,7 @@ this table is a copy for reading):
 | lynne-import  | `5 21 * * 2,4`        | `npm run lynne:roster -- --file <her newest Football xlsx, fetched> --message-id <id> --yes` | no |
 | results       | `5 21 * * 2,4`        | `npm run results -- --yes --week <last locked week>` | no |
 | distribute    | `20 18 * * 5`         | `npm run distribute -- --yes --week <last locked week>` | no |
-| scores        | `0 3 * * 5` ET, `0 3 * * 6` ET, `0 17 * * 0` ET, `0 22 * * 0` ET, `0 3 * * 1` ET, `0 3 * * 2` ET | `npm run scores -- --yes` | no |
+| scores        | `0 3 * * 5` ET, `0 3 * * 6` ET, `0 12-23 * * 0` ET, `0 0-1 * * 1` ET, `0 3 * * 1` ET, `0 3 * * 2` ET | `npm run scores -- --yes` | no |
 | lynne-weekly  | `30 17 * * 5` ET      | `npm run lynne:weekly`                | no    |
 
 Three rules that used to be pasted into a Routine or a Gmail setting are code

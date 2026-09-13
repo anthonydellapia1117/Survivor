@@ -1730,13 +1730,29 @@ in any of them.**
   at all; the schedule is seeded and this only ever adds a score to a row that
   already exists.
 
-  **Its six slots are stated in EASTERN TIME** (`scheduleEt` in
-  `scripts/ops/config.json`, one expression per slot) and converted on every
-  run: Fri 3 AM, Sat 3 AM, Sun 5 PM, Sun 10 PM, Mon 3 AM, Tue 3 AM, overnight
-  so nothing collides with the reminder jobs. A fixed UTC cron would be an hour
+  **Its slots are stated in EASTERN TIME** (`scheduleEt` in
+  `scripts/ops/config.json`, one expression per slot or range) and converted
+  on every run: Fri 3 AM, Sat 3 AM, **every hour on the hour from Sunday noon
+  to 1 AM Monday**, Mon 3 AM, Tue 3 AM. A fixed UTC cron would be an hour
   wrong for half the season. The tick was widened from `43 9-23,0-2` to
-  `43 7-23,0-3` for them - under the old one **nine of the twelve slot-offsets**
-  (six slots x EDT and EST) fell between two ticks and would never have run.
+  `43 7-23,0-3` for the original six - under the old one **nine of the twelve
+  slot-offsets** (six slots x EDT and EST) fell between two ticks and would
+  never have run.
+
+  **The Sunday cadence is hourly from noon, set by Anthony on 2026-09-13.**
+  The original six slots had Sunday at 5 PM and 10 PM only. On Week 1's
+  Sunday the 5 PM slot was not inside the 4:43 PM tick's 60-minute lookback
+  and the first tick that could run it was 5:43 PM, so the 1 PM finals sat
+  unread on the site for over an hour after they ended and the ingest was
+  run by hand at 5:20 PM. Hourly on the hour from noon means every early
+  final is on the grid within the hour, the 4:25 PM finals land before the
+  night game, and the 1 AM slot takes Sunday night's final. Mon 3 AM and
+  Tue 3 AM stay for the Monday night game. The platform's floor is one hour,
+  which is exactly this cadence: each `:00` slot is picked up by the `:43`
+  tick through its lookback. **The Routine itself stays at `43 * * * *`** -
+  a `:00` tick would read a 1 PM final at 4:00 rather than 4:43, but it would
+  also move the Friday 5:30 PM Lynne draft to 6:00, and the 43-minute lag is
+  the price of the one-hour floor, not something a different minute fixes.
 
 - **The sweep runs every 19 minutes on FRIDAYS, 8:00 AM to 2:00 AM ET.** Set
   by Anthony on 2026-09-11, hourly at :43 the rest of the week. His words were
