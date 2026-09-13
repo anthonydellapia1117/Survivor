@@ -181,6 +181,18 @@ Resolved exclusions are recorded in `audit_log` under the action
 `payment_sweep_exclude`, each naming the transaction IDs it clears. **Check
 those rows — via /admin/audit — before re-raising anything.**
 
+**NOT EVERY PAYMENT IS A VENMO, AND THE METHOD IS NEVER BENT TO FIT.** The
+methods are `venmo`, `cash`, `check`, `apple_pay`, `correction` and `comp`
+(`payments_method_check`; `apple_pay` added 2026-09-12 when Marc Franklin
+paid his four that way). **A non-Venmo receipt carries no `venmo_txn_id`**,
+which is what keeps it out of the two partial dedupe indexes and out of the
+sweep entirely - the sweep reconciles the Venmo inbox, and a row it can never
+match is a line that gets chased forever. So when a payment arrives on a rail
+the enum does not have, **add the rail**: filing it as `venmo` invents a
+receipt that does not exist, and filing it as `cash` is simply false. Neither
+is a smaller lie than the other and "never invent data" covers a column as
+much as it covers an amount.
+
 ### Free entries
 
 - They are **Anthony's only**, under the participant row for

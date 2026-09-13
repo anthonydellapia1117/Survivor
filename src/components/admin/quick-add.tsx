@@ -542,7 +542,7 @@ function PaymentForm({
         />
       </Field>
       <div className="grid grid-cols-3 gap-1.5">
-        {["venmo", "cash", "check"].map((m) => (
+        {["venmo", "cash", "check", "apple_pay"].map((m) => (
           <button
             key={m}
             type="button"
