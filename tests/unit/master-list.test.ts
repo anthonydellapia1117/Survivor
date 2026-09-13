@@ -4,7 +4,9 @@ import {
   defaultTeamsSource,
   filterRows,
   herCell,
+  herCellIsLocked,
   herOut,
+  herTextCells,
   matchPick,
   mergeWeekColumns,
   poolAsEntries,
@@ -151,5 +153,61 @@ describe("mergeWeekColumns and defaultTeamsSource", () => {
     expect(defaultTeamsSource(true, true)).toBe("pool");
     expect(defaultTeamsSource(true, false)).toBe("ours");
     expect(defaultTeamsSource(false, false)).toBe("ours");
+  });
+});
+
+// THE MASKED-CELL SEAM, Anthony 2026-09-12. v_master_list now serves the key
+// for every week she has filled and substitutes the LOCKED sentinel until the
+// gate opens, so a MISSING key means she filled nothing. These hold the one
+// place that reads the sentinel, because the render test cannot: the locked
+// cell shadows the her-words branch there, so a leak of the sentinel into her
+// text is invisible to any assertion on the markup.
+describe("her masked cells", () => {
+  const col = { week: 1, key: "Week 1" };
+  const locked: MasterRow = { no: 9001, names: "Masked", cells: { "Week 1": "LOCKED" }, entryId: null };
+  const filled: MasterRow = { no: 9002, names: "Filled", cells: { "Week 1": "Dallas" }, entryId: null };
+  const empty: MasterRow = { no: 9003, names: "Empty", cells: {}, entryId: null };
+
+  it("reads a locked cell as absent, and says so separately", () => {
+    // Absent BY DEFAULT is what keeps every pre-existing caller unchanged.
+    expect(herCell(locked, col)).toBeUndefined();
+    expect(herCell(empty, col)).toBeUndefined();
+    expect(herCell(filled, col)).toBe("Dallas");
+    // And the distinction the view used to destroy is available on request.
+    expect(herCellIsLocked(locked, col)).toBe(true);
+    expect(herCellIsLocked(empty, col), "a week she never filled is not locked").toBe(false);
+    expect(herCellIsLocked(filled, col)).toBe(false);
+  });
+
+  it("never lets the sentinel through as her words", () => {
+    // herTextCells renders a non-team cell VERBATIM. LOCKED is not a team, so
+    // without the seam it lands here and "LOCKED" is drawn on the page as if
+    // she had typed it - the same shape as SKIP_WEEK reaching a screen.
+    const text = herTextCells({ rows: [locked, empty] });
+    expect(text.get("pool-9001")?.get(1)).toBeUndefined();
+    expect([...text.values()].flatMap((m) => [...m.values()])).not.toContain("LOCKED");
+    // Her real words still come through, which is what makes the above a
+    // guard on the sentinel and not on the function being inert.
+    const words = herTextCells({ rows: [{ no: 9004, names: "Out", cells: { "Week 1": "OUT" }, entryId: null }] });
+    expect(words.get("pool-9004")?.get(1)).toBe("OUT");
+  });
+
+  it("gives a locked cell the same sentinel our own masked picks carry", () => {
+    const { entries, cells } = poolAsEntries({ loadedAt: "2026-09-12T00:00:00Z", rows: [locked] });
+    const one = cells.filter((c) => c.week === 1);
+    expect(one).toHaveLength(1);
+    expect(one[0].team, "the grid reaches its locked branch by this string").toBe("LOCKED");
+    expect(one[0].result, "there is no team here to score").toBeNull();
+    // It is not a team she has used, so it cannot burn one or move a standing.
+    expect(entries[0].teamsUsed).toEqual([]);
+    expect(entries[0].losses).toBe(0);
+  });
+
+  it("leaves a locked cell out of the distribution rather than calling it other", () => {
+    const d = poolDistribution([locked, filled, empty], 1);
+    expect(d).not.toBeNull();
+    expect(d!.revealed, "only the revealed pick counts").toBe(1);
+    expect(d!.other, "a masked pick is not an unrecognised one").toBe(0);
+    expect(d!.rows.map((r) => r.team)).toEqual(["DAL"]);
   });
 });

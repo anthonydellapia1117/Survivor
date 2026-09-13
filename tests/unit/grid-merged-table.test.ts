@@ -8,6 +8,17 @@ const read = (p: string) => readFileSync(path.join(process.cwd(), p), "utf8");
 /** The rows only: the legend's swatches use the same tokens and are not cells. */
 const rowsOf = (html: string) => html.slice(html.indexOf("<tbody>"), html.indexOf("</tbody>"));
 
+/** One row's markup, found by text it contains. Assertions about a single
+ *  row have to be scoped to it: the same markup elsewhere in the table makes
+ *  a document-wide assertion pass or fail for the wrong reason. */
+const rowOf = (html: string, contains: string) => {
+  const row = rowsOf(html)
+    .split("<tr")
+    .find((r) => r.includes(contains));
+  if (row === undefined) throw new Error(`no row containing ${JSON.stringify(contains)}`);
+  return row;
+};
+
 // THE ONE TABLE at /grid: every row of the master pool's newest sheet, her
 // NO. and her NAMES as two columns, the week cells drawn the way the Grid
 // draws them. It must never name the runner, never show an uploaded filename,
@@ -49,6 +60,13 @@ vi.mock("../../src/lib/data", () => ({
         // inline on one half of the sentence and not the other.
         { no: 1302, names: "Her Bye Ours DET", cells: { "Week 2": "Bye" }, entryId: "e-1302" },
         { no: 1303, names: "Hers DAL Ours Bye", cells: { "Week 1": "Dallas" }, entryId: "e-1303" },
+        // THE TWO STATES THAT MUST NOT LOOK ALIKE, neither of them ours.
+        // 1400 is a pick she has filed that the reveal gate still holds: the
+        // view serves the key with the LOCKED sentinel. 1401 is a week she
+        // never filled at all, so there is no key. Before 2026-09-12 the view
+        // dropped the key for both and they rendered identically.
+        { no: 1400, names: "Hers Masked", cells: { "Week 1": "LOCKED" }, entryId: null },
+        { no: 1401, names: "Hers Empty", cells: {}, entryId: null },
       ],
     }),
     getPot: async () => ({
@@ -154,7 +172,7 @@ describe("the one table, signed out", () => {
     // either (CLAUDE.md - report the variance, never auto-resolve).
     const html = await render();
     expect(html).toContain("1,318");
-    expect(html).toMatch(/this sheet carries 9 rows/);
+    expect(html).toMatch(/this sheet carries 11 rows/);
     expect(html).not.toContain("matches the rows on this sheet");
   });
 
@@ -166,7 +184,7 @@ describe("the one table, signed out", () => {
       expect(html).not.toContain("matches the rows on this sheet");
       expect(html).not.toContain("this sheet carries");
       // Published and equal to the mocked rows: now it is a match.
-      potState.poolEntryCount = 9;
+      potState.poolEntryCount = 11;
       html = await render();
       expect(html).toContain("matches the rows on this sheet");
     } finally {
@@ -249,9 +267,11 @@ describe("the one table, signed out", () => {
       "Ours With Her Note",
       "Her Bye Ours DET",
       "Hers DAL Ours Bye",
+      "Hers Masked",
+      "Hers Empty",
     ].map((n) => html.indexOf(n));
     expect(order, "rows in her numbering").toEqual([...order].sort((a, b) => a - b));
-    expect(html).toContain("9 of 9 entries");
+    expect(html).toContain("11 of 11 entries");
     // Her Dallas against our PHI on 983: a variance. Hers stays in the cell -
     // as the team code, because the week columns are drawn the way the Grid
     // draws them - and ours is reported beside it. NEITHER is changed
@@ -260,9 +280,14 @@ describe("the one table, signed out", () => {
     expect(rowsOf(html)).toMatch(/>DAL</);
     // 1089 has our Week 2 pick and she has no Week 2 cell: ours only, marked.
     expect(html).toMatch(/border-dashed[^>]*>BUF/);
-    // 1005's pick is still masked by the public view: nothing about it, and
-    // no LOCKED chip either - her sheet simply carries no cell.
-    expect(html).not.toContain("LOCKED");
+    // 1005 is OURS and our pick for it is masked. In this scope the table is
+    // drawn from HER sheet, and her sheet carries no cell for 1005 - so it is
+    // a blank week, and our locked pick must not leak a chip onto it through
+    // the overlay. Scoped to that row on purpose: a padlock IS expected
+    // elsewhere in this table now (1400), so a document-wide
+    // `not.toContain("LOCKED")` would pass for the wrong reason.
+    expect(rowOf(html, "E.A.T."), "our masked pick must not reach her blank week")
+      .not.toContain("LOCKED");
     expect(html).not.toContain(">SEA<");
     // Someone else's cell belongs to no row here.
     expect(html).not.toContain(">KC<");
@@ -273,6 +298,47 @@ describe("the one table, signed out", () => {
       .toContain("if (c.team === LOCKED_TEAM) continue;");
     expect(read("src/lib/master-list.ts"), "matchTeams treats a locked pick as absent")
       .toContain("const o = ours === LOCKED_TEAM ? undefined : ours;");
+  });
+
+  // THE BUG ANTHONY FOUND, 2026-09-12. Our 121 drew a padlock for a pick that
+  // exists and is not revealed; her rows drew the empty-week dot for the same
+  // state. A blank cell has to mean ONE thing - she filed nothing - and an
+  // unrevealed pick has to read locked whoever holds it.
+  //
+  // Both halves are asserted here, and they are asserted on ONE render so the
+  // two states are compared against each other rather than each against a
+  // remembered idea of the markup. That is the whole point: the failure was
+  // never that either cell looked wrong on its own, it was that they looked
+  // the same.
+  it("draws a padlock for her masked pick and the dot only for a week she never filled", async () => {
+    const html = await render();
+    const masked = rowOf(html, "Hers Masked");
+    const empty = rowOf(html, "Hers Empty");
+
+    // 1. Her masked pick renders the locked chip, exactly as ours does.
+    expect(masked, "an unrevealed pick of hers must read locked").toContain("LOCKED");
+    expect(masked).toContain("Pick locked - visible when this game kicks off");
+
+    // 2. A week she never filled still renders the blank dot, and no padlock.
+    expect(empty, "a week she never filled is the only blank").toContain(">·<");
+    expect(empty, "an empty week must not claim a hidden pick").not.toContain("LOCKED");
+
+    // 3. The two must not be the same markup. Asserted directly, because that
+    //    equality IS the bug and every other assertion here could pass while
+    //    it held.
+    expect(masked, "the two states must not render alike").not.toEqual(empty);
+
+    // 4. The gate itself: the sentinel is all that is served, so there is no
+    //    team to leak. Her masked Week 1 was Dallas on other rows in this
+    //    fixture; it must not appear on this one.
+    expect(masked, "a masked cell must carry no team").not.toMatch(/>DAL</);
+    expect(masked).not.toContain("Dallas");
+
+    // The sentinel must also never be drawn as her WORDS - the way SKIP_WEEK
+    // once reached a screen. That cannot be asserted HERE: the locked cell
+    // shadows the her-words branch, so the assertion passed even with the
+    // seam removed. It is guarded where the leak would actually live, on
+    // herTextCells itself, in tests/unit/master-list.test.ts.
   });
 
   it("opens on Everyone, on her numbering", async () => {
