@@ -120,7 +120,22 @@ begin
   select names, entry_id, cells into v_names, v_entry, v_cells from v_master_list where row_no = 983;
   if v_names <> 'Adriana Flacco ' then raise exception 'names must be the newest sheet, verbatim; got %', quote_literal(v_names); end if;
   if v_entry is distinct from v_id then raise exception 'entry_id must be our live entry at that NO.'; end if;
-  if v_cells->>'Week 1' <> 'Dallas' then raise exception 'cells must ride along; got %', v_cells; end if;
+  -- Her key must be PRESENT for a week she filled, whether or not the gate
+  -- has opened it. Asserted as presence rather than as a value on purpose:
+  -- this block runs against the seeded schedule, so a value assertion would
+  -- read 'Dallas' after that game kicks off and LOCKED before it, and would
+  -- rot on a Sunday afternoon.
+  --
+  -- The old form here was `v_cells->>'Week 1' <> 'Dallas'`, which was VACUOUS
+  -- while the cell was masked: the view dropped the key, so the left side was
+  -- NULL, the comparison was NULL, and the `if` never fired. It could not have
+  -- caught the bug this file now covers.
+  if not (v_cells ? 'Week 1') then
+    raise exception 'a week she filled must always carry a key, masked or not; got %', v_cells;
+  end if;
+  if v_cells->>'Week 1' not in ('Dallas', 'LOCKED') then
+    raise exception 'a filled week is her text or the sentinel, nothing else; got %', v_cells;
+  end if;
   if (select entry_id from v_master_list where row_no = 1319) is not null then
     raise exception 'a NO. that is nobody of ours must carry no entry_id';
   end if;
@@ -175,21 +190,38 @@ begin
   -- finished week) is served; Week 3 (a team with no game that week) stays
   -- locked, never guessed; Phone is not a week and never leaves the table.
   select cells into v_cells from v_master_list where row_no = 983;
-  if v_cells <> '{"Week 2": "OUT"}'::jsonb then
-    raise exception 'before kickoff the view must serve only the finished week, got %', v_cells;
+  -- THE GATE FIRST, because it is the assertion that matters and an equality
+  -- check placed ahead of it would report a mismatch instead of a leak.
+  if v_cells::text ilike '%dallas%' or v_cells::text ilike '%buffalo%' then
+    raise exception 'a masked cell leaked her team text, got %', v_cells;
+  end if;
+  if v_cells <> '{"Week 1": "LOCKED", "Week 2": "OUT", "Week 3": "LOCKED"}'::jsonb then
+    raise exception 'before kickoff the held weeks must read LOCKED and the finished one her text, got %', v_cells;
   end if;
 
   -- After kickoff her Week 1 cell is served, as she wrote it.
   update nfl_games set kickoff_at = now() - interval '1 hour' where id = 'ml-w1-phi-dal';
   select cells into v_cells from v_master_list where row_no = 983;
-  if v_cells <> '{"Week 1": "dallas ", "Week 2": "OUT"}'::jsonb then
+  if v_cells <> '{"Week 1": "dallas ", "Week 2": "OUT", "Week 3": "LOCKED"}'::jsonb then
     raise exception 'after kickoff her Week 1 cell must be served verbatim, got %', v_cells;
   end if;
 
   -- The admin reveal override masks it again, the same as the grid.
   update nfl_games set reveal_override = false where id = 'ml-w1-phi-dal';
   select cells into v_cells from v_master_list where row_no = 983;
-  if v_cells ? 'Week 1' then raise exception 'a reveal override must hold her cell back too, got %', v_cells; end if;
+  if v_cells->>'Week 1' <> 'LOCKED' then
+    raise exception 'a reveal override must hold her cell back too, got %', v_cells;
+  end if;
+
+  -- A week she never filled carries NO key. This is the other half of the
+  -- rule and the reason the marker exists: blank must mean one thing only.
+  if v_cells ? 'Week 4' then
+    raise exception 'a week she never filled must carry no key at all, got %', v_cells;
+  end if;
+  -- And a column that is not a week still never leaves the table.
+  if v_cells ? 'Phone' then
+    raise exception 'a non-week column must never be served, got %', v_cells;
+  end if;
 end $$;
 
 rollback;

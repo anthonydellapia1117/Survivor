@@ -62,8 +62,13 @@ export function mergeWeekColumns(hers: WeekColumn[], ourWeeks: number[]): WeekCo
   return [...byWeek].sort((a, b) => a[0] - b[0]).map(([week, key]) => ({ week, key }));
 }
 
-/** Her cell for a week, or undefined when she has left it blank. The column's key is tried first, then any key of the row that names the same week. */
-export function herCell(row: Pick<MasterRow, "cells">, col: WeekColumn): string | undefined {
+/**
+ * Her cell for a week exactly as `v_master_list` served it, sentinel and all.
+ * Private: `LOCKED` is the view saying a cell EXISTS and is not revealed yet,
+ * and letting that string past this seam is how a sentinel ends up drawn on a
+ * screen. Everything outside goes through `herCell` or `herCellIsLocked`.
+ */
+function herRawCell(row: Pick<MasterRow, "cells">, col: WeekColumn): string | undefined {
   let v = row.cells[col.key];
   if (v === undefined) {
     for (const [key, val] of Object.entries(row.cells)) {
@@ -75,6 +80,35 @@ export function herCell(row: Pick<MasterRow, "cells">, col: WeekColumn): string 
     }
   }
   return v === undefined || v.trim() === "" ? undefined : v;
+}
+
+/**
+ * Her cell for a week, or undefined when she has left it blank OR the reveal
+ * gate is still holding it. The column's key is tried first, then any key of
+ * the row that names the same week.
+ *
+ * A locked cell reads as absent HERE on purpose. Every caller of this that
+ * predates the sentinel - the distribution tally, her non-team words, the
+ * team scan in `poolAsEntries` - wants a cell it can read, and a masked one
+ * is not that. Keeping the default at "absent" means none of them changed
+ * behaviour when the view started serving the marker, and the one place that
+ * does want to know asks `herCellIsLocked` for it.
+ */
+export function herCell(row: Pick<MasterRow, "cells">, col: WeekColumn): string | undefined {
+  const v = herRawCell(row, col);
+  return v === LOCKED_TEAM ? undefined : v;
+}
+
+/**
+ * She has filled this week and the reveal gate is still holding it.
+ *
+ * This is the distinction the view used to destroy: it dropped the key for a
+ * masked cell, so a hidden pick and a week she never filled arrived as the
+ * same nothing and the master-pool rows drew the empty-week dot while our own
+ * drew a padlock for the identical state.
+ */
+export function herCellIsLocked(row: Pick<MasterRow, "cells">, col: WeekColumn): boolean {
+  return herRawCell(row, col) === LOCKED_TEAM;
 }
 
 /** Her cell as an app team code when it is one of her team names, else null. */
@@ -320,6 +354,24 @@ export function poolAsEntries(
     // without a link because no such page exists.
     const id = poolEntryId(r);
     for (const col of columns) {
+      // A pick of hers the gate still masks. It becomes a real cell carrying
+      // the same LOCKED sentinel our own masked picks arrive with from
+      // v_grid_cells, so the grid reaches its existing locked branch by the
+      // one route and both scopes look identical. It is deliberately not a
+      // used team and scores nothing - there is no team here to score.
+      if (herCellIsLocked(r, col)) {
+        cells.push({
+          entryId: id,
+          week: col.week,
+          team: LOCKED_TEAM,
+          result: null,
+          late: false,
+          submittedAt: at,
+          source: MASTER_LIST_SOURCE,
+          resultSource: null,
+        });
+        continue;
+      }
       const cell = herCell(r, col);
       const team = herTeam(cell);
       if (team === null) {

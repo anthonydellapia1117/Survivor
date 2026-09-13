@@ -459,6 +459,31 @@ her sheet.**
   our 121's picks that `/grid` still masks. Her vocabulary is copied into
   the view lower-cased and `tests/unit/lynne-team-names-sql.test.ts` holds
   the two copies together.
+- **A MASKED CELL IS SERVED AS `LOCKED`, NEVER DROPPED, AND A BLANK MEANS ONE
+  THING ONLY.** Set by Anthony on 2026-09-12, on a bug he found: our 121 drew
+  a padlock for a pick that exists and is not revealed, and her rows drew the
+  empty-week dot for the identical state. The reveal test used to sit in the
+  `WHERE` of the aggregate, so a masked cell was never fed to
+  `jsonb_object_agg` and **its key vanished** - the distinction was destroyed
+  in the view, before any TypeScript ran, so neither `master-list.ts` nor
+  `grid-view.tsx` could recover it. `v_grid_cells` always had this right and
+  is the model: it keeps the pick row and puts `'LOCKED'` in the team column.
+  `v_master_list` now keeps the KEY and puts `'LOCKED'` in the value
+  (`20260913000070`), so both scopes reach the one locked branch by the one
+  sentinel. **The gate is untouched** - the same condition moved from the
+  `WHERE` to a `CASE`, her text is emitted on exactly the branch that emitted
+  it before, and the masked branch emits a constant carrying no team.
+  Confirmed live the evening it went in: 1,318 keys where there had been 11,
+  and the only team text served was still Seattle and LA Rams, the two games
+  that had kicked off. **Still five columns** - the marker rides IN `cells`
+  rather than beside it. `src/lib/master-list.ts` is the ONE place the
+  sentinel is read: `herCell` reports a locked cell as ABSENT so every caller
+  that predates the marker is unchanged, and `herCellIsLocked` is how the one
+  caller that wants it asks. That default is what keeps the sentinel out of
+  the distribution tally and out of `herTextCells`, which renders a non-team
+  cell VERBATIM and would otherwise print the word on the page - the same
+  shape as `SKIP_WEEK` reaching a screen. One accepted collision: a cell she
+  literally typed as "LOCKED" would render as a padlock once revealed.
 - **Her own row is on the list.** NO. 1 of her sheet is her own entry,
   named as she named it. It is her data as published and the app never
   rewrites her rows, so that name appears on the table at `/grid` and in
@@ -1971,6 +1996,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Data backup (one-step restore)      | `src/lib/backup.ts`, `/api/admin/backup`     |
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |
 | One entry to a new owner            | `admin_move_entry_owner`, `tests/sql/20_move_entry_owner.sql` |
+| Her masked cells, the one seam      | `herCell` / `herCellIsLocked` in `src/lib/master-list.ts` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |

@@ -332,8 +332,16 @@ begin
   end if;
   -- ...and masked by the public view until that game kicks off
   select cells into v_cells from v_master_list where row_no = 4242;
-  if v_cells <> '{}'::jsonb then
+  -- Masked means the TEAM is withheld, not that the cell vanishes: the key
+  -- stays so the grid can draw a padlock rather than an empty week.
+  if v_cells::text ilike '%' || lower(v_team) || '%' then
     raise exception 'v_master_list must mask a cell whose game has not kicked off, got %', v_cells;
+  end if;
+  if (select count(*) from jsonb_each_text(v_cells)) <> 1 then
+    raise exception 'the masked cell must still carry exactly its one key, got %', v_cells;
+  end if;
+  if (select value from jsonb_each_text(v_cells) limit 1) <> 'LOCKED' then
+    raise exception 'a masked cell must read LOCKED, got %', v_cells;
   end if;
 end $$;
 rollback;
