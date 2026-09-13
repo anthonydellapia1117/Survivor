@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getData } from "@/lib/data";
 import { eliminationWeekOf } from "@/lib/alive";
+import { scoreFromGames } from "@/lib/live-standing";
 import { EntriesTable } from "@/components/entries/entries-table";
 import { EmptyState } from "@/components/empty-state";
 
@@ -9,11 +10,15 @@ export const dynamic = "force-dynamic";
 
 export default async function EntriesPage() {
   const data = getData();
-  const [entries, cells, weeks] = await Promise.all([
+  const [storedEntries, storedCells, weeks, games] = await Promise.all([
     data.getEntries(),
     data.getGridCells(),
     data.getWeeks(),
+    data.getSchedule(),
   ]);
+  // Status, lives and elimination week read from the scores for display;
+  // the stored record is her results file (src/lib/live-standing.ts).
+  const { entries, cells } = scoreFromGames(storedEntries, storedCells, games);
 
   // Current week: the first week whose deadline is in the future, else the last.
   const now = Date.now();

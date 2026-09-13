@@ -15,6 +15,7 @@ import { NFL_TEAMS, RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
 import { eliminationWeekOf } from "@/lib/alive";
 import { TEAM_PALETTE } from "@/lib/team-colors";
 import { lynneBucket } from "@/lib/lynne/names";
+import { scoreFromGames } from "@/lib/live-standing";
 import {
   fullyRevealedWeeks,
   poolDistribution,
@@ -45,7 +46,7 @@ const RESULT_TEXT: Record<string, string> = {
 
 export default async function DashboardPage() {
   const data = getData();
-  const [entries, weeks, cells, pot, games, master] = await Promise.all([
+  const [storedEntries, weeks, storedCells, pot, games, master] = await Promise.all([
     data.getEntries(),
     data.getWeeks(),
     data.getGridCells(),
@@ -57,6 +58,11 @@ export default async function DashboardPage() {
   // Her sheet and our roster are independent sources. The empty state is
   // for when NEITHER has anything; a loaded sheet with no roster yet still
   // opens on the master pool, as the Grid does.
+  // This week's losses and the rolling counts move as games go final, read
+  // from the same scores that colour her rows; the stored record is her
+  // results file and is untouched (src/lib/live-standing.ts).
+  const { entries, cells } = scoreFromGames(storedEntries, storedCells, games);
+
   if (entries.length === 0 && master.rows.length === 0) {
     return (
       <div className="space-y-6">

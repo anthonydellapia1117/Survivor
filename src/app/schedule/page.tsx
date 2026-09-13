@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getData } from "@/lib/data";
 import { currentPlayWeek } from "@/lib/dashboard";
+import { scoreFromGames } from "@/lib/live-standing";
 import { GameBoard } from "@/components/schedule/game-board";
 import { ScheduleGrid } from "@/components/schedule/schedule-grid";
 import { WindowLegend } from "@/components/schedule/window-legend";
@@ -14,12 +15,14 @@ export default async function SchedulePage(props: {
 }) {
   const { week: weekParam, view } = await props.searchParams;
   const data = getData();
-  const [games, entries, cells, weeks] = await Promise.all([
+  const [games, storedEntries, storedCells, weeks] = await Promise.all([
     data.getSchedule(),
     data.getEntries(),
     data.getGridCells(),
     data.getWeeks(),
   ]);
+  // What a final game COST is read from the scores, not only from her file.
+  const { entries, cells } = scoreFromGames(storedEntries, storedCells, games);
   const playWeek = currentPlayWeek(weeks, new Date())?.week ?? 1;
   const week = Math.min(18, Math.max(1, Number(weekParam) || playWeek));
   const season = view === "season";

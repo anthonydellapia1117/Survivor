@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getData } from "@/lib/data";
 import { poolAsEntries } from "@/lib/master-list";
+import { scoreFromGames } from "@/lib/live-standing";
 import { TeamsSource } from "@/components/teams/teams-source";
 import { EmptyState } from "@/components/empty-state";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TeamsPage() {
   const data = getData();
-  const [entries, cells, weeks, games, master] = await Promise.all([
+  const [storedEntries, storedCells, weeks, games, master] = await Promise.all([
     data.getEntries(),
     data.getGridCells(),
     data.getWeeks(),
@@ -20,6 +21,8 @@ export default async function TeamsPage() {
   // The whole pool from the published sheet is the default view; our group
   // is the other setting.
   const pool = poolAsEntries(master);
+  // Our group scored from the games for display, as the Grid does.
+  const { entries, cells } = scoreFromGames(storedEntries, storedCells, games);
 
   return (
     <div className="space-y-4">
