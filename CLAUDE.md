@@ -1499,7 +1499,7 @@ in any of them.**
 | `npm run results -- --week N`            | Her newest Football xlsx from Gmail through `admin_apply_lynne_import`; refuses a sha256 seen before; prints the variance table |
 | `npm run distribute -- --week N`         | After the Friday lock, one BCC draft to every owner and player address with the one link and the standings sentence             |
 | `npm run remind [-- --send --yes]`      | The week reminder due now (six hours before a week's early or late deadline) to every live address, exact count gate, drafted or sent |
-| `npm run ops -- <job>` / `-- hourly` / `-- daily` | Operations from the repo: sweep, pick-reminder, lynne-import, chase, results, distribute, each from `scripts/ops/config.json`; `hourly` runs whatever fell due in the last hour (`tick` is its old name and still works); `daily` runs the six reporters |
+| `npm run ops -- <job>` / `-- hourly` / `-- daily` | Operations from the repo: sweep, pick-reminder, lynne-import, chase, results, distribute, each from `scripts/ops/config.json`; `hourly` runs whatever fell due in the last hour (`tick` is its old name and still works); `daily` runs the seven reporters |
 | `npm run scores [-- --week N \| --all]`   | Finals from the free ESPN scoreboard onto `nfl_games`, matched on week and both teams; read-only against ESPN, write-only to `nfl_games` |
 | `npm run notify -- "line"`               | One line to ntfy.sh/`NTFY_TOPIC`, printed when the topic is unset                                                               |
 | `npm run gmail:auth`                     | One-time OAuth consent for the Gmail token                                                                                     |
@@ -1618,7 +1618,7 @@ in any of them.**
   last hour: the picks intake, because a reply landing at 1:15 has to be
   recorded before a 2:00 deadline, and the two sending jobs, which fire six
   hours before a boundary. `tick` is its old name and still runs.
-  `npm run ops -- daily` runs the six reporters in `scripts/ops/reporters`,
+  `npm run ops -- daily` runs the seven reporters in `scripts/ops/reporters`,
   which replaced the six claude.ai Routines of docs/ROUTINES.md sections 3-7:
   each of those was a prompt with Gmail, this repo and **no database at all**,
   working the roster out of mail; these read it, through the admin's own RLS
@@ -1914,6 +1914,27 @@ in any of them.**
   showed), 51 still pending on the games in play, 4 still locked, and no row
   red - which is what Week 1 must show.
 
+- **HER STORED RESULT IS COMPARED AGAINST THE SCORE-DERIVED ONE, AND A
+  DIFFERENCE REACHES ANTHONY AS ONE LINE.** Set by Anthony on 2026-09-13.
+  Tuesday is the first time `picks.result` and the score-derived display can
+  disagree: her results file writes what ESPN only implied, the stored result
+  then wins in `scoreFromGames`, and a row that flips from won to lost does so
+  correctly - she is the authority on elimination - but silently. **The
+  import cannot raise it**: `computeImportPlan` raises a `result_conflict`
+  only when a LOCAL non-pending result already exists, and nothing writes
+  `picks.result` from a score, so on import day every result of hers is a
+  clean apply. `compareStoredToScores` in `src/lib/score-variance.ts` is the
+  comparison, read-only, for our rows only: her stored result against
+  `teamResults(games)`, a tie a loss as everywhere else, a pending pick
+  counted as pending and never as agreement, a result on a game with no
+  final counted as unscored and never as a difference. It runs in two places:
+  `npm run results` prints it beside the plan on a dry run and a real one
+  alike (her applies laid over the current picks) and posts a NEEDS ANTHONY
+  line naming every differing row; and the `result-variance` daily reporter,
+  the seventh, reads what the import wrote and is NO ACTION until her file
+  has landed. Neither resolves anything - both values, NO., entry, her
+  result, the score-derived result, and Anthony decides.
+
 - **The share card carries HER two figures, and the dashboard has no
   subtitle.** Set by Anthony on 2026-09-11. `/api/og` shows **Total in Pool**
   and **Total Payout**, read through the same `poolStats()` the dashboard
@@ -2067,6 +2088,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | One entry to a new owner            | `admin_move_entry_owner`, `tests/sql/20_move_entry_owner.sql` |
 | Her masked cells, the one seam      | `herCell` / `herCellIsLocked` in `src/lib/master-list.ts` |
 | Our standing from the scores, display only | `scoreFromGames` in `src/lib/live-standing.ts` |
+| Her result against the scores, read-only | `compareStoredToScores` in `src/lib/score-variance.ts`, `scripts/ops/reporters/result-variance.ts` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |

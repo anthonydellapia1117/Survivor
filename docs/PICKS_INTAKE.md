@@ -210,7 +210,14 @@ it, prints its sha256, and refuses if that sha256 was imported before (the
 path /admin/import takes: her NO./NAMES grid is matched to our entries by her
 number first, then exact name, then case-insensitive name, never fuzzy; the
 plan is computed; and the variance table is printed with both values on
-every line. Nothing is resolved. After `y` it commits through
+every line. Nothing is resolved. Below the variance table, since 2026-09-13,
+her results are read against the scores on `nfl_games` for every one of our
+rows - one line when every row her file has reached agrees, otherwise one
+line per row where they differ, with her result and the score-derived one,
+NO. and entry named - and a differing row is posted as a NEEDS ANTHONY line.
+The import cannot see this on its own: a `result_conflict` needs a local
+result to already exist, and nothing writes one from a score. Neither side is
+corrected; her word is what gets written. After `y` it commits through
 `admin_apply_lynne_import`, the results-only importer, and prints the import
 id. You should see the variance table and `import <id>`; review it on
 /admin/import and /grid.

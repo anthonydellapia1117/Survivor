@@ -22,9 +22,9 @@ const WEEKS: WeekSnapshot[] = [
 ];
 
 const GAMES: GameSnapshot[] = [1, 2, 3].flatMap((week) => [
-  { week, dayOfWeek: "Wednesday", homeTeam: "SEA", awayTeam: "NE", kickoffAt: "2026-09-10T00:20:00Z" },
-  { week, dayOfWeek: "Thursday", homeTeam: "LAR", awayTeam: "SF", kickoffAt: "2026-09-11T00:20:00Z" },
-  { week, dayOfWeek: "Sunday", homeTeam: "DAL", awayTeam: "PHI", kickoffAt: "2026-09-13T17:00:00Z" },
+  { week, dayOfWeek: "Wednesday", homeTeam: "SEA", awayTeam: "NE", kickoffAt: "2026-09-10T00:20:00Z", homeScore: null, awayScore: null, status: "scheduled" as const },
+  { week, dayOfWeek: "Thursday", homeTeam: "LAR", awayTeam: "SF", kickoffAt: "2026-09-11T00:20:00Z", homeScore: null, awayScore: null, status: "scheduled" as const },
+  { week, dayOfWeek: "Sunday", homeTeam: "DAL", awayTeam: "PHI", kickoffAt: "2026-09-13T17:00:00Z", homeScore: null, awayScore: null, status: "scheduled" as const },
 ]);
 
 /** Thursday 2026-09-17, 11:00 AM ET: Week 1 has locked, Week 2 is the open week. */
@@ -82,6 +82,7 @@ function pick(over: Partial<PickSnapshot> = {}): PickSnapshot {
     submittedAt: "2026-09-14T14:00:00Z",
     late: false,
     source: "email",
+    result: "pending",
     ...over,
   };
 }

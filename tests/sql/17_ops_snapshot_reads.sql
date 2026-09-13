@@ -26,11 +26,12 @@ begin
   with want(rel, col) as (values
     ('nfl_games','week'),('nfl_games','day_of_week'),('nfl_games','home_team'),
     ('nfl_games','away_team'),('nfl_games','kickoff_at'),
+    ('nfl_games','home_score'),('nfl_games','away_score'),('nfl_games','status'),
     ('entries','id'),('entries','owner_id'),('entries','entry_name'),
     ('entries','lynne_number'),('entries','is_free_entry'),('entries','is_gifted'),
     ('entries','player_email'),('entries','submitted_to_lynne_at'),('entries','submitted_as_name'),
     ('picks','entry_id'),('picks','week'),('picks','team'),('picks','submitted_at'),
-    ('picks','late'),('picks','source'),
+    ('picks','late'),('picks','source'),('picks','result'),
     ('lynne_roster','row_no'),('lynne_roster','names'),('lynne_roster','cells'),
     ('lynne_roster','cell_sources'),('lynne_roster','sheet_sha256'),
     ('lynne_roster','source_file'),('lynne_roster','gmail_message_id'),('lynne_roster','loaded_at'),

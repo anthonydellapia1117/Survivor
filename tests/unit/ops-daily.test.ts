@@ -10,7 +10,7 @@ function snapshot(over: Partial<OpsSnapshot> = {}): OpsSnapshot {
   return {
     now: NOW,
     weeks: [{ week: 1, earlyDeadlineAt: "2026-09-09T18:00:00Z", lateDeadlineAt: "2026-09-11T18:00:00Z" }],
-    games: [{ week: 1, dayOfWeek: "Sunday", homeTeam: "PHI", awayTeam: "DAL", kickoffAt: "2026-09-13T17:00:00Z" }],
+    games: [{ week: 1, dayOfWeek: "Sunday", homeTeam: "PHI", awayTeam: "DAL", kickoffAt: "2026-09-13T17:00:00Z", homeScore: null, awayScore: null, status: "scheduled" as const }],
     entries: [],
     picks: [],
     herRows: [],
@@ -28,9 +28,9 @@ function snapshot(over: Partial<OpsSnapshot> = {}): OpsSnapshot {
 }
 
 describe("the daily entry point", () => {
-  it("runs all six reporters", () => {
+  it("runs all seven reporters", () => {
     expect(REPORTERS.map((r) => r.name)).toEqual([
-      "roster-integrity", "pick-gap", "deadline-close", "lynne-echo", "sheet-watch", "money-watch",
+      "roster-integrity", "pick-gap", "deadline-close", "lynne-echo", "result-variance", "sheet-watch", "money-watch",
     ]);
   });
 
@@ -51,12 +51,12 @@ describe("the daily entry point", () => {
     expect(new Set(seen.map((d) => d.getTime())).size).toBe(1);
   });
 
-  it("keeps the other five when one reporter throws", () => {
+  it("keeps the other six when one reporter throws", () => {
     const s = snapshot();
     // A snapshot missing `weeks` entirely is the shape a broken loader hands
     // over; whatever any single reporter does with it, the run still reports.
     const out = runReporters({ ...s, weeks: null as never });
-    expect(out).toHaveLength(6);
+    expect(out).toHaveLength(7);
     for (const o of out) {
       expect(o.lines.length, `${o.name} produced no lines`).toBeGreaterThan(0);
       if (o.error) {

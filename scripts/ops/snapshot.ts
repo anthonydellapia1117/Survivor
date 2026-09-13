@@ -48,9 +48,12 @@ export async function loadSnapshot(
 
   const { data: gameRows, error: gameErr } = await client
     .from("nfl_games")
-    .select("week, day_of_week, home_team, away_team, kickoff_at")
+    .select("week, day_of_week, home_team, away_team, kickoff_at, home_score, away_score, status")
     .order("kickoff_at", { ascending: true })
-    .returns<{ week: number; day_of_week: string; home_team: string; away_team: string; kickoff_at: string }[]>();
+    .returns<{
+      week: number; day_of_week: string; home_team: string; away_team: string; kickoff_at: string;
+      home_score: number | null; away_score: number | null; status: "scheduled" | "in_progress" | "final";
+    }[]>();
   if (gameErr) throw new Error(`nfl_games: ${gameErr.message}`);
 
   // Two plain reads joined here rather than one embedded select. Every other
@@ -92,7 +95,7 @@ export async function loadSnapshot(
 
   const { data: pickRows, error: pickErr } = await client
     .from("picks")
-    .select("entry_id, week, team, submitted_at, late, source")
+    .select("entry_id, week, team, submitted_at, late, source, result")
     .eq("is_current", true)
     .returns<PickSnapshot[] | Record<string, unknown>[]>();
   if (pickErr) throw new Error(`picks: ${pickErr.message}`);
@@ -105,6 +108,7 @@ export async function loadSnapshot(
       submittedAt: String(x.submitted_at),
       late: Boolean(x.late),
       source: String(x.source),
+      result: x.result === null || x.result === undefined ? null : String(x.result),
     };
   });
 
@@ -240,6 +244,9 @@ export async function loadSnapshot(
       homeTeam: g.home_team,
       awayTeam: g.away_team,
       kickoffAt: g.kickoff_at,
+      homeScore: g.home_score,
+      awayScore: g.away_score,
+      status: g.status,
     })),
     entries,
     picks,
