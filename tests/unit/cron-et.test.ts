@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { CONFIG_PATH } from "../../scripts/ops/lib/config";
 import {
   cronMatches,
   cronMatchesEt,
@@ -13,6 +15,11 @@ import {
 // is the half nobody is watching, because these slots are overnight.
 //
 // 2026-09-11 and 2026-11-13 are both Fridays, one either side of the change.
+
+// An ET wall-clock instant in the week of 2026-09-13 (EDT, UTC-4): Sunday 0,
+// Monday 1. Sunday 13 Sep 12:00 ET is 16:00Z.
+const etInstant = (dow: 0 | 1, hour: number) =>
+  new Date(Date.UTC(2026, 8, 13 + dow, hour + 4, 0, 0));
 
 const FRI_EDT_3AM = new Date("2026-09-11T07:00:00Z");
 const FRI_EST_3AM = new Date("2026-11-13T08:00:00Z");
@@ -78,16 +85,22 @@ describe("an ET schedule", () => {
 describe("whether the tick observes an ET schedule", () => {
   const TICK = "43 7-23,0-3 * * *";
   const OLD_TICK = "43 9-23,0-2 * * *";
+  // The Survivor Ops Tick Routine as it actually runs since 2026-09-11 -
+  // hourly, every hour. config.json's tickSchedule names a 19-minute cadence
+  // the platform refuses, so a slot has to be checked against THIS string to
+  // prove the Routine will pick it up.
+  const LIVE_TICK = "43 * * * *";
+  // The six slots the scores job shipped with on 2026-09-11.
+  const ORIGINAL_SIX = ["0 3 * * 5", "0 3 * * 6", "0 17 * * 0", "0 22 * * 0", "0 3 * * 1", "0 3 * * 2"];
 
-  it("checks BOTH offsets, and the tick this repo runs covers all six slots", () => {
-    for (const e of ["0 3 * * 5", "0 3 * * 6", "0 17 * * 0", "0 22 * * 0", "0 3 * * 1", "0 3 * * 2"]) {
+  it("checks BOTH offsets, and the tick this repo ran on 2026-09-11 covered the original six", () => {
+    for (const e of ORIGINAL_SIX) {
       expect({ slot: e, missed: unobservedEtSlots(e, TICK, 60) }).toEqual({ slot: e, missed: [] });
     }
   });
 
   it("names what the OLD tick would have lost - nine of the twelve slot-offsets", () => {
-    const all = ["0 3 * * 5", "0 3 * * 6", "0 17 * * 0", "0 22 * * 0", "0 3 * * 1", "0 3 * * 2"]
-      .flatMap((e) => unobservedEtSlots(e, OLD_TICK, 60));
+    const all = ORIGINAL_SIX.flatMap((e) => unobservedEtSlots(e, OLD_TICK, 60));
     expect(all).toHaveLength(9);
     expect(all).toContain("Fri 03:00 ET = Fri 07:00 UTC (EDT)");
     expect(all).toContain("Fri 03:00 ET = Fri 08:00 UTC (EST)");
@@ -95,6 +108,35 @@ describe("whether the tick observes an ET schedule", () => {
     expect(all).not.toContain("Sun 17:00 ET = Sun 21:00 UTC (EDT)");
     expect(all).toContain("Sun 22:00 ET = Mon 03:00 UTC (EST)");
     expect(all).not.toContain("Sun 22:00 ET = Mon 02:00 UTC (EDT)");
+  });
+
+  it("the scores job as configured is hourly from Sunday noon to 1 AM Monday, and the live tick sees every slot", () => {
+    // Set by Anthony on 2026-09-13. The old Sun 5 PM slot was not inside the
+    // 4:43 PM tick's lookback, so the first tick that could take the 1 PM
+    // finals was 5:43 PM. Read from the config, not restated here: a slot
+    // list copied into the test passes while the config drifts.
+    const config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as {
+      jobs: { scores: { scheduleEt: string[] } };
+    };
+    const exprs = config.jobs.scores.scheduleEt;
+    expect(exprs).toEqual(["0 3 * * 5", "0 3 * * 6", "0 12-23 * * 0", "0 0-1 * * 1", "0 3 * * 1", "0 3 * * 2"]);
+    // Fourteen Sunday-into-Monday slots, on the hour, noon through 1 AM.
+    const sundayHours = [...Array(12).keys()].map((h) => h + 12);
+    for (const h of sundayHours) {
+      expect(cronMatchesEt("0 12-23 * * 0", etInstant(0, h))).toBe(true);
+    }
+    expect(cronMatchesEt("0 12-23 * * 0", etInstant(0, 11))).toBe(false);
+    expect(cronMatchesEt("0 0-1 * * 1", etInstant(1, 0))).toBe(true);
+    expect(cronMatchesEt("0 0-1 * * 1", etInstant(1, 1))).toBe(true);
+    expect(cronMatchesEt("0 0-1 * * 1", etInstant(1, 2))).toBe(false);
+    // And the Monday-night slots are still there.
+    expect(exprs).toContain("0 3 * * 1");
+    expect(exprs).toContain("0 3 * * 2");
+    // Every slot lands inside a 60-minute lookback of the hourly :43 tick,
+    // in EDT and in EST alike.
+    for (const e of exprs) {
+      expect({ slot: e, missed: unobservedEtSlots(e, LIVE_TICK, 60) }).toEqual({ slot: e, missed: [] });
+    }
   });
 
   it("catches a tick that observes a slot in ONE offset only", () => {

@@ -324,6 +324,11 @@ describe("the tick that observes the schedules", () => {
       // self-emailed picks sit unread on 2026-09-11.
       expect.stringMatching(/^sweep: [\s\S]*Sat 01:57 ET[\s\S]*falls outside/),
       expect.stringMatching(/^distribute: Fri 05:20 UTC falls outside/),
+      // And since 2026-09-13 the scores job's Sunday-into-Monday hourly run
+      // is named as well: its 11 PM (EST), midnight and 1 AM slots land on
+      // UTC hours 4-6, which that narrower tick never observed. The live
+      // Routine runs every hour and does - tests/unit/cron-et.test.ts.
+      expect.stringMatching(/^scores: Sun 23:00 ET = Mon 04:00 UTC \(EST\)[\s\S]*Mon 01:00 ET = Mon 06:00 UTC \(EST\) falls outside/),
     ]);
     // So is a tick that stops observing a schedule that used to be fine: a
     // Routine starting at 13:43 UTC would never see the three morning slots.
@@ -347,7 +352,7 @@ describe("the tick that observes the schedules", () => {
     // one bad cron would kill the Week 1 mail intake, not just the tick.
     const bad = { ...withJob("distribute", { schedule: "20 5 * * 5" }), tickSchedule: "43 7-23,0-3 * * *" };
     expect(() => validateOpsConfig(bad)).not.toThrow();
-    expect(slotBreaches(validateOpsConfig(bad)).length).toBe(2);
+    expect(slotBreaches(validateOpsConfig(bad)).length).toBe(3); // sweep, distribute, scores
     // The dispatcher is where it refuses, and it names the job.
     const cli = readFileSync("scripts/ops/cli.ts", "utf8");
     expect(cli).toMatch(/const breaches = slotBreaches\(config\);/);
