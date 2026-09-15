@@ -249,14 +249,16 @@ export interface PriorPickRow {
   entry_id: string;
   team: string;
   week: number;
+  /** As stored: the record her earlier sheets wrote, which the mark derivation counts lives from. */
+  result: string | null;
 }
 
-/** Every current pick before `week`, with the week it was made in. */
+/** Every current pick before `week`, with the week it was made in and its stored result. */
 export async function loadPriorPicks(client: SupabaseClient, week: number): Promise<PriorPickRow[]> {
   return unwrap(
     await client
       .from("picks")
-      .select("entry_id, team, week")
+      .select("entry_id, team, week, result")
       .lt("week", week)
       .eq("is_current", true)
       .returns<PriorPickRow[]>(),
@@ -321,6 +323,27 @@ export async function applyLynneImport(
   });
   if (error) throw new Error(`admin_apply_lynne_import: ${error.message}`);
   return String(data);
+}
+
+/**
+ * One result onto the current pick of an entry-week, the RPC /admin/scores
+ * and admin-supabase.ts call the same way. It updates the pick and writes
+ * its set_result audit row in one transaction; the caller names the source
+ * ('lynne' when the result is derived from her sheet). It never touches the
+ * team and never creates a pick: no current pick for the week is an error.
+ */
+export async function setResult(
+  client: SupabaseClient,
+  p: { entryId: string; week: number; result: string; resultSource: string; actor: string },
+): Promise<void> {
+  const { error } = await client.rpc("admin_set_result", {
+    p_entry_id: p.entryId,
+    p_week: p.week,
+    p_result: p.result,
+    p_result_source: p.resultSource,
+    p_actor: p.actor,
+  });
+  if (error) throw new Error(`admin_set_result: ${error.message}`);
 }
 
 export interface AuditWrite {

@@ -3,9 +3,13 @@
 // loaded rows, so it can be tested without Gmail or the database.
 //
 // Two paths, decided by the file:
-//   grid   - her real NO./NAMES sheet. Results are NEVER applied here; the
-//            grid carries no per-week results and the scores engine owns
-//            them. The plan is variances and counts only.
+//   grid   - her real NO./NAMES sheet. It carries no per-week result column;
+//            it carries a STANDING per row in the NAMES fill, and since
+//            2026-09-15 the week's result is DERIVED from that mark and the
+//            stored prior record (src/lib/lynne/mark-results.ts) and applied
+//            through the same audited RPC. A sheet with no fill information
+//            at all derives nothing: a clean fill cannot be told from a
+//            stripped one, and 121 false wins is what that would write.
 //   legacy - an older per-week file with entry/team/result columns. A
 //            result IS applied, but only where her row agrees with the local
 //            pick and carries a result; anything else is a variance.
@@ -15,6 +19,7 @@
 
 import { createHash } from "node:crypto";
 import { computeImportPlan, type Apply, type Variance } from "@/lib/lynne/compare";
+import { deriveWeekResults, type MarkResultsPlan } from "@/lib/lynne/mark-results";
 import type { MarkRow } from "@/lib/lynne/mark-variance";
 import { matchRows } from "@/lib/lynne/match";
 import { parseLynneFile, type LynneRow } from "@/lib/lynne/parse";
@@ -26,7 +31,7 @@ import {
   type GridLocalPick,
   type GridTarget,
 } from "@/lib/lynne/plan-grid";
-import type { CurrentPickRow, EntryRow, StandingRow } from "../../lib/db";
+import type { CurrentPickRow, EntryRow, PriorPickRow, StandingRow } from "../../lib/db";
 
 export interface PlanInput {
   buf: Buffer;
@@ -35,6 +40,9 @@ export interface PlanInput {
   entries: EntryRow[];
   standings: StandingRow[];
   localPicks: CurrentPickRow[];
+  /** Every current pick before the week with its stored result: what the derivation counts lives from. */
+  priorPicks: PriorPickRow[];
+  doubleElimThrough: number;
 }
 
 /** A row of her sheet whose NO. points at one of ours but names someone else. */
@@ -69,6 +77,8 @@ export interface GridResultsPlan extends PlanBase {
   format: "grid";
   /** Her fill mark per matched row, for the standing comparison the CLI prints. */
   marks: MarkRow[];
+  /** The week's results derived from those marks; null on a sheet with no fill information. */
+  derived: MarkResultsPlan | null;
   conflicts: ConflictSummary[];
   numberSuggestions: NumberSuggestion[];
   /** Ours with no row in her sheet, split below. */
@@ -146,25 +156,40 @@ export function buildResultsPlan(input: PlanInput): ResultsPlan {
     // pool and the rest is not ours to keep. rowCount records the true size.
     const rows = [...matched.map((m) => toRow(m.row)), ...conflicts.map((c) => toRow(c.row))];
     const absentButAlive = plan.variances.filter((v) => v.type === "absent_but_alive").length;
+    const marks: MarkRow[] = matched.map((m) => ({
+      entryId: m.entryId,
+      no: m.row.no,
+      entryName: names.get(m.entryId) ?? m.row.name,
+      fill: m.row.fill,
+      weekCellText: m.row.cells[week] ?? null,
+    }));
+    // A stripped export reads every fill as none, so every row would derive
+    // as a win. Nothing is derived from such a sheet and the plan says so.
+    const noFillInfo = grid.rows.every((r) => r.fill === "none");
+    const derived = noFillInfo
+      ? null
+      : deriveWeekResults({
+          marks,
+          currentPicks: localPicks,
+          priorPicks: input.priorPicks.map((p) => ({ entryId: p.entry_id, week: p.week, team: p.team, result: p.result })),
+          week,
+          doubleElimThrough: input.doubleElimThrough,
+        });
 
     return {
       format: "grid",
       sha256: grid.sha256,
-      marks: matched.map((m) => ({
-        entryId: m.entryId,
-        no: m.row.no,
-        entryName: names.get(m.entryId) ?? m.row.name,
-        fill: m.row.fill,
-        weekCellText: m.row.cells[week] ?? null,
-      })),
+      marks,
+      derived,
       rows,
       rowCount: rows.length + otherPoolCount,
       matchedCount: matched.length,
       matchedBy: breakdown(matched.map((m) => m.matchedBy)),
       unmatched: conflicts.map((c) => toRow(c.row)),
-      variances: plan.variances,
-      // The grid carries no per-week results; the scores engine owns them.
-      applies: [],
+      variances: [...plan.variances, ...(derived?.conflicts ?? [])],
+      // The week's results, derived from her marks. Her sheet is the record
+      // of elimination in her pool and picks.result is where that lives.
+      applies: derived?.applies ?? [],
       conflicts: conflicts.map((c) => ({
         no: c.row.no,
         name: c.row.name,
@@ -186,7 +211,7 @@ export function buildResultsPlan(input: PlanInput): ResultsPlan {
       weeksInFile: grid.weeks,
       latestFilledWeek: grid.latestFilledWeek,
       herCounts: grid.herCounts[week] ?? null,
-      noFillInfo: grid.rows.every((r) => r.fill === "none"),
+      noFillInfo,
     };
   }
 

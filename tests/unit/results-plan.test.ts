@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import * as XLSXStyle from "xlsx-js-style";
 import * as XLSX from "xlsx";
-import type { CurrentPickRow, EntryRow, StandingRow } from "../../scripts/lib/db";
+import type { CurrentPickRow, EntryRow, PriorPickRow, StandingRow } from "../../scripts/lib/db";
 import { buildResultsPlan, sha256Of } from "../../scripts/results/lib/plan";
 
 // Her grid format, the same synthetic shape tests/unit/lynne-grid.test.ts uses.
@@ -56,6 +56,10 @@ function pick(entryId: string, team: string, result: string | null = null): Curr
   return { entry_id: entryId, team, late: false, submitted_at: "2026-09-10T12:00:00Z", result };
 }
 
+function priorPick(entryId: string, week: number, team: string, result: string | null): PriorPickRow {
+  return { entry_id: entryId, week, team, result };
+}
+
 function standing(entryId: string, status: string): StandingRow {
   return { entry_id: entryId, status, losses: status === "eliminated" ? 1 : 0, bye_used: false };
 }
@@ -82,13 +86,15 @@ const STANDINGS: StandingRow[] = [
 
 const GRID = makeGrid([
   { no: 980, name: "Anthony DellaPia 5", cells: { 1: "Philadelphia", 2: "Dallas" } },
-  { no: 1006, name: "Alexc 1", fill: "FF0000", cells: { 1: "Buffalo", 2: "OUT" } },
+  { no: 1006, name: "Alexc 1", fill: "FF0000", cells: { 1: "Buffalo", 2: "Buffalo" } },
   { no: 1037, name: "Nolan Lawrence 1", cells: { 2: "Green Bay" } },
   { no: 500, name: "Somebody Else", cells: { 2: "Miami" } },
   { no: 777, name: "Not Our Name", cells: { 2: "Denver" } },
 ]);
 
 const WEEK2_PICKS: CurrentPickRow[] = [pick("e1", "DAL"), pick("e2", "BUF"), pick("e3", "KC"), pick("e6", "NE")];
+// The stored Week 1 record the derivation counts lives from: Alexc lost.
+const WEEK1_RECORD: PriorPickRow[] = [priorPick("e1", 1, "PHI", "win"), priorPick("e2", 1, "BUF", "loss"), priorPick("e3", 1, "SEA", "win")];
 
 describe("buildResultsPlan on her grid", () => {
   const plan = buildResultsPlan({
@@ -98,6 +104,8 @@ describe("buildResultsPlan on her grid", () => {
     entries: ENTRIES,
     standings: STANDINGS,
     localPicks: WEEK2_PICKS,
+    priorPicks: WEEK1_RECORD,
+    doubleElimThrough: 7,
   });
   if (plan.format !== "grid") throw new Error("expected the grid path");
 
@@ -108,10 +116,49 @@ describe("buildResultsPlan on her grid", () => {
     expect(plan.latestFilledWeek).toBe(2);
   });
 
-  it("applies nothing, even where her sheet says OUT", () => {
-    expect(plan.applies).toEqual([]);
+  it("derives the week's results from her marks and the stored prior record, and applies exactly those", () => {
+    // 980 is clean with nothing used before: a win. 1006 is red with a Week
+    // 1 loss on file: the loss that put it out. 1037 names Green Bay where
+    // we hold KC, so her mark says nothing about our pick and it is set
+    // aside - the team_mismatch below is where that row is reported.
+    expect(plan.applies).toEqual([
+      { entry_id: "e1", result: "win" },
+      { entry_id: "e2", result: "loss" },
+    ]);
+    expect(plan.derived).toMatchObject({
+      byResult: { win: 1, loss: 1, bye: 0, missed: 0 },
+      lossesByTeam: { BUF: 1 },
+      alreadyApplied: 0,
+      conflicts: [],
+      unknown: 0,
+      undecidable: 0,
+      cellDiffers: 1,
+    });
     const alexc = plan.rows.find((r) => r.entry === "Alexc 1");
     expect(alexc?.result).toBe("out");
+  });
+
+  it("carries a derivation conflict as a variance of the plan, so the count the operator approves has it", () => {
+    // Same sheet, but our record has no Week 1 loss for Alexc: her red
+    // cannot be read as this week's result inside the boundary.
+    const noPrior = buildResultsPlan({
+      buf: GRID,
+      filename: "Football_2026-2.xlsx",
+      week: 2,
+      entries: ENTRIES,
+      standings: STANDINGS,
+      localPicks: WEEK2_PICKS,
+      priorPicks: [],
+      doubleElimThrough: 7,
+    });
+    if (noPrior.format !== "grid") throw new Error("expected the grid path");
+    expect(noPrior.applies).toEqual([{ entry_id: "e1", result: "win" }]);
+    expect(noPrior.derived?.conflicts.map((c) => [c.type, c.entryName])).toEqual([["derived_conflict", "Alexc 1"]]);
+    // Its own type: the CLI records the score comparison's finding on the
+    // same row as a mark_conflict, and one type for both counted it twice.
+    expect(noPrior.variances.filter((v) => v.type === "derived_conflict")).toHaveLength(1);
+    expect(noPrior.variances.filter((v) => v.type === "mark_conflict")).toHaveLength(0);
+    expect(noPrior.variances).toHaveLength(plan.variances.length + 1);
   });
 
   it("matches by number then exact name, never the voided entry, and counts the rest of her pool", () => {
@@ -166,8 +213,35 @@ describe("buildResultsPlan on her grid", () => {
 
   it("refuses a week her sheet has no column for, in the app's words", () => {
     expect(() =>
-      buildResultsPlan({ buf: GRID, filename: "f.xlsx", week: 4, entries: ENTRIES, standings: STANDINGS, localPicks: [] }),
+      buildResultsPlan({ buf: GRID, filename: "f.xlsx", week: 4, entries: ENTRIES, standings: STANDINGS, localPicks: [], priorPicks: [], doubleElimThrough: 7 }),
     ).toThrow("Her sheet has no Week 4 column (it has Week 1, Week 2, Week 3).");
+  });
+});
+
+describe("buildResultsPlan on a grid with no fill information", () => {
+  // A stripped export: every row reads as no fill. Read as marks, every one
+  // of ours would be a clean row and every pick a win - 121 false wins on
+  // the real roster. Nothing is derived from such a sheet.
+  const STRIPPED = makeGrid([
+    { no: 980, name: "Anthony DellaPia 5", cells: { 1: "Philadelphia", 2: "Dallas" } },
+    { no: 1006, name: "Alexc 1", cells: { 1: "Buffalo", 2: "Buffalo" } },
+  ]);
+  const plan = buildResultsPlan({
+    buf: STRIPPED,
+    filename: "Football_2026-2.xlsx",
+    week: 2,
+    entries: ENTRIES,
+    standings: STANDINGS,
+    localPicks: WEEK2_PICKS,
+    priorPicks: WEEK1_RECORD,
+    doubleElimThrough: 7,
+  });
+  if (plan.format !== "grid") throw new Error("expected the grid path");
+
+  it("says so and applies nothing", () => {
+    expect(plan.noFillInfo).toBe(true);
+    expect(plan.derived).toBeNull();
+    expect(plan.applies).toEqual([]);
   });
 });
 
@@ -186,6 +260,10 @@ describe("buildResultsPlan on a legacy file", () => {
     entries: ENTRIES,
     standings: STANDINGS,
     localPicks: [pick("e4", "PHI"), pick("e1", "DAL", "loss"), pick("e3", "KC"), pick("e6", "NE")],
+    // The legacy path applies her explicit result column; the prior record
+    // and the boundary are the grid derivation's and play no part here.
+    priorPicks: WEEK1_RECORD,
+    doubleElimThrough: 7,
   });
   if (plan.format !== "legacy") throw new Error("expected the legacy path");
 

@@ -2008,8 +2008,9 @@ in any of them.**
   has landed. Neither resolves anything - both values, NO., entry, her
   result, the score-derived result, and Anthony decides.
 
-- **HER WEEKLY SHEET CARRIES NO PER-WEEK RESULT. IT CARRIES A STANDING PER
-  ROW, IN THE FILL, AND THAT IS WHAT IS COMPARED.** Found 2026-09-15, the
+- **HER WEEKLY SHEET CARRIES A STANDING PER ROW, IN THE FILL. THE WEEK'S
+  RESULT IS DERIVED FROM IT, AND THE STANDING IS ALSO WHAT IS COMPARED.**
+  Found 2026-09-15, the
   morning her Week 1 Final Sheet arrived (`Football 2026-9.xlsx`, Gmail
   `1a0a50be4566535a`). Her NAMES cell is painted white (theme fill 0) for a
   clean row, **yellow for her "1 LOSS/BYE" bucket** and red for OUT; her own
@@ -2040,15 +2041,89 @@ in any of them.**
   Her two unmarked losers on that sheet (NO. 205 Rydo #2 on Tennessee, NO.
   497 Clem 3 on LA Chargers) are not ours and were reported, not drafted.
 
-  **`picks.result` is still `pending` for all 121 after her import.** The
-  only scorer of picks in the database is `admin_set_game_score` (hand-entered
-  finals on `/admin/scores`, `result_source = 'game'`); the ESPN ingest is
-  write-only to `nfl_games` by the 2026-09-11 rule, and her grid applies none.
-  The public site is covered by `scoreFromGames`; the DB standing
-  (`v_entry_standing`, the Lynne submission's OUT cell, chase, distribute)
-  moves only when picks are scored. Whether the ingest should score picks
-  the way `admin_set_game_score` does is Anthony's call and was put to him
-  as one line on 2026-09-15.
+  **HER MARK IS THE WEEK'S RESULT, AND THE IMPORT WRITES IT.** Set by
+  Anthony on 2026-09-15, the same day, superseding the two sentences above
+  that said the grid path applies no `picks.result`: "Write her Week 1
+  results to picks.result for our 121, from her Final Sheet, audited. She is
+  the elimination authority and that field is where her authority lives."
+  Her sheet has no result column, but the result is derivable from her mark
+  plus the standing our stored record already holds for the earlier weeks,
+  and `deriveWeekResults` in `src/lib/lynne/mark-results.ts` is the one
+  place that derivation is written. What the row had already spent before
+  the week is read off the stored prior record: its losses (`loss`,
+  `tie_loss`, `missed`), whether a bye was burned, and whether a loss fell
+  past `double_elim_through_week`, which is terminal on its own. The week's
+  pick has candidates: a real team `win` or `loss`, `SKIP_WEEK` `bye`,
+  `MISSED` `missed`. Each candidate predicts a mark the way
+  `derivedStandingOf` and `poolBucketOf` already bucket her fill - a row
+  already out stays OUT whatever this week did; a loss or missed week past
+  the boundary is OUT outright; two losses OUT; one loss OR a burned bye
+  yellow; neither clean - and **the derived result is the ONE candidate
+  whose predicted mark is hers.** None matches: a `derived_conflict` with
+  both values, not applied - its own type, because the score comparison
+  records the same row's mark against the SCORES as a `mark_conflict`, and
+  one type for both counted one row twice in the total the operator
+  approves. Both match, which only happens on a row our record already has
+  out: undecidable, counted, not applied. **Her bucket vocabulary is
+  INFERRED from the bucket's name, "1 LOSS/BYE", and is not stated by her.**
+  A bye and a loss each put a row there, and all three readers of her fill
+  read the two together as that same bucket, never as OUT, so they cannot
+  disagree about one row. The first version of the derivation stacked them
+  (a bye plus a loss read OUT), a third reading nothing from her supports;
+  a verifier caught it the same day. The stacking case cannot arise under
+  the bye rule anyway - `admin_submit_pick` allows `SKIP_WEEK` only from
+  the week after the boundary, refuses it after a loss inside the boundary,
+  and any loss past the boundary is terminal - and if it ever did with her
+  mark OUT, no candidate would read as her mark and the row would reach
+  Anthony as a `derived_conflict`, never as a guess. **A tie is a loss to
+  her** - the derivation never emits
+  `tie_loss`, and a stored `tie_loss` against a derived `loss` is one class.
+  **A stored non-pending result is never overwritten**: the same class is
+  already on file, a different one is a `result_conflict` with both values,
+  and neither is applied. A row whose cell names a team other than our pick
+  is set aside (her mark is about her team; the plan already reports it),
+  and so is a row with a prior week still pending (B would be understated).
+  A sheet with no fill information derives NOTHING - a clean fill cannot be
+  told from a stripped one, and 121 false wins is what that would write.
+  Everything derived goes through `admin_apply_lynne_import` as before:
+  `result_source = 'lynne'`, one `lynne_result` audit row per pick, one
+  `lynne_import` summary row, one transaction. The command prints "Her
+  marks give Week N results: X won, Y lost (LAC 39, ...), B byes, M missed;
+  A already on file; C conflicts; U unknown fill; D undecidable" and every
+  conflict on its own line BEFORE the confirm, and the score comparison
+  above it now sees the derived results. A conflict, an unknown fill, an
+  undecidable row or a pending prior posts NEEDS ANTHONY; Anthony decides,
+  nothing here does.
+
+  **The Week 1 backfill.** Her Final Sheet was imported that morning with 0
+  applies, before this rule, and the RPC refuses a sha256 it has seen. So
+  `npm run results -- --week 1 --file <the xlsx> --backfill` runs the same
+  plan (parse, marks, derivation, both comparisons, the print above), asks
+  the ordinary y/N, and applies each derived result through
+  `admin_set_result` with `result_source = 'lynne'` - the pick and its
+  `set_result` audit row in one transaction each - then ONE
+  `lynne_results_backfill` audit row on the existing import, carrying the
+  counts and every derivation conflict with both values (`conflict_rows`),
+  because there is no import row for a backfill's conflicts to be recorded
+  with. It is written only when something was written, so a re-run that
+  finds everything on file writes nothing - and a run that writes nothing
+  keeps its conflicts on stdout and nowhere else, which the command's
+  conflict header says in so many words rather than claiming a record it
+  did not make. A failure mid-run leaves every pick already written
+  audited; the re-run derives the same results, finds those on file and
+  applies the rest. `--backfill` on a sha256 not yet imported is refused by
+  name: that is the ordinary path's job. Simulated on her real sheet before
+  it went in: 121 applies, 75 won, 46 lost (LAC 39, DAL 3, TEN 2, GB 1,
+  TB 1), 0 conflicts.
+
+  **`v_entry_standing` and everything built on the stored record** - the
+  Lynne submission's OUT cell, the picks intake's eliminated-entry filter,
+  chase, distribute - **move only through this.** The ESPN ingest is still
+  write-only to `nfl_games` by the 2026-09-11 rule, `scoreFromGames` still
+  covers the public site for display, and `compareMarksToScores` is still
+  the read-only comparison of her mark against the score-derived standing,
+  untouched: the derivation reads the STORED record, the comparison reads
+  the SCORES, and a row where they disagree is one line to Anthony.
 
 - **The share card carries HER two figures, and the dashboard has no
   subtitle.** Set by Anthony on 2026-09-11. `/api/og` shows **Total in Pool**
@@ -2205,6 +2280,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Our standing from the scores, display only | `scoreFromGames` in `src/lib/live-standing.ts` |
 | Her result against the scores, read-only | `compareStoredToScores` in `src/lib/score-variance.ts`, `scripts/ops/reporters/result-variance.ts` |
 | Her fill mark against our standing | `compareMarksToScores` in `src/lib/lynne/mark-variance.ts`, printed by `npm run results` |
+| The week's results from her marks | `deriveWeekResults` in `src/lib/lynne/mark-results.ts`, applied by `npm run results`; the Week 1 backfill in `scripts/results/lib/backfill.ts` |
 | Team counts once a week locks   | `v_team_pick_counts`, `src/lib/team-counts.ts`, `tests/sql/21_team_pick_counts.sql` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
