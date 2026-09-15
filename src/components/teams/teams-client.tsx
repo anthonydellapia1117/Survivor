@@ -42,11 +42,13 @@ interface Props {
   games: GameRow[];
   /** How many entries the scope holds, for the empty-state sentence. */
   entryCount: number;
+  /** The scope's exact word - "Everyone" or "Our group" - for the captions that name it. */
+  scopeLabel?: string;
   /** The render's clock; a test hands one in, the page takes now. */
   now?: Date;
 }
 
-export function TeamsClient({ counts, weeks, games, entryCount, now }: Props) {
+export function TeamsClient({ counts, weeks, games, entryCount, scopeLabel = "Everyone", now }: Props) {
   const results = useMemo(() => teamResults(games), [games]);
   // The board: team -> week -> count, held to the weeks that have locked. The
   // view is the gate and this is the guard behind it.
@@ -62,7 +64,7 @@ export function TeamsClient({ counts, weeks, games, entryCount, now }: Props) {
           have locked. Green is a team that won that week, yellow one that
           lost; a game not yet final shows its count with no colour. A week
           still open carries no number. The bottom row is each week&apos;s
-          total across the pool.
+          total for {scopeLabel}.
         </p>
       </div>
       {heat.total === 0 ? (
@@ -146,7 +148,7 @@ export function TeamsClient({ counts, weeks, games, entryCount, now }: Props) {
                     className="sticky bottom-0 z-10 h-8 min-w-8 border-t border-border bg-surface-2 text-center font-semibold tabular-nums"
                     title={
                       n > 0
-                        ? `Week ${w}: ${n} ${n === 1 ? "pick" : "picks"} across the pool`
+                        ? `Week ${w}: ${n} ${n === 1 ? "pick" : "picks"}, ${scopeLabel}`
                         : `Week ${w}: not locked yet`
                     }
                   >

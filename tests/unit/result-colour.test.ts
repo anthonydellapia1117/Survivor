@@ -8,8 +8,10 @@ import {
   rowTone,
   toneOfResult,
   toneOfTeamResult,
+  TONE_BAR_CLASS,
   TONE_CELL_CLASS,
   TONE_FILL_CLASS,
+  TONE_SWATCH_CLASS,
 } from "../../src/lib/result-colour";
 import { teamResults } from "../../src/lib/master-list";
 import type { EntrySummary } from "../../src/lib/data/types";
@@ -82,6 +84,27 @@ describe("a tie counts as a loss", () => {
   });
 });
 
+describe("a bar", () => {
+  // The dashboard's pick distribution and carnage list (Anthony,
+  // 2026-09-15): a bar is a solid chip, so won and lost take the swatch
+  // values; a game not final keeps the accent the bars were always painted
+  // in; and a losing team is yellow, never red, on any bar.
+  it("takes the swatch colours for a final result, and never a loss token", () => {
+    expect(TONE_BAR_CLASS.won).toBe(TONE_SWATCH_CLASS.won);
+    expect(TONE_BAR_CLASS.lost).toBe(TONE_SWATCH_CLASS.lost);
+    expect(TONE_BAR_CLASS.won).toMatch(/\bbg-win\b/);
+    expect(TONE_BAR_CLASS.lost).toMatch(/\bbg-tie\b/);
+    for (const tone of ["won", "lost", "bye", "none"] as const) {
+      expect(TONE_BAR_CLASS[tone], `${tone} bar must never be red`).not.toMatch(/-loss\b/);
+    }
+  });
+
+  it("paints a game with no result in no result token at all", () => {
+    expect(TONE_BAR_CLASS.none).not.toMatch(/\b(?:bg|text|border)-(?:win|loss|tie|bye)\b/);
+    expect(TONE_BAR_CLASS.none).not.toBe("");
+  });
+});
+
 describe("the row", () => {
   const entry = (over: Partial<EntrySummary>): Pick<EntrySummary, "status" | "losses"> => ({
     status: "active",
@@ -116,9 +139,13 @@ describe("the surfaces", () => {
     // Two surfaces since 2026-09-11, not three: the Grid and the Master List
     // became one table, so the third file is the one that used to hold half
     // of it.
+    // Four since 2026-09-15: the dashboard's pick distribution and carnage
+    // list colour a bar per team result through TONE_BAR_CLASS.
     for (const file of [
       "src/components/grid/grid-view.tsx",
       "src/components/teams/teams-client.tsx",
+      "src/components/dashboard/pick-distribution.tsx",
+      "src/components/dashboard/carnage-list.tsx",
     ]) {
       const src = read(file).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
       expect(src, `${file} must read its tones from result-colour`).toContain('from "@/lib/result-colour"');
@@ -131,9 +158,11 @@ describe("the surfaces", () => {
     }
   });
 
-  it("never puts red on the Teams page - a team losing is a fact about a game, not an elimination", () => {
-    const src = read("src/components/teams/teams-client.tsx");
-    expect(src).not.toMatch(/\b(?:bg|text|border|ring)-loss\b/);
-    expect(src).not.toContain("ROW_CLASS");
+  it("never puts red on the Teams page or a distribution bar - a team losing is a fact about a game, not an elimination", () => {
+    for (const file of ["src/components/teams/teams-client.tsx", "src/components/dashboard/pick-distribution.tsx", "src/components/dashboard/bar-row.tsx"]) {
+      const src = read(file);
+      expect(src, file).not.toMatch(/\b(?:bg|text|border|ring)-loss\b/);
+      expect(src, file).not.toContain("ROW_CLASS");
+    }
   });
 });

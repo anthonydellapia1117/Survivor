@@ -319,6 +319,46 @@ the public views, not merely hidden in the UI).
 The **pool-wide prize pot** from Lynne's whole pool is the one dollar figure
 that is public by design.
 
+- **EVERY VIEWER KPI SHOWS THE WHOLE POOL. Our group appears only under the
+  toggle.** Set by Anthony on 2026-09-15. A survival curve reading "121
+  remaining", an Eliminated card counting our entries under the same title
+  as the pool's, a standings bar sized by our 121, a carnage list, a chalk
+  list and a teams-running-out list over our cells - every one of those sat
+  on the dashboard with no toggle in front of it, and the schedule's "N
+  entries eliminated" and the entry page's "group median" were the same
+  shape on two more routes. All of them now read the rows on her newest
+  sheet by default. **The pool figures come from `poolAsEntries(master,
+  games)`** - her rows in the one `EntrySummary` / `GridCell` shape ours
+  arrive in from `scoreFromGames` - and **both scopes go through the one
+  builder, `dashboardScope` in `src/lib/dashboard-scope.ts`**, computed on
+  the server and handed to one client toggle as plain data, so the two
+  scopes cannot be counted two ways and the reveal gate is untouched (a
+  masked pick reaches the builder already `LOCKED` with no result). The
+  toggle is the same radiogroup and the same two words as `/grid` and
+  `/teams` - "Everyone" and "Our group", pinned across all four surfaces by
+  `tests/unit/master-list-wiring.test.ts` - and it defaults through the
+  shared `defaultTeamsSource`: Everyone once her sheet carries the play
+  week, and until she publishes it **our group stands in and the caption
+  says so**, which is the rule two paragraphs up and is kept. The pool's
+  survival strip starts at her published Total in Pool and its later points
+  are rows on her newest sheet, captioned as such, because she removes
+  eliminated entries as the season goes; a row she struck OUT or that
+  repeated a team carries no loss cell, so `survivalCurve` now honours the
+  eliminated status (`eliminationWeekOfEntry`) rather than never dropping
+  it. Recent activity is our group's own feed - her rows have no submission
+  order - and shows only under Our group. `/records/roster` is a listing of
+  the group Anthony manages, not a KPI surface: it keeps its count and its
+  header leads with "Our group". **Every distribution bar takes its team's
+  result colour** - `TONE_BAR_CLASS` in `src/lib/result-colour.ts`, green
+  won, yellow lost, the plain accent where the game is not final, never red
+  - with a visible W or L beside the code, and the count and share as text
+  on every row; the counts are exactly what `poolDistribution` produced.
+  The bottom of the dashboard is server-rendered lists and one inline SVG
+  now, and nothing under `src/` imports recharts; the dependency itself is
+  removed in its own change. `tests/unit/dashboard-page.test.ts` holds the
+  default render to the sheet's figures on a fixture where the two scopes
+  disagree on every number.
+
 ### What the colours mean
 
 Set by Anthony on 2026-09-10, once game results were being stored. **One
@@ -2159,6 +2199,9 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Her result against the scores, read-only | `compareStoredToScores` in `src/lib/score-variance.ts`, `scripts/ops/reporters/result-variance.ts` |
 | Her fill mark against our standing | `compareMarksToScores` in `src/lib/lynne/mark-variance.ts`, printed by `npm run results` |
 | Team counts once a week locks   | `v_team_pick_counts`, `src/lib/team-counts.ts`, `tests/sql/21_team_pick_counts.sql` |
+| The dashboard's two scopes, one builder | `dashboardScope` in `src/lib/dashboard-scope.ts`, `src/components/dashboard/scope-section.tsx` |
+| The scoped cards' arithmetic    | `dashboardKpis`, `distributionRows`, `weekCarnage`, `eliminationsByWeek` in `src/lib/dashboard.ts` |
+| A bar's result colour           | `TONE_BAR_CLASS` in `src/lib/result-colour.ts`, `src/components/dashboard/bar-row.tsx` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |
 | Local commands (picks, chase, ...)  | `scripts/`, `docs/PICKS_INTAKE.md`           |

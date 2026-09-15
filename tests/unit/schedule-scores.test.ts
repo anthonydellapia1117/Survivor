@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: () => {}, push: () => {} }) }));
 
 import { GameBoard } from "../../src/components/schedule/game-board";
-import type { GameRow, GridCell, EntrySummary, WeekRow } from "../../src/lib/data/types";
+import type { GameRow, WeekRow } from "../../src/lib/data/types";
 
 // The schedule page shows a final's two scores and marks the winner, and shows
 // NEITHER on a game with no stored result. That second half is the guard: a
@@ -36,8 +36,7 @@ function render(games: GameRow[]): string {
   return renderToStaticMarkup(
     React.createElement(GameBoard, {
       games,
-      entries: [] as EntrySummary[],
-      cells: [] as GridCell[],
+      eliminations: { pool: null, ours: { eliminated: {}, count: 0 } },
       weeks: WEEKS,
       initialWeek: 1,
     }),

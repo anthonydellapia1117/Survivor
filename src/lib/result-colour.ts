@@ -93,6 +93,20 @@ export const TONE_SWATCH_CLASS: Record<ResultTone, string> = {
   none: "border border-border",
 };
 
+/**
+ * A BAR's fill per tone - the dashboard's pick distribution and carnage
+ * lists. Won and lost are the swatch values (a solid chip is what a bar is);
+ * `none` is the app accent the bars were always painted in, so a game not
+ * yet final looks as it did and a final changes it. Never a loss token: a
+ * team losing is a fact about a game, not an elimination.
+ */
+export const TONE_BAR_CLASS: Record<ResultTone, string> = {
+  won: "bg-win/70",
+  lost: "bg-tie/70",
+  bye: "bg-bye/50",
+  none: "bg-primary/60",
+};
+
 /** The legend's swatch for a row that is out. */
 export const OUT_SWATCH_CLASS = "bg-loss/70";
 

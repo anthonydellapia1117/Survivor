@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 
 // The public dashboard now opens on the MASTER POOL: her four figures as she
@@ -20,7 +22,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 const sheet = vi.hoisted(() => ({
   // Switchable to an empty roster: her sheet must still open the page.
   noEntries: false,
+  // Switchable to no sheet at all: the section then opens on our group.
+  noSheet: false,
+  // Switchable to a second scored week: rows 1 and 2 take Kansas City in
+  // Week 2 and the schedule carries its final, so the curve has three points.
+  week2: false,
   extraGames: [] as Record<string, unknown>[],
+  extraRows: [] as Record<string, unknown>[],
   // The Week 1 game's reveal override: false holds the week back whatever
   // the clock says, true lets it out. Pinned so no test depends on today.
   reveal: null as boolean | null,
@@ -90,15 +98,21 @@ vi.mock("../../src/lib/data", () => ({
         network: "FOX",
       },
       ...sheet.extraGames,
+      ...(sheet.week2
+        ? [{ id: "g-w2", week: 2, kickoffAt: "2026-09-13T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "LV", homeTeam: "KC", homeScore: 30, awayScore: 10, status: "final", revealOverride: null, network: "CBS" }]
+        : []),
     ],
     getMasterList: async () => ({
-      loadedAt: "2026-09-08T21:53:00Z",
-      rows: [
-        { no: 1, names: "Winner Row", cells: { "Week 1": "Philadelphia" }, entryId: null },
-        { no: 2, names: "Loser Row", cells: { "Week 1": "Dallas" }, entryId: null },
-        { no: 3, names: "Struck Row", cells: { "Week 1": "OUT" }, entryId: null },
-        { no: 4, names: "Bye Row", cells: { "Week 1": "BYE" }, entryId: null },
-      ],
+      loadedAt: sheet.noSheet ? null : "2026-09-08T21:53:00Z",
+      rows: sheet.noSheet
+        ? []
+        : [
+            { no: 1, names: "Winner Row", cells: { "Week 1": "Philadelphia", ...(sheet.week2 ? { "Week 2": "Kansas City" } : {}) }, entryId: null },
+            { no: 2, names: "Loser Row", cells: { "Week 1": "Dallas", ...(sheet.week2 ? { "Week 2": "Kansas City" } : {}) }, entryId: null },
+            { no: 3, names: "Struck Row", cells: { "Week 1": "OUT" }, entryId: null },
+            { no: 4, names: "Bye Row", cells: { "Week 1": "BYE" }, entryId: null },
+            ...sheet.extraRows,
+          ],
     }),
   }),
 }));
@@ -226,5 +240,176 @@ describe("Dashboard, signed out", () => {
     const out = await html();
     expect(out).not.toMatch(/collected|outstanding|amount due|owed to/i);
     expect(out).not.toMatch(/recruited/i);
+  });
+});
+
+// Anthony, 2026-09-15: every viewer KPI below Row 2 shows the whole pool -
+// the four rows of her sheet in this fixture, never our one entry - and our
+// group's figures appear only under the section's toggle. The fixture makes
+// the two scopes disagree on every number so a card computed from our
+// roster cannot pass by coincidence: the sheet has 4 rows (3 alive, 1 lost
+// this week, 1 struck OUT); our roster has 1 entry with no result.
+
+/** The markup between one card title and the next. */
+const between = (out: string, from: string, to: string) => {
+  const a = out.indexOf(from);
+  const b = out.indexOf(to, a);
+  expect(a, `card "${from}" is on the page`).toBeGreaterThan(-1);
+  return b > a ? out.slice(a, b) : out.slice(a);
+};
+
+describe("Dashboard - the scoped section opens on Everyone", () => {
+  it("offers the two scopes in the exact words, the sheet's count on one and ours on the other", async () => {
+    const out = await html();
+    expect(out).toContain('aria-label="Everyone or our group"');
+    expect(out).toMatch(/aria-checked="true"[^>]*>Everyone<span[^>]*>4</);
+    expect(out).toMatch(/aria-checked="false"[^>]*>Our group<span[^>]*>1</);
+    // "our group" in lower case reached a caption once; the two words are
+    // the toggle's and are never lower-cased in copy. The aria-label is an
+    // attribute, not copy, and is the one place the phrase is allowed.
+    expect(out.replace(/aria-label="Everyone or our group"/g, "")).not.toMatch(/our group/);
+  });
+
+  it("counts ALIVE, LOST THIS WEEK and CHALK over the sheet's rows, out of her published total", async () => {
+    const out = await html();
+    // 3 of the sheet's 4 rows are alive, out of her 1,318 - not "1 of 1".
+    expect(out).toMatch(/Alive<\/p><p class="[^"]*">3<\/p><p class="[^"]*">of 1,318</);
+    // One row lost (Dallas) and none of those is out; our roster has no loss.
+    expect(out).toMatch(/Lost this week<\/p><p class="[^"]*text-tie">1<\/p><p class="[^"]*text-loss">0 now out</);
+    // The chalk: DAL and PHI tie at one pick each, DAL first by name, and
+    // DAL lost - so the tile is yellow and says so in words.
+    expect(out).toMatch(/Chalk<\/p><p class="[^"]*text-tie">DAL<span[^>]*>50%<\/span><\/p><p class="[^"]*">1 pick, lost</);
+  });
+
+  it("draws the standings bar and sentence from the sheet, not in his our-group wording", async () => {
+    const out = await html();
+    expect(out).toContain("No Losses=1, 1 Loss/Bye used=2 and Out=1. 3 left in the pool.");
+    expect(out).not.toContain("We are down to");
+  });
+
+  it("starts the survival strip at her published total and states the drop as numbers, with no chart at two points", async () => {
+    const out = await html();
+    const card = between(out, ">Survival<", ">Week 1 picks<");
+    expect(card).toMatch(/Start<\/p><p class="[^"]*">1,318</);
+    expect(card).toMatch(/Remaining<\/p><p class="[^"]*">3</);
+    // The struck row dropped in Week 1: 4 rows to 3, a 25% fall, in the OUT red.
+    expect(card).toMatch(/Week 1<\/p><p class="[^"]*text-loss">-1<span[^>]*>25%</);
+    expect(card).not.toContain("<svg");
+    expect(card).toContain("removes eliminated entries as the season goes");
+  });
+
+  it("earns the step chart at three points and prints every step as text beneath it", async () => {
+    sheet.week2 = true;
+    try {
+      const out = await html();
+      const card = between(out, ">Survival<", ">Week 2 picks<");
+      expect(card).toContain("<svg");
+      expect(card).toMatch(/W1 3\s+W2 3/);
+    } finally {
+      sheet.week2 = false;
+    }
+  });
+
+  it("colours each distribution bar by the team's own final result, yellow for a loss and never red", async () => {
+    const out = await html();
+    const card = between(out, ">Week 1 picks<", ">Week 1 carnage<");
+    const row = (team: string) => new RegExp(`<li[^>]*>(?:(?!</li>).)*>${team}<(?:(?!</li>).)*</li>`, "s").exec(card)?.[0] ?? "";
+    // Philadelphia won: green fill and a visible W. Dallas lost: yellow and an L.
+    expect(row("PHI")).toContain("bg-win/70");
+    expect(row("PHI")).toMatch(/aria-label="won"[^>]*>W</);
+    expect(row("DAL")).toContain("bg-tie/70");
+    expect(row("DAL")).toMatch(/aria-label="lost"[^>]*>L</);
+    // The count and the share are visible text on every row, not a tooltip.
+    expect(row("DAL")).toMatch(/>1<\/span>/);
+    expect(row("DAL")).toMatch(/>50%/);
+    expect(card).not.toMatch(/\b(?:bg|text)-loss\b/);
+    // The three caption branches are unchanged, word for word.
+    expect(card).toContain("Every entry in the master pool, from the published sheet");
+  });
+
+  it("leaves a team whose game is not final with the plain accent and no W or L", async () => {
+    sheet.extraGames = [{ id: "g-2", week: 1, kickoffAt: "2026-09-13T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "MIA", homeTeam: "BUF", homeScore: null, awayScore: null, status: "scheduled", revealOverride: null, network: "CBS" }];
+    sheet.extraRows = [{ no: 5, names: "Open Row", cells: { "Week 1": "Buffalo" }, entryId: null }];
+    try {
+      const out = await html();
+      const card = between(out, ">Week 1 picks<", ">Week 1 carnage<");
+      const buf = new RegExp("<li[^>]*>(?:(?!</li>).)*>BUF<(?:(?!</li>).)*</li>", "s").exec(card)?.[0] ?? "";
+      expect(buf).toContain("bg-primary/60");
+      expect(buf).not.toMatch(/bg-(?:win|tie)\/70/);
+      expect(buf).not.toMatch(/aria-label="(?:won|lost)"/);
+    } finally {
+      sheet.extraGames = [];
+      sheet.extraRows = [];
+    }
+  });
+
+  it("lists this week's carnage across the sheet in the losing yellow, with the games-final count", async () => {
+    const out = await html();
+    const card = between(out, ">Week 1 carnage<", ">Standings - official count<");
+    expect(card).toContain("bg-tie/70");
+    expect(card).toMatch(/>DAL</);
+    expect(card).not.toMatch(/\bbg-loss\b/);
+    expect(card).toContain("1 entry lost this week, 0 of them out - 1 of 1 games final.");
+  });
+
+  it("keeps our group's own feed off the default view", async () => {
+    const out = await html();
+    expect(out).not.toContain("Recent activity");
+    expect(out).not.toContain('href="/entry/');
+    expect(out).not.toContain("Adriana Flacco");
+  });
+
+  it("stands in with our group, and says so, when no sheet is loaded", async () => {
+    sheet.noSheet = true;
+    try {
+      const out = await html();
+      expect(out).toMatch(/aria-checked="true"[^>]*>Our group<span[^>]*>1</);
+      expect(out).toContain("Our group stands in until the master pool&#x27;s Week 1 picks are published.");
+      expect(out).toContain("We are down to 1 left in the pool.");
+      expect(out).toContain("Recent activity");
+      expect(out).toContain("Our group. The master pool&#x27;s Week 1 picks are not published yet.");
+    } finally {
+      sheet.noSheet = false;
+    }
+  });
+});
+
+describe("Dashboard - the lower section on a phone", () => {
+  const read = (p: string) => readFileSync(path.join(__dirname, "../..", p), "utf8");
+  const bars = [
+    "src/components/dashboard/survival-strip.tsx",
+    "src/components/dashboard/pick-distribution.tsx",
+    "src/components/dashboard/carnage-list.tsx",
+    "src/components/dashboard/bar-row.tsx",
+  ];
+
+  it("renders the three visuals on the server with nothing that scrolls sideways", () => {
+    for (const f of bars) {
+      const src = read(f);
+      expect(src, `${f} is a server component`).not.toContain('"use client"');
+      expect(src, `${f} must not scroll sideways`).not.toMatch(/overflow-x/);
+      expect(src, `${f} must set no minimum width`).not.toMatch(/\bmin-w-/);
+      expect(src, `${f} draws no chart library`).not.toContain("recharts");
+    }
+  });
+
+  it("gives every tappable thing a 44px target", () => {
+    for (const f of ["src/components/dashboard/pick-distribution.tsx", "src/components/dashboard/carnage-list.tsx"]) {
+      expect(read(f), `${f} summary`).toMatch(/<summary className="[^"]*\bh-11\b/);
+    }
+    expect(read("src/components/dashboard/scope-section.tsx")).toMatch(/role="radio"[\s\S]*?className=\{cn\(\s*"[^"]*\bh-11\b/);
+  });
+
+  it("imports no chart library anywhere under src", () => {
+    const walk = (dir: string, out: string[] = []): string[] => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p, out);
+        else if (/\.(ts|tsx)$/.test(e.name)) out.push(p);
+      }
+      return out;
+    };
+    const users = walk(path.join(__dirname, "../../src")).filter((f) => /from "recharts"/.test(readFileSync(f, "utf8")));
+    expect(users).toEqual([]);
   });
 });

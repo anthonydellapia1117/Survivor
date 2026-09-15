@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getData } from "@/lib/data";
 import { currentPlayWeek } from "@/lib/dashboard";
 import { scoreFromGames } from "@/lib/live-standing";
+import { poolAsEntries } from "@/lib/master-list";
 import { duplicateTeamRisks, eliminationWeekOf } from "@/lib/alive";
 import {
   NFL_TEAMS,
@@ -41,21 +42,21 @@ export default async function EntryPage(props: {
 }) {
   const { id } = await props.params;
   const data = getData();
-  const [detail, games, weeks, storedEntries, storedCells] = await Promise.all([
+  const [detail, games, weeks, master] = await Promise.all([
     data.getEntry(id),
     data.getSchedule(),
     data.getWeeks(),
-    data.getEntries(),
-    data.getGridCells(),
+    data.getMasterList(),
   ]);
   if (!detail) notFound();
-  // This entry, and the group it is measured against, scored from the games
-  // for display; the stored record is her results file
-  // (src/lib/live-standing.ts).
+  // This entry scored from the games for display; the stored record is her
+  // results file (src/lib/live-standing.ts). It is measured against the
+  // WHOLE POOL - every row of her newest sheet, scored the same way - not
+  // against our group (Anthony, 2026-09-15).
   const scored = scoreFromGames([detail.entry], detail.picks, games);
   const entry = scored.entries[0];
   const picks = scored.cells;
-  const allEntries = scoreFromGames(storedEntries, storedCells, games).entries;
+  const poolEntries = poolAsEntries(master, games).entries;
 
   const usedSet = new Set(
     picks
@@ -69,10 +70,10 @@ export default async function EntryPage(props: {
   const elimWeek = isOut ? eliminationWeekOf(picks) : null;
   const dupRisks = duplicateTeamRisks(picks);
 
-  // F2: weeks survived vs the group median.
+  // F2: weeks survived vs the pool median.
   const survivedOf = (last: number | null) => last ?? 0;
   const survived = survivedOf(entry.lastScoredWeek);
-  const sortedSurvived = allEntries
+  const sortedSurvived = poolEntries
     .map((e) => survivedOf(e.lastScoredWeek))
     .sort((a, b) => a - b);
   const median =
@@ -126,7 +127,7 @@ export default async function EntryPage(props: {
           {survived > 0 || median > 0 ? (
             <>
               {" "}
-              · survived {survived} {survived === 1 ? "week" : "weeks"} (group
+              · survived {survived} {survived === 1 ? "week" : "weeks"} (pool
               median {median})
             </>
           ) : null}

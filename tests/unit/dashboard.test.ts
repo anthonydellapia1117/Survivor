@@ -1,13 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
+  carnageWeek,
+  chalkByWeek,
   currentPlayWeek,
+  curveEarnsChart,
+  dashboardKpis,
+  distributionRows,
+  eliminationsByWeek,
   eliminationWeek,
+  eliminationWeekOfEntry,
+  MIN_CURVE_POINTS,
   nextDeadline,
   nextLockBoundary,
+  NO_PICK_LABEL,
   pickDistribution,
   standingsBreakdown,
   survivalCurve,
+  teamScarcity,
+  weekCarnage,
 } from "@/lib/dashboard";
+import { teamResults } from "@/lib/master-list";
 import type { EntrySummary, GridCell, WeekRow } from "@/lib/data/types";
 
 function cell(
@@ -298,5 +310,195 @@ describe("standingsBreakdown", () => {
       byeUsed: 1,
       eliminated: 1,
     });
+  });
+});
+
+// ------------------------------------------------------------ scoped cards
+//
+// Anthony, 2026-09-15: every viewer KPI shows the whole pool. Her rows reach
+// these through poolAsEntries with status "eliminated" and no killing cell
+// where she struck a row OUT or it repeated a team, so the curve has to
+// honour the status; and every count below is built from the one shape both
+// scopes produce, so the two scopes cannot be counted two ways.
+
+const game = (
+  week: number,
+  home: string,
+  away: string,
+  homeScore: number | null,
+  awayScore: number | null,
+  status: "final" | "scheduled" | "in_progress" = "final",
+) => ({ week, homeTeam: home, awayTeam: away, homeScore, awayScore, status });
+
+describe("the curve honours an eliminated status the cells cannot explain", () => {
+  it("drops a row she struck OUT at the OUT column, or at Week 1 when it was never scored", () => {
+    const struck = { ...entry("out", "eliminated"), lastScoredWeek: null };
+    expect(eliminationWeekOfEntry(struck, [], 7, 3)).toBe(3);
+    expect(eliminationWeekOfEntry(struck, [], 7, null)).toBe(1);
+    // A live row with no loss is not dropped, whatever the fallback says.
+    expect(eliminationWeekOfEntry(entry("a", "active"), [], 7, 3)).toBeNull();
+  });
+
+  it("drops a repeated-team row at its last scored week", () => {
+    const repeat = { ...entry("r", "eliminated"), lastScoredWeek: 3 };
+    const cells = [cell("r", 1, "win", "KC"), cell("r", 2, "win", "PHI"), cell("r", 3, "win", "KC")];
+    expect(eliminationWeekOfEntry(repeat, cells)).toBe(3);
+  });
+
+  it("so the survival curve falls for her OUT rows, which the loss-only rule never saw", () => {
+    const entries = [entry("a", "active"), entry("b", "eliminated")];
+    const cells = [cell("a", 1, "win"), cell("a", 2, "win")];
+    expect(survivalCurve(entries, cells)).toEqual([
+      { week: 0, remaining: 2 },
+      { week: 1, remaining: 1 },
+      { week: 2, remaining: 1 },
+    ]);
+    expect(survivalCurve(entries, cells, 7, new Map([["b", 2]]))).toEqual([
+      { week: 0, remaining: 2 },
+      { week: 1, remaining: 2 },
+      { week: 2, remaining: 1 },
+    ]);
+  });
+
+  it("earns a chart only from three points - two scored weeks", () => {
+    const p = (week: number) => ({ week, remaining: 10 - week });
+    expect(MIN_CURVE_POINTS).toBe(3);
+    expect(curveEarnsChart([p(0), p(1)])).toBe(false);
+    expect(curveEarnsChart([p(0), p(1), p(2)])).toBe(true);
+  });
+});
+
+describe("dashboardKpis", () => {
+  // Week 2: two lost with DAL (one of them out), one won with PHI, one still
+  // pending on a game not final; and a Week 1 loss that must stay in Week 1.
+  const entries = [entry("a", "at_risk"), entry("b", "eliminated"), entry("c", "active"), entry("d", "active")];
+  const cells = [
+    cell("a", 2, "loss", "DAL"),
+    cell("b", 2, "loss", "DAL"),
+    cell("c", 2, "win", "PHI"),
+    cell("d", 2, "pending", "KC"),
+    cell("c", 1, "loss", "NYG"),
+  ];
+  const results = teamResults([game(2, "PHI", "DAL", 24, 17), game(2, "KC", "LV", 10, 3, "in_progress")]);
+
+  it("counts the week's losses, who is now out, and the chalk with its result", () => {
+    const k = dashboardKpis(entries, cells, results, 2, true);
+    expect(k.alive).toBe(3);
+    expect(k.lostThisWeek).toBe(2);
+    expect(k.outThisWeek).toBe(1);
+    expect(k.chalk).toEqual({ team: "DAL", count: 2, pct: 50, tone: "lost", state: "lost" });
+  });
+
+  it("prints nothing for the week before any game is final", () => {
+    const k = dashboardKpis(entries, cells, results, 2, false);
+    expect(k.anyFinal).toBe(false);
+    expect(k.chalk).toBeNull();
+  });
+
+  it("calls the chalk not final when its own game is still on, and never a loss", () => {
+    const k = dashboardKpis(entries, [cell("a", 2, "pending", "KC"), cell("b", 2, "pending", "KC")], results, 2, true);
+    expect(k.chalk).toEqual({ team: "KC", count: 2, pct: 100, tone: "none", state: "not final" });
+    expect(k.lostThisWeek).toBe(0);
+  });
+});
+
+describe("distributionRows", () => {
+  const rows = [
+    { team: "PHI", count: 10, pct: 50 },
+    { team: "DAL", count: 6, pct: 30 },
+    { team: "KC", count: 4, pct: 20 },
+  ];
+  const results = teamResults([game(1, "PHI", "DAL", 24, 17), game(1, "KC", "LV", null, null, "scheduled")]);
+
+  it("colours each team by its own final result and leaves an unplayed game with no fill", () => {
+    const out = distributionRows(rows, results, 1);
+    expect(out.top.map((r) => r.tone)).toEqual(["won", "lost", "none"]);
+    expect(out.top.map((r) => r.glyph)).toEqual(["W", "L", ""]);
+    expect(out.max).toBe(10);
+  });
+
+  it("gives a tied final the losing tone on both teams", () => {
+    const tied = teamResults([game(1, "PHI", "DAL", 20, 20)]);
+    const out = distributionRows(rows, tied, 1);
+    expect(out.top[0].tone).toBe("lost");
+    expect(out.top[1].tone).toBe("lost");
+  });
+
+  it("never recounts: the top rows plus Others equal the input, in the input's order", () => {
+    const out = distributionRows(rows, results, 1, 2);
+    expect(out.top.map((r) => r.team)).toEqual(["PHI", "DAL"]);
+    expect(out.others).toEqual({ teams: 1, count: 4, pct: 20 });
+    expect(out.top.reduce((n, r) => n + r.count, 0) + out.others!.count).toBe(20);
+    expect(out.all).toHaveLength(3);
+    expect(distributionRows(rows, results, 1).others).toBeNull();
+  });
+
+  it("prints a skipped week as BYE in the bye tone", () => {
+    const out = distributionRows([{ team: "SKIP_WEEK", count: 2, pct: 100 }], results, 1);
+    expect(out.top[0]).toMatchObject({ label: "BYE", tone: "bye", glyph: "" });
+  });
+});
+
+describe("weekCarnage", () => {
+  // Week 3: two lost with DAL (one out), one tied with NYG, one missed, one
+  // won - and a masked cell and an in-progress one, which are never a loss.
+  const entries = [
+    entry("a", "at_risk"),
+    entry("b", "eliminated"),
+    entry("c", "at_risk"),
+    entry("d", "at_risk"),
+    entry("e", "active"),
+    entry("f", "active"),
+    entry("g", "active"),
+  ];
+  const cells = [
+    cell("a", 3, "loss", "DAL"),
+    cell("b", 3, "loss", "DAL"),
+    cell("c", 3, "tie_loss", "NYG"),
+    cell("d", 3, "missed", "MISSED"),
+    cell("e", 3, "win", "PHI"),
+    cell("f", 3, null, "LOCKED"),
+    cell("g", 3, "pending", "KC"),
+    cell("a", 2, "loss", "SF"),
+  ];
+
+  it("groups the week's losses by team, a tie and a missed pick included, with who is now out", () => {
+    const r = weekCarnage(entries, cells, 3);
+    expect(r.lostTotal).toBe(4);
+    expect(r.outTotal).toBe(1);
+    expect(r.rows).toHaveLength(3);
+    expect(r.rows[0]).toEqual({ team: "DAL", lost: 2, out: 1, share: 50 });
+    expect(r.rows.find((x) => x.team === "NYG")).toEqual({ team: "NYG", lost: 1, out: 0, share: 25 });
+    expect(r.rows.find((x) => x.team === NO_PICK_LABEL)).toEqual({ team: NO_PICK_LABEL, lost: 1, out: 0, share: 25 });
+    expect(r.rows.find((x) => x.team === "PHI")).toBeUndefined();
+  });
+
+  it("is the highest week with a final game, not the play week", () => {
+    expect(carnageWeek([game(1, "A", "B", 1, 0), game(2, "C", "D", 1, 0), game(3, "E", "F", null, null, "scheduled")])).toBe(2);
+    expect(carnageWeek([game(1, "A", "B", null, null, "scheduled")])).toBeNull();
+  });
+});
+
+describe("chalk, scarcity and the game board's eliminations", () => {
+  it("names each fully revealed week's most-picked team and whether it held", () => {
+    const cells = [cell("a", 1, "win", "PHI"), cell("b", 1, "win", "PHI"), cell("c", 1, "loss", "DAL"), cell("a", 2, "pending", "KC")];
+    const results = teamResults([game(1, "PHI", "DAL", 24, 17)]);
+    expect(chalkByWeek(cells, results, [1])).toEqual([{ week: 1, team: "PHI", count: 2, pct: 67, tone: "won", state: "won" }]);
+    // Week 2 is not in the revealed list, so it is not a row however many picks it has.
+    expect(chalkByWeek(cells, results, [1]).find((c) => c.week === 2)).toBeUndefined();
+  });
+
+  it("counts how many ALIVE entries still hold a team, from the revealed weeks only", () => {
+    const entries = [entry("a", "active"), entry("b", "active"), entry("c", "eliminated")];
+    const cells = [cell("a", 1, "win", "PHI"), cell("b", 1, "win", "PHI"), cell("c", 1, "win", "PHI"), cell("a", 2, null, "DAL")];
+    const s = teamScarcity(entries, cells, [1], ["PHI", "DAL", "KC"]);
+    expect(s.alive).toBe(2);
+    expect(s.rows).toEqual([{ team: "PHI", left: 0 }]);
+  });
+
+  it("lists an eliminated entry under the team of its killing loss, and not a row with no loss cell", () => {
+    const entries = [entry("b", "eliminated"), entry("out", "eliminated"), entry("a", "active")];
+    const cells = [cell("b", 1, "loss", "DAL"), cell("b", 2, "loss", "KC"), cell("a", 1, "loss", "DAL")];
+    expect(eliminationsByWeek(entries, cells)).toEqual({ 2: { KC: ["b"] } });
   });
 });

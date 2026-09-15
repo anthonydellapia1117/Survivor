@@ -64,13 +64,14 @@ describe("the standings sentence", () => {
     );
   });
 
-  it("uses the dashboard's template, read from src/app/page.tsx", () => {
-    // The dashboard builds the same sentence inline. Neither file imports
-    // the other, so the only way to notice a drift is to read the page's
-    // source and compare the static text between the interpolations.
-    const page = read("src/app/page.tsx");
+  it("uses the dashboard's template, read from src/lib/dashboard-scope.ts", () => {
+    // The dashboard builds the same sentence inline - in dashboardScope since
+    // 2026-09-15, for its Our group scope. Neither file imports the other,
+    // so the only way to notice a drift is to read the page's source and
+    // compare the static text between the interpolations.
+    const page = read("src/lib/dashboard-scope.ts");
     const found = /`No Losses=[^`]*`/.exec(page);
-    expect(found, "dashboard sentence not found in src/app/page.tsx").not.toBeNull();
+    expect(found, "dashboard sentence not found in src/lib/dashboard-scope.ts").not.toBeNull();
     const literal = found![0].slice(1, -1);
     const MARK = "\u0000";
     const pageSegments = literal.replace(/\$\{[^}]*\}/g, MARK).split(MARK);

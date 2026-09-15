@@ -95,9 +95,13 @@ describe("the window vocabulary and the result vocabulary", () => {
     // Two surfaces since 2026-09-11, not three: the Grid and the Master List
     // became one table, so the third file is the one that used to hold half
     // of it.
+    // Four since 2026-09-15: the dashboard's pick distribution and its
+    // carnage list draw a bar per team in the team's result colour.
     for (const file of [
       "src/components/grid/grid-view.tsx",
       "src/components/teams/teams-client.tsx",
+      "src/components/dashboard/pick-distribution.tsx",
+      "src/components/dashboard/carnage-list.tsx",
     ]) {
       const src = read(file);
       expect(src, `${file} must take its result colours from the module`).toContain('from "@/lib/result-colour"');
