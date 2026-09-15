@@ -7,19 +7,13 @@
 // reveal plumbing it needed: the elimination list is built only from cells
 // already carrying a loss or a tie, which cannot exist before the game is
 // scored, so nothing here can show a pick early.
-//
-// The elimination list shows the WHOLE POOL by default and our group only
-// under the same Everyone / Our group toggle the one table uses (Anthony,
-// 2026-09-15). Both lists are computed on the server by eliminationsByWeek
-// over the one shape both scopes produce, and arrive here as plain data.
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { GameRow, WeekRow } from "@/lib/data/types";
-import type { EliminationsByWeek } from "@/lib/dashboard";
-import type { TeamsSourceKind as Source } from "@/lib/master-list";
+import type { EntrySummary, GameRow, GridCell, WeekRow } from "@/lib/data/types";
 import { TEAM_NAME } from "@/lib/standing";
 import { TEAM_PALETTE } from "@/lib/team-colors";
+import { eliminationWeekOf } from "@/lib/alive";
 import { cn } from "@/lib/utils";
 
 function kickoffLabel(iso: string): string {
@@ -33,41 +27,51 @@ function kickoffLabel(iso: string): string {
     .toUpperCase();
 }
 
-export interface EliminationScopes {
-  /** Every row of her newest sheet; null when no sheet is loaded. */
-  pool: { eliminated: EliminationsByWeek; count: number } | null;
-  ours: { eliminated: EliminationsByWeek; count: number };
-}
-
 export function GameBoard({
   games,
-  eliminations,
+  entries,
+  cells,
   weeks,
   initialWeek,
 }: {
   games: GameRow[];
-  eliminations: EliminationScopes;
+  entries: EntrySummary[];
+  cells: GridCell[];
   weeks: WeekRow[];
   initialWeek: number;
 }) {
   const router = useRouter();
   const [week, setWeek] = useState(initialWeek);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const poolLoaded = eliminations.pool !== null;
-  const [source, setSource] = useState<Source>(poolLoaded ? "pool" : "ours");
   const weekGames = useMemo(
     () => games.filter((g) => g.week === week),
     [games, week],
   );
 
-  // Entries this game eliminated, in the scope showing: losing-side pickers
-  // whose elimination week is this week.
-  const scope = source === "pool" && eliminations.pool ? eliminations.pool : eliminations.ours;
-  const elimByTeam = scope.eliminated[week] ?? {};
-  const options: { key: Source; label: string; n: number; disabled?: boolean }[] = [
-    { key: "pool", label: "Everyone", n: eliminations.pool?.count ?? 0, disabled: !poolLoaded },
-    { key: "ours", label: "Our group", n: eliminations.ours.count },
-  ];
+  // Entries this game eliminated: losing-side pickers whose elimination
+  // week is this week.
+  const elimByTeam = useMemo(() => {
+    const byEntry = new Map<string, GridCell[]>();
+    for (const c of cells) {
+      if (!byEntry.has(c.entryId)) byEntry.set(c.entryId, []);
+      byEntry.get(c.entryId)!.push(c);
+    }
+    const m = new Map<string, string[]>();
+    for (const e of entries) {
+      if (e.status !== "eliminated") continue;
+      const ew = eliminationWeekOf(byEntry.get(e.id) ?? []);
+      if (ew !== week) continue;
+      const killCell = (byEntry.get(e.id) ?? []).find(
+        (c) =>
+          c.week === week &&
+          (c.result === "loss" || c.result === "tie_loss"),
+      );
+      if (!killCell) continue;
+      if (!m.has(killCell.team)) m.set(killCell.team, []);
+      m.get(killCell.team)!.push(e.entryName);
+    }
+    return m;
+  }, [cells, entries, week]);
 
   function changeWeek(w: number) {
     setWeek(w);
@@ -99,42 +103,11 @@ export function GameBoard({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div
-          role="radiogroup"
-          aria-label="Everyone or our group"
-          className="inline-flex rounded-lg border border-border bg-surface p-0.5"
-        >
-          {options.map((o) => (
-            <button
-              key={o.key}
-              type="button"
-              role="radio"
-              aria-checked={source === o.key}
-              disabled={o.disabled}
-              onClick={() => setSource(o.key)}
-              className={cn(
-                "flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold tracking-wide transition-colors duration-150 disabled:opacity-50",
-                source === o.key ? "bg-surface-2 text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {o.label}
-              <span className="tabular-nums opacity-70">{o.n.toLocaleString("en-US")}</span>
-            </button>
-          ))}
-        </div>
-        <span className="text-xs text-muted-foreground">
-          {source === "pool" && poolLoaded
-            ? "Entries a final eliminated, across every row of her newest sheet."
-            : "Entries a final eliminated, Our group only."}
-        </span>
-      </div>
-
       <div className="grid gap-3 md:grid-cols-2">
         {weekGames.map((g) => {
           const elim = [
-            ...(elimByTeam[g.homeTeam] ?? []),
-            ...(elimByTeam[g.awayTeam] ?? []),
+            ...(elimByTeam.get(g.homeTeam) ?? []),
+            ...(elimByTeam.get(g.awayTeam) ?? []),
           ];
           const final = g.status === "final";
           const tie =

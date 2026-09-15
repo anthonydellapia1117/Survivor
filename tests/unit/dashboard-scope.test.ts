@@ -54,7 +54,7 @@ function game(id: string, week: number, home: string, away: string, over: Partia
 }
 
 const now = new Date("2026-09-15T12:00:00Z");
-const distribution: ScopeInput["distribution"] = { scope: "pool", rows: null, empty: "none", caption: "", lockedAt: null };
+const distribution: ScopeInput["distribution"] = { rows: null, empty: "none", caption: "", lockedAt: null };
 
 function build(over: Partial<ScopeInput>) {
   return dashboardScope({

@@ -54,49 +54,28 @@ describe("the dashboard heading", () => {
 });
 
 describe("the dashboard's viewer KPIs", () => {
-  // Anthony, 2026-09-15: every viewer KPI shows the whole pool, and our
-  // group's figures appear only under the section's toggle. The page itself
-  // therefore computes NOTHING from our entries for display: both scopes go
-  // through dashboardScope, the pool through poolAsEntries, and the one
-  // `entries.length` left in the page is the empty-state guard.
+  // Anthony, 2026-09-15: every panel on the dashboard shows the whole pool
+  // unless the toggle is on Our group. The page itself therefore computes
+  // NOTHING from our entries for the section: both scopes go through
+  // dashboardScope, the pool through poolAsEntries, and the one
+  // `entries.length` left in the page is the empty-state guard. Recent
+  // activity is the one exception - our intake, rendered outside the toggle
+  // - and tests/unit/dashboard-scope-rule.test.ts holds it there.
   it("computes both scopes through the one builder, the pool through poolAsEntries", () => {
     expect(DASH_CODE).toContain("poolAsEntries(master, games)");
     expect(DASH_CODE).toMatch(/key: "pool",\s*entries: pool\.entries/);
     expect(DASH_CODE).toMatch(/key: "ours",\s*entries: ours\.entries/);
   });
 
-  it("measures an entry against the pool, and names our group on the one listing that shows it", () => {
-    // /entry/[id] used to print an unlabelled "group median" over our 121;
-    // it is the pool median now, over poolAsEntries. /records/roster is a
-    // listing of the group Anthony manages, not a KPI surface, so it keeps
-    // its count and leads with whose it is, in the toggle's exact words.
-    // Whitespace collapsed: the JSX breaks "(pool median" across a line, so a
-    // raw-text scan for "group median" passed with the old wording in place.
-    const entry = codeWithoutComments(readFileSync("src/app/entry/[id]/page.tsx", "utf8")).replace(/\s+/g, " ");
-    expect(entry).toContain("poolAsEntries(master, games)");
-    expect(entry).not.toContain("group median");
-    expect(entry).toContain("(pool median {median})");
-    expect(entry).not.toContain("data.getEntries()");
-    const roster = codeWithoutComments(readFileSync("src/app/records/roster/page.tsx", "utf8"));
-    expect(roster).toMatch(/Our group - \{entries\.length\} entries/);
-  });
-
-  it("feeds the schedule's game board the pool's eliminations from the pool's rows", () => {
-    // tests/unit/game-board-scope.test.ts renders the board with hand-built
-    // props and never reads this page, so a page wiring our entries under
-    // the pool key passed every test. This reads the page.
-    const sched = codeWithoutComments(readFileSync("src/app/schedule/page.tsx", "utf8")).replace(/\s+/g, " ");
-    expect(sched).toContain("poolAsEntries(master, games)");
-    expect(sched).toMatch(/pool: master\.rows\.length > 0 \? \{ eliminated: eliminationsByWeek\(pool\.entries, pool\.cells\), count: pool\.entries\.length \}/);
-    expect(sched).toMatch(/ours: \{ eliminated: eliminationsByWeek\(ours\.entries, ours\.cells\), count: ours\.entries\.length \}/);
-  });
-
   it("reads no our-group count or standing inline", () => {
     const lengths = DASH_CODE.match(/entries\.length/g) ?? [];
     expect(lengths, "only the empty-state guard may count our entries").toHaveLength(1);
     expect(DASH_CODE).toContain("ours.entries.length === 0 && master.rows.length === 0");
-    for (const gone of ["aliveEntries", "standingsBreakdown", "survivalCurve", "recentActivity", "lynneBucket", "breakdown.eliminated"]) {
+    for (const gone of ["aliveEntries", "standingsBreakdown", "survivalCurve", "lynneBucket", "breakdown.eliminated"]) {
       expect(DASH_CODE, `${gone} is an our-group figure and belongs in the scoped section`).not.toContain(gone);
     }
+    // The one our-group read the page may make is the feed, and it goes to
+    // the card outside the section, never to a scope.
+    expect(DASH_CODE).toMatch(/<RecentActivity rows=\{recentActivity\(ours\.entries, ours\.cells, 10\)\} \/>/);
   });
 });

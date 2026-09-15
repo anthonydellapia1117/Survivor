@@ -74,12 +74,6 @@ export function TeamsSource({ ours, pool, counts, poolLoaded, poolHasPicks, week
               ? "Built from the published sheet, counted once the week has locked."
               : "The published sheet carries no week picks yet."}
           </span>
-        ) : poolLoaded && !poolHasPicks ? (
-          // The shared default opens here SILENTLY when a sheet is loaded
-          // but carries no week cells; "stands in" has to say so.
-          <span className="text-xs text-muted-foreground">
-            Our group stands in until the published sheet carries a week&apos;s picks.
-          </span>
         ) : null}
       </div>
       <TeamsClient
@@ -88,7 +82,6 @@ export function TeamsSource({ ours, pool, counts, poolLoaded, poolHasPicks, week
         weeks={weeks}
         games={games}
         entryCount={active.entries.length}
-        scopeLabel={options.find((o) => o.key === source)?.label ?? "Everyone"}
       />
     </div>
   );

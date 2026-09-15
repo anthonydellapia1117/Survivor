@@ -585,37 +585,3 @@ export function teamScarcity(
     .slice(0, limit);
   return { rows, alive: alive.size };
 }
-
-/**
- * The entries each game eliminated: week -> losing team -> entry names,
- * for the schedule's game board. An entry counts under the team of the loss
- * (or tie) cell in the week it was eliminated; a row with no killing cell -
- * her OUT, a repeated team - is not listed, because no game did it. Only a
- * cell already carrying a loss reaches this, and none can exist before the
- * game is scored, so nothing here can show a pick early.
- */
-export type EliminationsByWeek = Record<number, Record<string, string[]>>;
-
-export function eliminationsByWeek(
-  entries: Pick<EntrySummary, "id" | "entryName" | "status">[],
-  cells: GridCell[],
-  doubleElimThrough = 7,
-): EliminationsByWeek {
-  const byEntry = new Map<string, GridCell[]>();
-  for (const c of cells) {
-    if (!byEntry.has(c.entryId)) byEntry.set(c.entryId, []);
-    byEntry.get(c.entryId)!.push(c);
-  }
-  const out: EliminationsByWeek = {};
-  for (const e of entries) {
-    if (e.status !== "eliminated") continue;
-    const picks = byEntry.get(e.id) ?? [];
-    const week = eliminationWeek(picks, doubleElimThrough);
-    if (week === null) continue;
-    const kill = picks.find((c) => c.week === week && (c.result === "loss" || c.result === "tie_loss"));
-    if (!kill) continue;
-    (out[week] ??= {})[kill.team] ??= [];
-    out[week][kill.team].push(e.entryName);
-  }
-  return out;
-}

@@ -1,14 +1,20 @@
 // One scope of the dashboard's lower section, computed on the server.
 //
-// Set by Anthony on 2026-09-15: EVERY viewer KPI shows the whole pool - the
-// rows on her newest sheet, scored from the games - and our group's figures
-// appear only when the section's toggle is set to "Our group". The two scopes
-// are one computation: poolAsEntries(master, games) hands over her rows in
-// the same EntrySummary / GridCell shape scoreFromGames hands over ours, and
-// everything here is built from that shape and nothing else. Both scopes are
-// computed here, on the server, and handed to one client toggle as plain
-// data, so the reveal gate is untouched: a masked pick reaches this already
-// LOCKED with no result, and nothing below can turn it into a team.
+// Set by Anthony on 2026-09-15, and restated the same day as the rule rather
+// than a list of fixes: every panel on the dashboard shows the WHOLE POOL
+// unless the toggle is set to Our group. The two scopes are one computation:
+// poolAsEntries(master, games) hands over her rows in the same EntrySummary /
+// GridCell shape scoreFromGames hands over ours, and everything here is built
+// from that shape and nothing else. Both scopes are computed here, on the
+// server, and handed to one client toggle as plain data, so the reveal gate
+// is untouched: a masked pick reaches this already LOCKED with no result, and
+// nothing below can turn it into a team.
+//
+// ScopeData is EVERYTHING a panel may print. Recent activity is not on it:
+// that card is our intake and can only ever be ours, so it is rendered
+// outside the toggle by the page (src/components/dashboard/recent-activity.tsx)
+// and the pool scope cannot even carry one. Nothing else that is our-group
+// derived reaches a panel any other way.
 //
 // Every figure is a number, a string or a list of those - no Map, no Date,
 // no function - because the whole thing crosses to a client component.
@@ -20,11 +26,9 @@ import {
   curveEarnsChart,
   dashboardKpis,
   distributionRows,
-  recentActivity,
   survivalCurve,
   teamScarcity,
   weekCarnage,
-  type ActivityRow,
   type ChalkRow,
   type DashboardKpis,
   type DistributionRows,
@@ -67,15 +71,14 @@ export interface SurvivalStrip {
 
 export interface DistributionView {
   week: number | null;
-  /**
-   * Whose picks the card shows. Normally the scope's own; for the pool it is
-   * "Our group" while our group STANDS IN - her sheet has no column for the
-   * week yet, and this is the one card with nothing of hers to show.
-   */
-  scope: TeamsSourceKind;
-  /** The rows to draw, or null for one of the empty states. */
+  /** The rows to draw, or null for one of the empty states. Always the scope's own. */
   rows: DistributionRows | null;
-  /** Which empty state, when rows is null. */
+  /**
+   * Which empty state, when rows is null. `unpublished` is the pool's: her
+   * sheet has no column for the week yet, and the card says so. Our group
+   * does NOT stand in on it - that branch came out on 2026-09-15, because
+   * under Everyone no figure may be derived from our entries.
+   */
   empty: "locked" | "unpublished" | "none";
   /** The sentence under the rows. */
   caption: string;
@@ -112,8 +115,6 @@ export interface ScopeData {
   standings: StandingsBar;
   chalk: ChalkRow[];
   scarcity: { rows: ScarcityRow[]; alive: number; throughWeek: number | null };
-  /** Our group's own feed; null for the pool, whose rows have no submission order. */
-  activity: ActivityRow[] | null;
 }
 
 export interface ScopeInput {
@@ -135,8 +136,6 @@ export interface ScopeInput {
   weekPublished: (week: number) => boolean;
   /** The week's counts as the scope's own distribution produced them, or null with why. */
   distribution: {
-    /** Whose rows these are; "ours" under the pool key is our group standing in. */
-    scope: TeamsSourceKind;
     rows: { team: string; count: number; pct: number }[] | null;
     empty: DistributionView["empty"];
     caption: string;
@@ -204,7 +203,6 @@ export function dashboardScope(input: ScopeInput): ScopeData {
   const d = input.distribution;
   const distribution: DistributionView = {
     week,
-    scope: d.scope,
     rows: d.rows !== null && week !== null && d.rows.length > 0 ? distributionRows(d.rows, results, week) : null,
     empty: d.empty,
     caption: d.caption,
@@ -265,6 +263,5 @@ export function dashboardScope(input: ScopeInput): ScopeData {
     standings,
     chalk: chalkByWeek(cells, results, revealedWeeks),
     scarcity: { ...scarcity, throughWeek },
-    activity: key === "ours" ? recentActivity(entries, cells, 10) : null,
   };
 }

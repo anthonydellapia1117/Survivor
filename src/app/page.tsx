@@ -4,6 +4,7 @@ import {
   currentPlayWeek,
   nextLockBoundary,
   pickDistribution,
+  recentActivity,
 } from "@/lib/dashboard";
 import { dashboardScope, herOutWeeks, type ScopeInput } from "@/lib/dashboard-scope";
 import { scoreFromGames } from "@/lib/live-standing";
@@ -16,6 +17,7 @@ import {
   weekColumns,
 } from "@/lib/master-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { ScopeSection } from "@/components/dashboard/scope-section";
 import { EmptyState } from "@/components/empty-state";
 
@@ -64,17 +66,19 @@ export default async function DashboardPage() {
   const poolStand = poolStandings(master, games);
   const deadline = nextLockBoundary(weeks, games, now);
 
-  // EVERY viewer KPI below Row 2 shows the whole pool by default and our
-  // group only under the toggle (Anthony, 2026-09-15). Both scopes are the
-  // one computation over the one shape: her rows through poolAsEntries, ours
-  // through scoreFromGames, both handed to dashboardScope.
+  // EVERY panel below Row 2 shows the whole pool unless the toggle is on Our
+  // group (Anthony, 2026-09-15, restated as the rule and not a list of
+  // fixes). Both scopes are the one computation over the one shape: her rows
+  // through poolAsEntries, ours through scoreFromGames, both handed to
+  // dashboardScope. Nothing our-group-derived reaches the section any other
+  // way; Recent activity, the one exception, is rendered below it.
   const poolLoaded = master.rows.length > 0;
   const pool = poolAsEntries(master, games);
   // Her sheet carries a week's column at all, revealed or not. The section
   // still opens on Everyone without it - the alive count, the survival strip,
   // the standings and the chalk list all read her sheet as it stands - and
-  // the tiles that need the week say "not published yet" until she does;
-  // only the week's picks card has our group stand in.
+  // every card that needs the week, the picks card included, says "not
+  // published yet" until she does. Our group does not stand in.
   const herWeeks = new Set(weekColumns(master.rows).map((c) => c.week));
   const poolHasWeek = week !== null && herWeeks.has(week);
   // The whole pool's picks for the week, from the published sheet. The
@@ -88,28 +92,23 @@ export default async function DashboardPage() {
   const oursDistribution: ScopeInput["distribution"] =
     dist?.revealed && dist.rows.length > 0
       ? {
-          scope: "ours",
           rows: dist.rows,
           empty: "none",
           lockedAt: null,
-          caption: poolHasWeek
-            ? `Our group's Week ${dist.week} picks, as recorded.`
-            : `Our group. The master pool's Week ${dist.week} picks are not published yet.`,
+          caption: `Our group's Week ${dist.week} picks, as recorded.`,
         }
       : dist && !dist.revealed
         ? {
-            scope: "ours",
             rows: null,
             empty: "locked",
             lockedAt,
             caption: `Hidden until the Week ${dist.week} deadline passes.`,
           }
-        : { scope: "ours", rows: null, empty: "none", lockedAt: null, caption: "No picks recorded for this week yet." };
+        : { rows: null, empty: "none", lockedAt: null, caption: "No picks recorded for this week yet." };
 
   const poolDistribution_: ScopeInput["distribution"] =
     poolDist && poolDist.rows.length > 0
       ? {
-          scope: "pool",
           rows: poolDist.rows,
           empty: "none",
           lockedAt: null,
@@ -122,21 +121,19 @@ export default async function DashboardPage() {
         }
       : poolHasWeek
         ? {
-            scope: "pool",
             rows: null,
             empty: "locked",
             lockedAt,
             caption: `Her Week ${week} picks appear as the games kick off.`,
           }
-        : // Until she publishes the week, OUR GROUP STANDS IN on this one
-          // card and says so: our rows, our empty states, under the "Our
-          // group" label, with the caption naming what is not published.
+        : // Until she publishes the week the card says so and shows nothing:
+          // our group used to stand in here, and a stand-in is an our-group
+          // figure under Everyone, which the rule forbids.
           {
-            ...oursDistribution,
-            caption:
-              oursDistribution.rows !== null
-                ? `Our group stands in until the master pool's Week ${week ?? "-"} picks are published.`
-                : oursDistribution.caption,
+            rows: null,
+            empty: "unpublished",
+            lockedAt: null,
+            caption: `The master pool's Week ${week ?? "-"} picks are not published yet.`,
           };
 
   const scopes = {
@@ -296,6 +293,11 @@ export default async function DashboardPage() {
         deadline={deadline}
         herTotal={pot.poolEntryCount}
       />
+
+      {/* The one exception, outside the toggle: our intake, which can only
+          ever be ours, so it carries no label saying so (Anthony,
+          2026-09-15). */}
+      <RecentActivity rows={recentActivity(ours.entries, ours.cells, 10)} />
     </div>
   );
 }

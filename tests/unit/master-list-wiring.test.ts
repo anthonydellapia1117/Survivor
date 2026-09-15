@@ -52,11 +52,7 @@ describe("Master List wiring", () => {
   });
 
   it("the Teams page opens on the pool only once she has published a week, through the shared default", () => {
-    const src = read("src/components/teams/teams-source.tsx");
-    expect(src).toMatch(/useState<Source>\(defaultTeamsSource\(poolLoaded, poolHasPicks\)\)/);
-    // And when that default lands on our group with a sheet loaded, the
-    // page SAYS so (2026-09-15) - "stands in" was silent on that branch.
-    expect(src).toMatch(/poolLoaded && !poolHasPicks \? \([\s\S]*?Our group stands in until the published sheet carries a week/);
+    expect(read("src/components/teams/teams-source.tsx")).toMatch(/useState<Source>\(defaultTeamsSource\(poolLoaded, poolHasPicks\)\)/);
   });
 
   it("calls the whole pool one thing on every surface, and never by the page that was removed", () => {
@@ -66,24 +62,21 @@ describe("Master List wiring", () => {
     // surfaces, and the dashboard linked to that page by that name as well.
     const grid = /key: "everyone", label: "([^"]+)"/.exec(read("src/components/grid/grid-view.tsx"))?.[1];
     const teams = /key: "pool", label: "([^"]+)"/.exec(read("src/components/teams/teams-source.tsx"))?.[1];
-    // Two more toggles since 2026-09-15 - the dashboard's lower section and
-    // the schedule's game board - pinned to the same word, and the other
-    // option to "Our group" on all four.
+    // A third toggle since 2026-09-15 - the dashboard's lower section -
+    // pinned to the same word, and the other option to "Our group" on all
+    // three. Grid, Schedule and Teams are otherwise untouched by that change.
     const dashboard = /pool: "([^"]+)"/.exec(read("src/lib/dashboard-scope.ts"))?.[1];
-    const board = /key: "pool", label: "([^"]+)"/.exec(read("src/components/schedule/game-board.tsx"))?.[1];
-    expect({ grid, teams, dashboard, board }, "every toggle, one word").toEqual({
+    expect({ grid, teams, dashboard }, "every toggle, one word").toEqual({
       grid: "Everyone",
       teams: "Everyone",
       dashboard: "Everyone",
-      board: "Everyone",
     });
     const oursWord = {
       grid: /key: "ours", label: "([^"]+)"/.exec(read("src/components/grid/grid-view.tsx"))?.[1],
       teams: /key: "ours", label: "([^"]+)"/.exec(read("src/components/teams/teams-source.tsx"))?.[1],
       dashboard: /ours: "([^"]+)"/.exec(read("src/lib/dashboard-scope.ts"))?.[1],
-      board: /key: "ours", label: "([^"]+)"/.exec(read("src/components/schedule/game-board.tsx"))?.[1],
     };
-    expect(oursWord).toEqual({ grid: "Our group", teams: "Our group", dashboard: "Our group", board: "Our group" });
+    expect(oursWord).toEqual({ grid: "Our group", teams: "Our group", dashboard: "Our group" });
 
     // And the removed page's name reaches no live copy at all. NOT literals:
     // `<Link ...>Master List</Link>` is a name a reader clicks and no quoted

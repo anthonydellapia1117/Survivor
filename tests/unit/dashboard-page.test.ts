@@ -429,13 +429,14 @@ describe("Dashboard - the scoped section opens on Everyone", () => {
     }
   });
 
-  it("still opens on Everyone when her sheet lacks the play week, with our group standing in on the picks card only", async () => {
+  it("still opens on Everyone when her sheet lacks the play week, and the picks card says so rather than standing in", async () => {
     // Friday 2 PM to whenever her sheet lands: the play week has rolled, one
     // of its games is final, and her newest sheet carries only last week.
     // Every card that can be read off her sheet still is; the tiles that
     // would read a zero off a column she has not published say so; and the
-    // one card with nothing of hers - the week's picks - carries ours,
-    // labelled ours.
+    // picks card, which has nothing of hers, says so too. Our group used to
+    // stand in on it, labelled - a stand-in is still our figure under
+    // Everyone, and the rule (2026-09-15) forbids exactly that.
     sheet.playWeek2 = true;
     try {
       const out = await html();
@@ -452,11 +453,13 @@ describe("Dashboard - the scoped section opens on Everyone", () => {
       expect(carnage).toContain("The master pool&#x27;s Week 2 picks are not published yet.");
       expect(carnage).not.toContain("No entry has lost yet");
       expect(carnage).not.toContain("games final");
-      // The picks card: our rows, under OUR label, saying what is not published.
+      // The picks card: no rows, no label, one sentence naming what is not
+      // published. Our KC pick is on no part of it.
       const picks = between(out, ">Week 2 picks<", ">Week 2 carnage<");
-      expect(picks).toMatch(/^>Week 2 picks<span[^>]*>Our group</);
-      expect(picks).toMatch(/>KC</);
-      expect(picks).toContain("Our group stands in until the master pool&#x27;s Week 2 picks are published.");
+      expect(picks).toContain("The master pool&#x27;s Week 2 picks are not published yet.");
+      expect(picks).not.toMatch(/>KC</);
+      expect(picks).not.toContain("Our group");
+      expect(picks).not.toContain("stands in");
       expect(picks).not.toContain("Every entry in the master pool");
       // And the survival strip's drop is last week's, settled, not Week 2's.
       const survival = between(out, ">Survival<", ">Week 2 picks<");
@@ -467,23 +470,35 @@ describe("Dashboard - the scoped section opens on Everyone", () => {
     }
   });
 
-  it("keeps our group's own feed off the default view", async () => {
+  it("renders Recent activity outside the section, ours, with no scope word, whatever the toggle", async () => {
+    // The one exception to the rule: our intake, which can only ever be
+    // ours, so it is always there and needs no label. It sits AFTER the
+    // section's closing tag, so no toggle state can reach it.
     const out = await html();
-    expect(out).not.toContain("Recent activity");
-    expect(out).not.toContain('href="/entry/');
-    expect(out).not.toContain("Adriana Flacco");
+    const section = out.indexOf("</section>");
+    const title = out.indexOf(">Recent activity<");
+    expect(section).toBeGreaterThan(-1);
+    expect(title).toBeGreaterThan(section);
+    // Our one cell here has no stored result (null, not pending), so the
+    // feed is empty and says so; tests/unit/dashboard-scope-rule.test.ts
+    // renders it with rows. Either way it names no scope.
+    const card = out.slice(title);
+    expect(card).toContain("Results appear here as weeks are scored.");
+    expect(card).not.toMatch(/Our group|Everyone|our group|\bours\b/);
   });
 
-  it("stands in with our group, and says so, when no sheet is loaded", async () => {
+  it("opens on Our group, disabled Everyone, when no sheet is loaded - and nothing stands in for anything", async () => {
     sheet.noSheet = true;
     try {
       const out = await html();
       expect(out).toMatch(/aria-checked="true"[^>]*>Our group<span[^>]*>1</);
-      expect(out).toContain("Our group stands in until the master pool&#x27;s Week 1 picks are published.");
+      expect(out).toMatch(/aria-checked="false"[^>]*disabled=""[^>]*>Everyone<span[^>]*>0</);
+      expect(out).toContain("Our group&#x27;s own entries; Everyone appears once the master pool&#x27;s sheet is loaded.");
       expect(out).toContain("We are down to 1 left in the pool.");
+      expect(out).toContain("Our group&#x27;s Week 1 picks, as recorded.");
       expect(out).toContain("Recent activity");
-      expect(out).toContain("Our group. The master pool&#x27;s Week 1 picks are not published yet.");
-      expect(out).toMatch(/>Week 1 picks<span[^>]*>Our group</);
+      expect(out).not.toContain("stands in");
+      expect(out).not.toMatch(/>Week 1 picks<span/);
     } finally {
       sheet.noSheet = false;
     }

@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getData } from "@/lib/data";
-import { currentPlayWeek, eliminationsByWeek } from "@/lib/dashboard";
+import { currentPlayWeek } from "@/lib/dashboard";
 import { scoreFromGames } from "@/lib/live-standing";
-import { poolAsEntries } from "@/lib/master-list";
 import { GameBoard } from "@/components/schedule/game-board";
 import { ScheduleGrid } from "@/components/schedule/schedule-grid";
 import { WindowLegend } from "@/components/schedule/window-legend";
@@ -16,25 +15,14 @@ export default async function SchedulePage(props: {
 }) {
   const { week: weekParam, view } = await props.searchParams;
   const data = getData();
-  const [games, storedEntries, storedCells, weeks, master] = await Promise.all([
+  const [games, storedEntries, storedCells, weeks] = await Promise.all([
     data.getSchedule(),
     data.getEntries(),
     data.getGridCells(),
     data.getWeeks(),
-    data.getMasterList(),
   ]);
-  // What a final game COST is read from the scores, not only from her file -
-  // for every row of her newest sheet by default, and for our group under
-  // the board's toggle (Anthony, 2026-09-15). Both through the one shape.
-  const ours = scoreFromGames(storedEntries, storedCells, games);
-  const pool = poolAsEntries(master, games);
-  const eliminations = {
-    pool:
-      master.rows.length > 0
-        ? { eliminated: eliminationsByWeek(pool.entries, pool.cells), count: pool.entries.length }
-        : null,
-    ours: { eliminated: eliminationsByWeek(ours.entries, ours.cells), count: ours.entries.length },
-  };
+  // What a final game COST is read from the scores, not only from her file.
+  const { entries, cells } = scoreFromGames(storedEntries, storedCells, games);
   const playWeek = currentPlayWeek(weeks, new Date())?.week ?? 1;
   const week = Math.min(18, Math.max(1, Number(weekParam) || playWeek));
   const season = view === "season";
@@ -86,7 +74,8 @@ export default async function SchedulePage(props: {
       ) : (
         <GameBoard
           games={games}
-          eliminations={eliminations}
+          entries={entries}
+          cells={cells}
           weeks={weeks}
           initialWeek={week}
         />

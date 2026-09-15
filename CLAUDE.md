@@ -319,54 +319,76 @@ the public views, not merely hidden in the UI).
 The **pool-wide prize pot** from Lynne's whole pool is the one dollar figure
 that is public by design.
 
-- **EVERY VIEWER KPI SHOWS THE WHOLE POOL. Our group appears only under the
-  toggle.** Set by Anthony on 2026-09-15. A survival curve reading "121
-  remaining", an Eliminated card counting our entries under the same title
-  as the pool's, a standings bar sized by our 121, a carnage list, a chalk
-  list and a teams-running-out list over our cells - every one of those sat
-  on the dashboard with no toggle in front of it, and the schedule's "N
-  entries eliminated" and the entry page's "group median" were the same
-  shape on two more routes. All of them now read the rows on her newest
-  sheet by default. **The pool figures come from `poolAsEntries(master,
-  games)`** - her rows in the one `EntrySummary` / `GridCell` shape ours
-  arrive in from `scoreFromGames` - and **both scopes go through the one
-  builder, `dashboardScope` in `src/lib/dashboard-scope.ts`**, computed on
-  the server and handed to one client toggle as plain data, so the two
-  scopes cannot be counted two ways and the reveal gate is untouched (a
-  masked pick reaches the builder already `LOCKED` with no result). The
-  toggle is the same radiogroup and the same two words as `/grid` and
-  `/teams` - "Everyone" and "Our group", pinned across all four surfaces by
-  `tests/unit/master-list-wiring.test.ts`. **It opens on Everyone whenever a
-  sheet is loaded**, as the game board does, and NOT through the Teams
-  page's `defaultTeamsSource`, which waits for the play week's column: the
-  alive count, the survival strip, the standings bar, the chalk list and the
+- **DASHBOARD SCOPE: EVERY PANEL SHOWS THE WHOLE POOL, 1,318, UNLESS THE
+  TOGGLE IS SET TO OUR GROUP.** Set by Anthony on 2026-09-15 and restated
+  the same day, after a first pass had fixed the top tiles and left the rest
+  reading our 121 - his words: "this is the rule not a list of fixes". A
+  survival curve reading "121 remaining", an Eliminated card counting our
+  entries under the same title as the pool's, a standings bar sized by our
+  121, a carnage list, a chalk list and a teams-running-out list over our
+  cells all sat on the dashboard with no toggle in front of them. **The
+  panels that had to move: Survival** (1,318 down to whatever her sheet
+  leaves standing after Week 1), **Teams running out** (which teams the whole
+  pool has burned through, not which our 121 have), **Carnage** (pool-wide)
+  and **Chalk vs contrarian** - contrarian against 1,318 is a different
+  answer from contrarian against 121, because a team a third of our group
+  took can be a contrarian pick in her pool and the crowd being right or
+  wrong is a fact about the crowd, not about us. **Anything still reading
+  121 on a viewer surface is reading the wrong table, not missing data**:
+  her sheet is loaded and carries the whole pool's cells.
+  **The pool figures come from `poolAsEntries(master, games)`** - her rows
+  in the one `EntrySummary` / `GridCell` shape ours arrive in from
+  `scoreFromGames` - and **both scopes go through the one builder,
+  `dashboardScope` in `src/lib/dashboard-scope.ts`**, computed on the server
+  and handed to one client toggle as plain data, so the two scopes cannot
+  be counted two ways and the reveal gate is untouched (a masked pick
+  reaches the builder already `LOCKED` with no result). **`ScopeData` is
+  everything a panel may print, and `ScopePanels` in
+  `src/components/dashboard/scope-section.tsx` is handed ONE of them, the
+  active one** - our group is not passed to a panel under Everyone, so a
+  panel cannot reach it. The toggle is the same radiogroup and the same two
+  words as `/grid` and `/teams` - "Everyone" and "Our group", pinned across
+  the three surfaces by `tests/unit/master-list-wiring.test.ts`. **It opens
+  on Everyone whenever a sheet is loaded**, and NOT through the Teams page's
+  `defaultTeamsSource`, which waits for the play week's column: the alive
+  count, the survival strip, the standings bar, the chalk list and the
   teams running out are all computable from her sheet before she publishes
   the week, and from the Friday 2 PM lock until her sheet lands (Week 1's
   came Friday 10:40 PM) the shared default would have shown our 121 on the
-  page the distribute link points at. **The week's picks card is the one
-  card our group stands in on** - the rule two paragraphs up, kept, on the
-  one card with nothing of hers to show: it carries our rows under the "Our
-  group" label with a caption naming what is not published. **Every other
-  tile that would read a zero off a column she has not published says "not
-  published yet"** - Lost this week, Chalk, and the carnage card - because
-  a zero there reads as nobody lost and is false; `dashboardScope` takes a
-  `weekPublished` predicate, her sheet's columns for the pool and always
-  true for our own record. **The Chalk tile waits for the whole week**, as
-  the chalk card always did: it is a share, and a share over the revealed
-  subset is a wrong number (100% for the Thursday team on a Thursday night),
-  so until `fullyRevealedWeeks` includes the week it prints "picks still
-  masked". The survival strip's third number is labelled "Week N so far"
-  while a game of that week is not final, since `survivalCurve` reaches a
-  week at its first final. The pool's
-  survival strip starts at her published Total in Pool and its later points
-  are rows on her newest sheet, captioned as such, because she removes
-  eliminated entries as the season goes; a row she struck OUT or that
-  repeated a team carries no loss cell, so `survivalCurve` now honours the
-  eliminated status (`eliminationWeekOfEntry`) rather than never dropping
-  it. Recent activity is our group's own feed - her rows have no submission
-  order - and shows only under Our group. `/records/roster` is a listing of
-  the group Anthony manages, not a KPI surface: it keeps its count and its
-  header leads with "Our group". **Every distribution bar takes its team's
+  page the distribute link points at.
+  **Recent activity is the one exception, and it stays ours.** It is our
+  intake - the picks this group recorded, as they were scored - so it can
+  only ever be ours, and **it needs no label saying so**: the card title is
+  "Recent activity", it names no scope, and it is rendered by the page
+  OUTSIDE the toggle (`src/components/dashboard/recent-activity.tsx`), so no
+  toggle state reaches it. Its rows are not on `ScopeData`; the pool scope
+  cannot even carry one.
+  **There is no our-group stand-in on the dashboard any more.** The first
+  pass kept one on the week's picks card, labelled, for a week her sheet
+  has not published; a labelled stand-in is still an our-group figure under
+  Everyone, and the rule forbids exactly that. Under Everyone that card now
+  reads "The master pool's Week N picks are not published yet." with
+  nothing of ours on it, and **every other tile that would read a zero off
+  a column she has not published says "not published yet"** - Lost this
+  week, Chalk, and the carnage card - because a zero there reads as nobody
+  lost and is false; `dashboardScope` takes a `weekPublished` predicate,
+  her sheet's columns for the pool and always true for our own record.
+  **Grid, Schedule and Teams are correct as they stand and were not
+  touched**, on his instruction: the schedule's elimination list, the entry
+  page's median, the roster listing and the Teams captions are exactly as
+  they were before 2026-09-15, and the Teams page keeps its own default.
+  **The Chalk tile waits for the whole week**, as the chalk card always
+  did: it is a share, and a share over the revealed subset is a wrong
+  number (100% for the Thursday team on a Thursday night), so until
+  `fullyRevealedWeeks` includes the week it prints "picks still masked".
+  The survival strip's third number is labelled "Week N so far" while a
+  game of that week is not final, since `survivalCurve` reaches a week at
+  its first final. The pool's survival strip starts at her published Total
+  in Pool and its later points are rows on her newest sheet, captioned as
+  such, because she removes eliminated entries as the season goes; a row
+  she struck OUT or that repeated a team carries no loss cell, so
+  `survivalCurve` honours the eliminated status (`eliminationWeekOfEntry`)
+  rather than never dropping it. **Every distribution bar takes its team's
   result colour** - `TONE_BAR_CLASS` in `src/lib/result-colour.ts`, green
   won, yellow lost, the plain accent where the game is not final, never red
   - with a visible W or L beside the code, and the count and share as text
@@ -377,13 +399,24 @@ that is public by design.
   in the same module, and every dashboard surface that colours a result -
   the section, the KPI strip, the survival strip, the bars - is on the
   scan lists in `tests/unit/result-colour.test.ts` and
-  `tests/unit/colour-systems.test.ts`.
-  The bottom of the dashboard is server-rendered lists and one inline SVG
-  now, and nothing under `src/` imports recharts; the dependency itself is
-  removed in its own change. `tests/unit/dashboard-page.test.ts` holds the
-  default render to the sheet's figures on a fixture where the two scopes
-  disagree on every number, and `tests/unit/dashboard-scope.test.ts` holds
-  the builder's gates.
+  `tests/unit/colour-systems.test.ts`. One design change was made on the
+  way, his to judge: the bottom of the dashboard is server-rendered lists
+  and one inline SVG now, and nothing under `src/` imports recharts, because
+  at two points a curve is one subtraction and a count that lives in a
+  tooltip is invisible on a phone; the numbers are the readout.
+  **The guard, broken before it was trusted:**
+  `tests/unit/dashboard-scope-rule.test.ts` renders the page on a fixture
+  where our group has exactly seven entries and every our-only figure -
+  count, alive, losses, chalk team and share, survival start and remaining,
+  distribution rows, carnage, standings buckets, scarcity - is a number and
+  a team the pool's thirteen rows cannot produce, and asserts that none of
+  them reaches any panel, caption or title attribute while the toggle is on
+  Everyone; that all of them do under Our group; and that Recent activity
+  renders identically under both states with no scope word on it. It
+  failed on our entries fed to the pool scope, on one panel reading ours
+  whatever the toggle, and on a caption naming the feed's scope.
+  `tests/unit/dashboard-page.test.ts` holds the section's copy and
+  `tests/unit/dashboard-scope.test.ts` the builder's gates.
 
 ### What the colours mean
 
@@ -528,7 +561,10 @@ her sheet.**
 - **Public stats default to the whole pool.** The dashboard's pick
   distribution and the Teams table read her sheet's week cells for every
   entry when she has published them, with "Our group" as the other setting;
-  until she publishes a week, our group stands in and says so.
+  until she publishes a week, our group stands in and says so. **Since
+  2026-09-15 that last sentence describes the Teams page only**: the
+  dashboard's picks card says the week is not published and shows nothing
+  of ours, under [the dashboard scope rule](#public-surfaces) above.
 - **The whole pool is called "Everyone", on every surface.** One scope, one
   word: the toggle on `/grid`, the toggle on `/teams` and the dashboard's
   distribution caption all use it. **The removed page's name is in no live
@@ -2225,8 +2261,10 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Her result against the scores, read-only | `compareStoredToScores` in `src/lib/score-variance.ts`, `scripts/ops/reporters/result-variance.ts` |
 | Her fill mark against our standing | `compareMarksToScores` in `src/lib/lynne/mark-variance.ts`, printed by `npm run results` |
 | Team counts once a week locks   | `v_team_pick_counts`, `src/lib/team-counts.ts`, `tests/sql/21_team_pick_counts.sql` |
-| The dashboard's two scopes, one builder | `dashboardScope` in `src/lib/dashboard-scope.ts`, `src/components/dashboard/scope-section.tsx` |
-| The scoped cards' arithmetic    | `dashboardKpis`, `distributionRows`, `weekCarnage`, `eliminationsByWeek` in `src/lib/dashboard.ts` |
+| The dashboard's two scopes, one builder | `dashboardScope` in `src/lib/dashboard-scope.ts`, `ScopeSection` / `ScopePanels` in `src/components/dashboard/scope-section.tsx` |
+| The one panel outside the toggle | `src/components/dashboard/recent-activity.tsx` |
+| The dashboard scope rule's guard | `tests/unit/dashboard-scope-rule.test.ts` |
+| The scoped cards' arithmetic    | `dashboardKpis`, `distributionRows`, `weekCarnage` in `src/lib/dashboard.ts` |
 | A bar's result colour           | `TONE_BAR_CLASS` in `src/lib/result-colour.ts`, `src/components/dashboard/bar-row.tsx` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |

@@ -2,23 +2,29 @@
 
 // The dashboard's lower section, under one Everyone / Our group toggle.
 //
-// Set by Anthony on 2026-09-15: every viewer KPI shows the whole pool, and
-// our group's figures appear only when this toggle is set to "Our group".
-// Both scopes arrive computed from the server (src/lib/dashboard-scope.ts)
-// as plain data; the choice here is view state and nothing more, the same
-// radiogroup and the same two words the one table at /grid and the Teams
-// page use.
+// Set by Anthony on 2026-09-15, and restated the same day as a rule rather
+// than a list of fixes: every panel on the dashboard shows the WHOLE POOL,
+// 1,318, unless the toggle is set to our group. Both scopes arrive computed
+// from the server (src/lib/dashboard-scope.ts) as plain data; the choice
+// here is view state and nothing more, the same radiogroup and the same two
+// words the one table at /grid and the Teams page use.
 //
-// The default is Everyone whenever a sheet is loaded - the same rule as the
-// game board - and NOT the Teams page's defaultTeamsSource, which waits for
-// the play week's column. Alive, the survival strip, the standings bar, the
-// chalk list and the teams running out are all computable from her sheet
-// before she publishes the week, so from the Friday lock until her sheet
-// lands they would otherwise default to our 121. The one card with nothing
-// of hers to show is the week's picks, and that is the one card our group
-// stands in on, labelled as such (CLAUDE.md, Public surfaces); the tiles
-// that would read a zero off a column she has not published say "not
-// published yet" instead.
+// The panels are a separate component that takes ONE ScopeData - the active
+// one - and nothing else. That is the rule in the props: a panel cannot read
+// our group under Everyone because our group is not handed to it. Recent
+// activity is not here at all; it is our intake, can only ever be ours, and
+// the page renders it outside the toggle with no label saying so
+// (src/components/dashboard/recent-activity.tsx).
+//
+// The default is Everyone whenever a sheet is loaded, and NOT the Teams
+// page's defaultTeamsSource, which waits for the play week's column. Alive,
+// the survival strip, the standings bar, the chalk list and the teams
+// running out are all computable from her sheet before she publishes the
+// week, so from the Friday lock until her sheet lands they would otherwise
+// default to our 121. A card that needs the week's column says "not
+// published yet" until she does - the picks card included. Our group does
+// not stand in anywhere in this section any more: under Everyone no figure
+// is derived from our entries, whatever her sheet lacks.
 
 import Link from "next/link";
 import { useState } from "react";
@@ -26,8 +32,7 @@ import type { LockBoundary } from "@/lib/dashboard";
 import { SCOPE_LABEL, type ScopeData } from "@/lib/dashboard-scope";
 import { formatDeadline } from "@/lib/format";
 import type { TeamsSourceKind as Source } from "@/lib/master-list";
-import { OUT_SWATCH_CLASS, toneOfResult, TONE_SWATCH_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
-import { RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
+import { OUT_SWATCH_CLASS, TONE_SWATCH_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
 import { TEAM_PALETTE } from "@/lib/team-colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CarnageList } from "@/components/dashboard/carnage-list";
@@ -62,7 +67,6 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
     { key: "pool", n: pool?.count ?? 0, disabled: !poolLoaded },
     { key: "ours", n: ours.count },
   ];
-  const d = active.distribution;
 
   return (
     <section className="space-y-4" data-numeric>
@@ -95,16 +99,39 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
             ? "Rows on her newest sheet, scored from the games; she removes eliminated entries as the season goes."
             : poolLoaded
               ? "Our group's own entries."
-              : `Our group stands in until the master pool's Week ${week ?? "-"} picks are published.`}
+              : "Our group's own entries; Everyone appears once the master pool's sheet is loaded."}
         </span>
       </div>
 
-      <KpiStrip
-        kpis={active.kpis}
+      <ScopePanels
+        scope={active}
         week={week}
         deadline={deadline}
         total={active.key === "pool" ? (herTotal ?? active.count) : active.count}
       />
+    </section>
+  );
+}
+
+interface PanelProps {
+  /** The ONE scope showing. Nothing of the other scope is passed. */
+  scope: ScopeData;
+  week: number | null;
+  deadline: LockBoundary | null;
+  /** What ALIVE is out of: her published Total in Pool, or the scope's count. */
+  total: number;
+}
+
+/**
+ * Every panel under the toggle, drawn from one ScopeData. Exported so a test
+ * can render the panels on either scope without a click, which a server
+ * render cannot make.
+ */
+export function ScopePanels({ scope, week, deadline, total }: PanelProps) {
+  const d = scope.distribution;
+  return (
+    <>
+      <KpiStrip kpis={scope.kpis} week={week} deadline={deadline} total={total} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="bg-surface">
@@ -112,9 +139,9 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
             <CardTitle className="text-base">Survival</CardTitle>
           </CardHeader>
           <CardContent>
-            <SurvivalStrip strip={active.survival} />
+            <SurvivalStrip strip={scope.survival} />
             <p className="mt-3 text-xs text-muted-foreground">
-              {active.key === "pool"
+              {scope.key === "pool"
                 ? "Start is her published Total in Pool; the rest are rows on her newest sheet, and she removes eliminated entries as the season goes."
                 : "Our group's entries, scored from the games."}
             </p>
@@ -123,10 +150,7 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
 
         <Card className="bg-surface">
           <CardHeader>
-            <CardTitle className="text-base">
-              Week {d.week ?? "-"} picks
-              <span className="ml-2 text-xs font-normal text-muted-foreground">{SCOPE_LABEL[d.scope]}</span>
-            </CardTitle>
+            <CardTitle className="text-base">Week {d.week ?? "-"} picks</CardTitle>
           </CardHeader>
           <CardContent>
             {d.rows ? (
@@ -159,28 +183,28 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
       <Card className="bg-surface">
         <CardHeader>
           <CardTitle className="text-base">
-            Week {active.carnage.state === "no final" ? (week ?? "-") : active.carnage.week} carnage
+            Week {scope.carnage.state === "no final" ? (week ?? "-") : scope.carnage.week} carnage
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {active.carnage.state === "no final" ? (
+          {scope.carnage.state === "no final" ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No game final yet in Week {week ?? "-"}.</p>
-          ) : active.carnage.state === "unpublished" ? (
+          ) : scope.carnage.state === "unpublished" ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              The master pool&apos;s Week {active.carnage.week} picks are not published yet.
+              The master pool&apos;s Week {scope.carnage.week} picks are not published yet.
             </p>
-          ) : active.carnage.rows.length === 0 ? (
+          ) : scope.carnage.rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No entry has lost yet this week - {active.carnage.finalGames} of {active.carnage.totalGames} games final.
+              No entry has lost yet this week - {scope.carnage.finalGames} of {scope.carnage.totalGames} games final.
             </p>
           ) : (
             <>
-              <CarnageList carnage={active.carnage} />
+              <CarnageList carnage={scope.carnage} />
               <p className="mt-2 text-xs text-muted-foreground">
-                {active.carnage.lostTotal.toLocaleString("en-US")}{" "}
-                {active.carnage.lostTotal === 1 ? "entry" : "entries"} lost this week,{" "}
-                {active.carnage.outTotal.toLocaleString("en-US")} of them out - {active.carnage.finalGames} of{" "}
-                {active.carnage.totalGames} games final.
+                {scope.carnage.lostTotal.toLocaleString("en-US")}{" "}
+                {scope.carnage.lostTotal === 1 ? "entry" : "entries"} lost this week,{" "}
+                {scope.carnage.outTotal.toLocaleString("en-US")} of them out - {scope.carnage.finalGames} of{" "}
+                {scope.carnage.totalGames} games final.
               </p>
             </>
           )}
@@ -193,19 +217,19 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
         </CardHeader>
         <CardContent>
           <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-2">
-            {active.standings.buckets
+            {scope.standings.buckets
               .filter((b) => b.n > 0)
               .map((b) => (
                 <div
                   key={b.label}
                   className={cn("h-full", BUCKET_CLASS[b.label])}
-                  style={{ width: `${(b.n / Math.max(1, active.standings.total)) * 100}%` }}
+                  style={{ width: `${(b.n / Math.max(1, scope.standings.total)) * 100}%` }}
                   title={`${b.label}: ${b.n}`}
                 />
               ))}
           </div>
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
-            {active.standings.buckets
+            {scope.standings.buckets
               .filter((b) => b.n > 0)
               .map((b) => (
                 <span key={b.label} className="flex items-center gap-1.5">
@@ -215,7 +239,7 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
                 </span>
               ))}
           </div>
-          <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-sm">{active.standings.sentence}</p>
+          <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-sm">{scope.standings.sentence}</p>
         </CardContent>
       </Card>
 
@@ -225,13 +249,13 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
             <CardTitle className="text-base">Chalk vs contrarian</CardTitle>
           </CardHeader>
           <CardContent>
-            {active.chalk.length === 0 ? (
+            {scope.chalk.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
                 Once a week&apos;s games have all kicked off: the most-picked team that week, and whether the crowd was right.
               </p>
             ) : (
               <ul className="space-y-1.5 text-sm">
-                {active.chalk.map((c) => (
+                {scope.chalk.map((c) => (
                   <li key={c.week} className="flex items-center gap-2">
                     <span className="w-9 tabular-nums text-muted-foreground">W{c.week}</span>
                     <span className={cn("font-medium", TONE_TEXT_CLASS[c.tone])}>{c.team}</span>
@@ -253,14 +277,14 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
             <CardTitle className="text-base">Teams running out</CardTitle>
           </CardHeader>
           <CardContent>
-            {active.scarcity.rows.length === 0 ? (
+            {scope.scarcity.rows.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
                 Every alive entry still holds all 32 teams. Scarcity shows up as picks burn teams.
               </p>
             ) : (
               <>
                 <ul className="space-y-1.5 text-sm">
-                  {active.scarcity.rows.map((sc) => (
+                  {scope.scarcity.rows.map((sc) => (
                     <li key={sc.team} className="flex items-center gap-2">
                       <span className="w-9 font-medium" style={{ color: TEAM_PALETTE[sc.team]?.display }}>
                         {sc.team}
@@ -268,59 +292,24 @@ export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
                         <div
                           className="h-full rounded-full bg-primary/60"
-                          style={{ width: `${(sc.left / Math.max(1, active.scarcity.alive)) * 100}%` }}
+                          style={{ width: `${(sc.left / Math.max(1, scope.scarcity.alive)) * 100}%` }}
                         />
                       </div>
                       <span className="tabular-nums text-muted-foreground">
-                        {sc.left.toLocaleString("en-US")}/{active.scarcity.alive.toLocaleString("en-US")}
+                        {sc.left.toLocaleString("en-US")}/{scope.scarcity.alive.toLocaleString("en-US")}
                       </span>
                     </li>
                   ))}
                 </ul>
                 <p className="mt-2 text-xs text-muted-foreground">
                   Alive entries that still hold the team
-                  {active.scarcity.throughWeek !== null ? `, through Week ${active.scarcity.throughWeek}` : ""}.
+                  {scope.scarcity.throughWeek !== null ? `, through Week ${scope.scarcity.throughWeek}` : ""}.
                 </p>
               </>
             )}
           </CardContent>
         </Card>
       </div>
-
-      {active.activity ? (
-        <Card className="bg-surface">
-          <CardHeader>
-            <CardTitle className="text-base">Recent activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {active.activity.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Results appear here as weeks are scored.</p>
-            ) : (
-              <ul className="divide-y divide-border/60">
-                {active.activity.map((a, i) => (
-                  <li key={i} className="flex items-center gap-3 py-2 text-sm">
-                    <span className="w-9 shrink-0 text-xs tabular-nums text-muted-foreground">W{a.week}</span>
-                    <Link href={`/entry/${a.entryId}`} className="min-w-0 flex-1 truncate font-medium hover:text-primary">
-                      {a.entryName}
-                    </Link>
-                    <span className="text-muted-foreground">
-                      {a.team === SKIP_WEEK ? "Bye" : (TEAM_NAME[a.team] ?? a.team)}
-                    </span>
-                    <span
-                      className={cn(
-                        "w-16 shrink-0 text-right text-xs font-medium",
-                        TONE_TEXT_CLASS[toneOfResult(a.result)] || "text-muted-foreground",
-                      )}
-                    >
-                      {RESULT_LABEL[a.result]}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
-    </section>
+    </>
   );
 }

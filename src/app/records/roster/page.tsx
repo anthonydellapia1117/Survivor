@@ -48,12 +48,8 @@ export default async function EntriesPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl">Roster</h1>
-          {/* A roster LISTING of the group Anthony manages, not a viewer KPI:
-              the pool's roster is /grid. It is the one public page that shows
-              our figures with no toggle, so the header says whose they are,
-              in the exact words the toggles use (Anthony, 2026-09-15). */}
           <p className="mt-1 text-sm text-muted-foreground">
-            Our group - {entries.length} entries with status, lives and current picks.
+            All {entries.length} entries with status, lives, and current picks.
           </p>
         </div>
         <a

@@ -6,7 +6,6 @@ import {
   curveEarnsChart,
   dashboardKpis,
   distributionRows,
-  eliminationsByWeek,
   MISSED_TEAM,
   eliminationWeek,
   eliminationWeekOfEntry,
@@ -507,7 +506,7 @@ describe("weekCarnage", () => {
   });
 });
 
-describe("chalk, scarcity and the game board's eliminations", () => {
+describe("chalk and scarcity", () => {
   it("names each fully revealed week's most-picked team and whether it held", () => {
     const cells = [cell("a", 1, "win", "PHI"), cell("b", 1, "win", "PHI"), cell("c", 1, "loss", "DAL"), cell("a", 2, "pending", "KC")];
     const results = teamResults([game(1, "PHI", "DAL", 24, 17)]);
@@ -522,11 +521,5 @@ describe("chalk, scarcity and the game board's eliminations", () => {
     const s = teamScarcity(entries, cells, [1], ["PHI", "DAL", "KC"]);
     expect(s.alive).toBe(2);
     expect(s.rows).toEqual([{ team: "PHI", left: 0 }]);
-  });
-
-  it("lists an eliminated entry under the team of its killing loss, and not a row with no loss cell", () => {
-    const entries = [entry("b", "eliminated"), entry("out", "eliminated"), entry("a", "active")];
-    const cells = [cell("b", 1, "loss", "DAL"), cell("b", 2, "loss", "KC"), cell("a", 1, "loss", "DAL")];
-    expect(eliminationsByWeek(entries, cells)).toEqual({ 2: { KC: ["b"] } });
   });
 });

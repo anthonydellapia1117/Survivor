@@ -142,19 +142,9 @@ describe("the Teams table as rendered", () => {
     void cell;
   });
 
-  it("sums the week's column in the total row, and names the scope showing rather than 'the pool'", () => {
+  it("sums the week's column in the total row", () => {
     const html = render(NOW);
-    expect(html).toMatch(/title="Week 1: 65 picks, Everyone"[^>]*>65<\/td>/);
+    expect(html).toMatch(/title="Week 1: 65 picks across the pool"[^>]*>65<\/td>/);
     expect(html).toMatch(/title="Week 2: not locked yet"[^>]*><\/td>/);
-    expect(html).toContain("total for Everyone.");
-    // Under Our group the same 121-based totals used to be captioned "across
-    // the pool" (2026-09-15): the caption and the footer title take the
-    // scope's exact word.
-    const ours = renderToStaticMarkup(
-      React.createElement(TeamsClient, { counts: COUNTS, weeks: WEEKS, games: GAMES, entryCount: 121, scopeLabel: "Our group", now: NOW }),
-    );
-    expect(ours).toMatch(/title="Week 1: 65 picks, Our group"/);
-    expect(ours).toContain("total for Our group.");
-    expect(ours).not.toContain("across the pool");
   });
 });
