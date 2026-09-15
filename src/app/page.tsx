@@ -19,12 +19,15 @@ import { lynneBucket } from "@/lib/lynne/names";
 import { scoreFromGames } from "@/lib/live-standing";
 import {
   fullyRevealedWeeks,
+  herCellIsLocked,
+  MISSED_TEAM,
   poolAsEntries,
   poolDistribution,
   poolStandings,
   poolStats,
   poolWeekFilled,
   standingCounts,
+  weekColumns,
 } from "@/lib/master-list";
 import {
   BUCKET_FILL_CLASS,
@@ -63,6 +66,18 @@ const RESULT_TEXT: Record<string, string> = {
   bye: "text-muted-foreground",
   missed: "text-loss",
 };
+
+/**
+ * What a Recent activity row calls its team. SKIP_WEEK and MISSED are values,
+ * not words, and never reach a screen (CLAUDE.md): a bye reads "Bye" and a
+ * missed week "No pick", as the carnage bars already say it. Until 2026-09-15
+ * the row printed the cell's team as it came, so a missed week read "MISSED".
+ */
+function feedTeam(team: string, long: boolean): string {
+  if (team === SKIP_WEEK) return "Bye";
+  if (team === MISSED_TEAM) return "No pick";
+  return long ? (TEAM_NAME[team] ?? team) : team;
+}
 
 export default async function DashboardPage(
   props: { searchParams?: Promise<{ scope?: string | string[] }> } = {},
@@ -129,19 +144,33 @@ export default async function DashboardPage(
     { label: "Out", n: health.out, cls: BUCKET_FILL_CLASS.out },
   ].filter((s) => s.n > 0);
 
-  // The week's picks. In Everyone scope, the whole pool's cells from her
-  // sheet once she has published the week; our group stands in until then and
-  // says so. In Our group scope, our own revealed picks.
+  // The week's picks, in the ONE scope the toggle names. In Everyone scope,
+  // the whole pool's cells from her sheet once she has published the week;
+  // until then the card says so and shows NOTHING of ours. Until 2026-09-15
+  // our group stood in here under the Everyone toggle, captioned "Our group"
+  // - an our-group figure on a viewer surface, which is exactly what the rule
+  // forbids ("every panel on the dashboard shows the WHOLE POOL unless the
+  // toggle is set to our group"). In Our group scope, our own revealed picks,
+  // and they are computed only in that scope so nothing of ours can fall
+  // through by accident.
+  const poolWeekCol =
+    scope === "pool" && playWeek ? weekColumns(master.rows).find((c) => c.week === playWeek.week) : undefined;
   const poolDist =
     scope === "pool" && playWeek && poolWeekFilled(master.rows, playWeek.week)
       ? poolDistribution(master.rows, playWeek.week)
       : null;
+  // Her sheet carries the week and the reveal gate is still holding every
+  // cell of it (a sheet loaded Saturday, before Sunday's kickoffs). That is
+  // not "unpublished", and saying so would assert something false about her
+  // sheet; it is hidden, and the card says that instead.
+  const poolWeekHeld =
+    poolDist === null && poolWeekCol !== undefined && master.rows.some((r) => herCellIsLocked(r, poolWeekCol));
   // The public view serves her cells only as their games kick off, so until
   // every game of the week has, the chart is the revealed subset and the
   // caption says so rather than claiming the whole pool.
   const poolDistWhole = playWeek !== null && fullyRevealedWeeks(games, now).includes(playWeek.week);
-  const dist = pickDistribution(weeks, ours.cells, now);
-  const distWeek = poolDist ? playWeek!.week : (dist?.week ?? null);
+  const dist = scope === "ours" ? pickDistribution(weeks, ours.cells, now) : null;
+  const distWeek = scope === "pool" ? (playWeek?.week ?? null) : (dist?.week ?? null);
   // Every bar takes its team's result colour (Anthony, 2026-09-15): won
   // subtle green, lost yellow, no final neutral. The counts are untouched.
   const resultOf = distWeek !== null ? weekTeamResults(games, distWeek) : () => undefined;
@@ -160,7 +189,10 @@ export default async function DashboardPage(
   const damage = damageWeek !== null ? weekDamage(view.entries, view.cells, damageWeek) : null;
   const chalk = chalkByWeek(weeks, view.cells);
   const scarce = teamsRunningOut(view.entries, NFL_TEAMS.map((t) => t.abbr));
-  const activity = scope === "ours" ? recentActivity(ours.entries, ours.cells, 10) : [];
+  // Recent activity is the one exception to the scope and stays ours in both
+  // (Anthony, 2026-09-15): it is our intake, it can only ever be ours, and it
+  // needs no label saying so. It was hidden under Everyone until that day.
+  const activity = recentActivity(ours.entries, ours.cells, 10);
 
   // Lynne's three buckets in her own sentence, for our group: the line
   // Anthony can paste. The whole pool's is her own sheet.
@@ -170,6 +202,24 @@ export default async function DashboardPage(
   const lynneSentence = `No Losses=${buckets["No Losses"]}, 1 Loss/Bye used=${buckets["Loss/Bye"]} and Out=${buckets.Out}. We are down to ${alive} left in the pool.`;
 
   const scopeLabel = scope === "pool" ? "Everyone" : "Our group";
+
+  // The published-week caption under the pool's bars: the reveal-subset
+  // qualification and the NO PICK and not-a-team notes. One block, because
+  // the same words go under the bars and, on a sheet whose revealed cells so
+  // far name no team, in their place.
+  const poolCaption = poolDist ? (
+    <p className="text-xs text-muted-foreground">
+      {poolDistWhole
+        ? "Every entry in the master pool, from the published sheet"
+        : `Revealed picks so far in the master pool, ${poolDist.revealed.toLocaleString("en-US")} of ${master.rows.length.toLocaleString("en-US")} rows on the published sheet; the rest appear as their games kick off`}
+      {poolDist.noPick > 0 ? `; ${poolDist.noPick.toLocaleString("en-US")} NO PICK, each a loss` : ""}
+      {poolDist.other > 0 ? `; ${poolDist.other} cells are not a team (OUT or a note)` : ""}
+      .{" "}
+      <Link href="/grid" className="text-primary underline-offset-2 hover:underline">
+        The Grid
+      </Link>
+    </p>
+  ) : null;
 
   return (
     <div className="space-y-5">
@@ -311,9 +361,7 @@ export default async function DashboardPage(
           <CardHeader className="px-4">
             <CardTitle className="flex items-baseline justify-between gap-2 text-base">
               Week {distWeek ?? "-"} picks
-              <span className="text-xs font-normal text-muted-foreground">
-                {poolDist ? "Everyone" : "Our group"}
-              </span>
+              <span className="text-xs font-normal text-muted-foreground">{scopeLabel}</span>
             </CardTitle>
             {top && verdict ? (
               <p className="text-sm">
@@ -330,23 +378,7 @@ export default async function DashboardPage(
               <>
                 <DistributionBars rows={distRows} />
                 <Legend items={DISTRIBUTION_LEGEND} />
-                {poolDist ? (
-                  <p className="text-xs text-muted-foreground">
-                    {poolDistWhole
-                      ? "Every entry in the master pool, from the published sheet"
-                      : `Revealed picks so far in the master pool, ${poolDist.revealed.toLocaleString("en-US")} of ${master.rows.length.toLocaleString("en-US")} rows on the published sheet; the rest appear as their games kick off`}
-                    {poolDist.noPick > 0 ? `; ${poolDist.noPick.toLocaleString("en-US")} NO PICK, each a loss` : ""}
-                    {poolDist.other > 0 ? `; ${poolDist.other} cells are not a team (OUT or a note)` : ""}
-                    .{" "}
-                    <Link href="/grid" className="text-primary underline-offset-2 hover:underline">
-                      The Grid
-                    </Link>
-                  </p>
-                ) : scope === "pool" ? (
-                  <p className="text-xs text-muted-foreground">
-                    Our group. The master pool&apos;s Week {dist?.week} picks are not published yet.
-                  </p>
-                ) : null}
+                {poolCaption}
                 {chalk.length > 1 ? (
                   <p className="text-xs text-muted-foreground">
                     Most picked each week:{" "}
@@ -361,6 +393,25 @@ export default async function DashboardPage(
                   </p>
                 ) : null}
               </>
+            ) : poolDist ? (
+              // Published, and every revealed cell so far is a NO PICK or a
+              // note: nothing to chart yet, but the caption still counts them.
+              poolCaption
+            ) : scope === "pool" ? (
+              // Nothing of ours here, whatever we hold for the week: the
+              // toggle says Everyone, and our picks are not the pool's.
+              poolWeekHeld ? (
+                <div className="flex flex-col items-center gap-2 py-8 text-center">
+                  <LockClosedIcon className="size-5 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    The master pool&apos;s Week {distWeek} picks appear as their games kick off.
+                  </p>
+                </div>
+              ) : (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  The master pool&apos;s Week {distWeek} picks are not published yet.
+                </p>
+              )
             ) : dist && !dist.revealed ? (
               <div className="flex flex-col items-center gap-2 py-8 text-center">
                 <LockClosedIcon className="size-5 text-muted-foreground" />
@@ -445,47 +496,49 @@ export default async function DashboardPage(
         </Card>
       </div>
 
-      {scope === "ours" ? (
-        <Card className="gap-3 bg-surface py-4">
-          <CardHeader className="px-4">
-            <CardTitle className="text-base">Recent activity</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4">
-            {activity.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                Results appear here as weeks are scored.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border/60">
-                {activity.map((a, i) => (
-                  <li key={i} className="flex items-center gap-3 py-2 text-sm">
-                    <span className="w-9 shrink-0 text-xs tabular-nums text-muted-foreground">
-                      W{a.week}
-                    </span>
-                    <Link
-                      href={`/entry/${a.entryId}`}
-                      className="min-w-0 flex-1 truncate font-medium hover:text-primary"
-                    >
-                      {a.entryName}
-                    </Link>
-                    {/* The code on a phone, the name from sm up: the full
-                        name left the entry name a few letters wide. */}
-                    <span className="shrink-0 text-muted-foreground">
-                      <span className="sm:hidden">{a.team === SKIP_WEEK ? "Bye" : a.team}</span>
-                      <span className="hidden sm:inline">
-                        {a.team === SKIP_WEEK ? "Bye" : (TEAM_NAME[a.team] ?? a.team)}
-                      </span>
-                    </span>
-                    <span className={cn("w-16 shrink-0 text-right text-xs font-medium", RESULT_TEXT[a.result])}>
-                      {RESULT_LABEL[a.result]}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+      {/* Ours in BOTH scopes and unlabelled, by Anthony's rule of 2026-09-15:
+          "Recent activity is the one exception and stays ours. It is our
+          intake, it can only ever be ours, and it needs no label saying so."
+          The id is what the guard (tests/unit/dashboard-scope-rule.test.ts)
+          cuts the card out by before it reads the rest of the page for
+          our-group figures. */}
+      <Card id="recent-activity" className="gap-3 bg-surface py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="text-base">Recent activity</CardTitle>
+        </CardHeader>
+        <CardContent className="px-4">
+          {activity.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Results appear here as weeks are scored.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {activity.map((a, i) => (
+                <li key={i} className="flex items-center gap-3 py-2 text-sm">
+                  <span className="w-9 shrink-0 text-xs tabular-nums text-muted-foreground">
+                    W{a.week}
+                  </span>
+                  <Link
+                    href={`/entry/${a.entryId}`}
+                    className="min-w-0 flex-1 truncate font-medium hover:text-primary"
+                  >
+                    {a.entryName}
+                  </Link>
+                  {/* The code on a phone, the name from sm up: the full
+                      name left the entry name a few letters wide. */}
+                  <span className="shrink-0 text-muted-foreground">
+                    <span className="sm:hidden">{feedTeam(a.team, false)}</span>
+                    <span className="hidden sm:inline">{feedTeam(a.team, true)}</span>
+                  </span>
+                  <span className={cn("w-16 shrink-0 text-right text-xs font-medium", RESULT_TEXT[a.result])}>
+                    {RESULT_LABEL[a.result]}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

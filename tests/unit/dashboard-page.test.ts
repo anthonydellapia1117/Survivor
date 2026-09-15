@@ -144,7 +144,9 @@ describe("Dashboard, signed out", () => {
     for (const s of ["$22.50", "22.5", "$21.71", "21.71", "2250", "2171"]) {
       expect(out).not.toContain(s);
     }
-    expect(out).not.toMatch(/per (paying )?entry|apiece|each entry|\/\s*entry/i);
+    // "/ entry" is a rate; "/entry/<id>" is the link every Recent activity
+    // row carries, and that card renders under Everyone too since 2026-09-15.
+    expect(out).not.toMatch(/per (paying )?entry|apiece|each entry|\/\s*entry\b(?!\/)/i);
   });
 
   it("counts the whole pool's health in her buckets, not our 121", async () => {
@@ -254,7 +256,10 @@ describe("Dashboard scope", () => {
     expect(out).toMatch(/aria-current="true"[^>]*>Everyone/);
     expect(out).toContain("After Week 1: 3 of 4 alive (75%), 1 without a loss (25%), 1 out.");
     expect(out).not.toContain("1 of 1 alive");
-    expect(out).not.toContain("Recent activity");
+    // Recent activity is the one panel that is ours in both scopes (Anthony,
+    // 2026-09-15: it is our intake and needs no label). Until that day it was
+    // hidden here; tests/unit/dashboard-scope-rule.test.ts holds the rest.
+    expect(out).toContain("Recent activity");
     expect(out).not.toContain("We are down to");
     expect(out).toMatch(/Carnage, Week 1/);
   });
