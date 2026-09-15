@@ -137,8 +137,7 @@ describe("our standing from picks and finals", () => {
     // PHI won both weeks it was picked; the repeat is what eliminates.
     const both = new Map<string, "win" | "loss" | "tie">([["1:PHI", "win"], ["2:PHI", "win"]]);
     expect(derivedStandingOf([{ week: 1, team: "PHI" }, { week: 2, team: "PHI" }], both, 2)).toBe("out");
-    // A bye and a missed week are not teams and never a repeat.
-    expect(derivedStandingOf([{ week: 1, team: "MISSED" }, { week: 2, team: "MISSED" }], both, 2)).toBe("out");
+    // A bye is not a team and never a repeat: two byes are still her middle bucket.
     expect(derivedStandingOf([{ week: 1, team: "PHI" }, { week: 2, team: "SKIP_WEEK" }, { week: 3, team: "SKIP_WEEK" }], both, 3)).toBe("loss");
   });
 

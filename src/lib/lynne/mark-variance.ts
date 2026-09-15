@@ -101,16 +101,16 @@ export function derivedStandingOf(
   // A repeated team is an ELIMINATION in her pool before any score is read
   // (CLAUDE.md; poolBucketOf says Out the same way). admin_submit_pick does
   // not refuse a repeat, so it is reachable here. Codex caught it on #101.
+  // MISSED needs no exemption: two missed weeks are two losses and out
+  // either way, and a guard that cannot change an answer is not kept.
   const used = new Set<string>();
   for (const p of mine) {
     if (p.team === "SKIP_WEEK") {
       bye = true;
       continue;
     }
-    if (p.team !== "MISSED") {
-      if (used.has(p.team)) return "out";
-      used.add(p.team);
-    }
+    if (used.has(p.team)) return "out";
+    used.add(p.team);
     if (p.team === "MISSED") {
       losses += 1;
       if (p.week > doubleElimThrough) lateLoss = true;
