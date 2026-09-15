@@ -76,6 +76,11 @@ export function matchGridRows(
   rows: GridEntryRow[],
   targets: GridTarget[],
 ): GridMatchResult {
+  // The name maps are keyed on edge-trimmed text for the same reason
+  // nameAgrees trims: the parser trims her NAMES cell and lynne_label is
+  // stored verbatim, so an untrimmed key here is a silent miss on the
+  // no-number path (Codex, #101). Two labels that collapse to one key after
+  // the trim stay ambiguous and go to unmatched, as they always did.
   const byNumber = new Map<number, GridTarget>();
   const byLabel = new Map<string, GridTarget[]>();
   const byName = new Map<string, GridTarget[]>();
@@ -83,10 +88,12 @@ export function matchGridRows(
   for (const t of targets) {
     if (t.lynneNumber !== null) byNumber.set(t.lynneNumber, t);
     if (t.lynneLabel !== null) {
-      byLabel.set(t.lynneLabel, [...(byLabel.get(t.lynneLabel) ?? []), t]);
+      const l = t.lynneLabel.trim();
+      byLabel.set(l, [...(byLabel.get(l) ?? []), t]);
     }
-    byName.set(t.entryName, [...(byName.get(t.entryName) ?? []), t]);
-    const ci = t.entryName.toLowerCase();
+    const n = t.entryName.trim();
+    byName.set(n, [...(byName.get(n) ?? []), t]);
+    const ci = n.toLowerCase();
     byNameCi.set(ci, [...(byNameCi.get(ci) ?? []), t]);
   }
 
@@ -129,9 +136,10 @@ export function matchGridRows(
     }
 
     // Name path (row's number is not one of ours, or we have none stored).
-    const viaLabel = byLabel.get(row.name);
-    const viaName = byName.get(row.name);
-    const viaCi = byNameCi.get(row.name.toLowerCase());
+    const rowName = row.name.trim();
+    const viaLabel = byLabel.get(rowName);
+    const viaName = byName.get(rowName);
+    const viaCi = byNameCi.get(rowName.toLowerCase());
     let hit: { t: GridTarget; by: GridMatchedBy } | null = null;
     if (viaLabel && viaLabel.length === 1) {
       hit = { t: viaLabel[0], by: "lynne_label" };

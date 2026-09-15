@@ -19,6 +19,7 @@ import {
   applyLynneImport,
   importExists,
   loadCurrentPicks,
+  loadDoubleElimThroughWeek,
   loadLiveEntries,
   loadPriorPicks,
   loadScoredGames,
@@ -198,7 +199,7 @@ async function main(): Promise<void> {
   // this exists to prevent.
   let markCheck: MarkComparison | null = null;
   if (plan.format === "grid") {
-    const priorPicks = await loadPriorPicks(client, week);
+    const [priorPicks, doubleElimThrough] = await Promise.all([loadPriorPicks(client, week), loadDoubleElimThroughWeek(client)]);
     const priorGames = (await Promise.all(
       Array.from({ length: week - 1 }, (_, i) => loadScoredGames(client, i + 1)),
     )).flat();
@@ -213,6 +214,7 @@ async function main(): Promise<void> {
       ],
       [...priorGames, ...scoredGames].map(toGame),
       week,
+      doubleElimThrough,
     );
     console.log("");
     for (const line of markComparisonLines(markCheck, week)) console.log(line);

@@ -72,18 +72,24 @@ export function herMarkOf(fill: GridFill, weekCellText: string | null): HerMark 
 
 /**
  * Our standing for one row through `week`, from its current picks and the
- * finals: two losses is out, one loss OR a burned bye is her middle bucket,
- * a pick on a game with no final is unscored, no pick at all is said so.
+ * finals, the way v_entry_standing and poolBucketOf count it: two losses is
+ * out, and so is ONE loss (or a missed week) after the double-elimination
+ * boundary, where a first loss is terminal; one loss OR a burned bye is her
+ * middle bucket; a pick on a game with no final is unscored; no pick at all
+ * is said so. Codex caught the boundary on #101: without it, from Week 8
+ * every fresh elimination would read as her yellow against our OUT.
  */
 export function derivedStandingOf(
   picks: Pick<MarkPick, "week" | "team">[],
   results: Map<string, "win" | "loss" | "tie">,
   week: number,
+  doubleElimThrough = 7,
 ): DerivedStanding {
   const mine = picks.filter((p) => p.week <= week);
   if (mine.length === 0) return "no pick";
   let losses = 0;
   let bye = false;
+  let lateLoss = false;
   for (const p of mine) {
     if (p.team === "SKIP_WEEK") {
       bye = true;
@@ -91,13 +97,17 @@ export function derivedStandingOf(
     }
     if (p.team === "MISSED") {
       losses += 1;
+      if (p.week > doubleElimThrough) lateLoss = true;
       continue;
     }
     const r = results.get(`${p.week}:${p.team}`);
     if (r === undefined) return "unscored";
-    if (r !== "win") losses += 1;
+    if (r !== "win") {
+      losses += 1;
+      if (p.week > doubleElimThrough) lateLoss = true;
+    }
   }
-  if (losses >= 2) return "out";
+  if (losses >= 2 || lateLoss) return "out";
   if (losses === 1 || bye) return "loss";
   return "clean";
 }
@@ -111,6 +121,7 @@ export function compareMarksToScores(
   picks: MarkPick[],
   games: Pick<GameRow, "week" | "homeTeam" | "awayTeam" | "homeScore" | "awayScore" | "status">[],
   week: number,
+  doubleElimThrough = 7,
 ): MarkComparison {
   const results = teamResults(games);
   const byEntry = new Map<string, MarkPick[]>();
@@ -123,7 +134,7 @@ export function compareMarksToScores(
       continue;
     }
     const mine = (byEntry.get(r.entryId) ?? []).filter((p) => p.week <= week).sort((a, b) => a.week - b.week);
-    const ours = derivedStandingOf(mine, results, week);
+    const ours = derivedStandingOf(mine, results, week, doubleElimThrough);
     if (ours === "unscored") {
       out.unscored += 1;
       continue;

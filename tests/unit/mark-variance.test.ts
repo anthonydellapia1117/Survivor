@@ -66,7 +66,7 @@ describe("her fill as a standing", () => {
 });
 
 describe("a number match survives her edge whitespace", () => {
-  const target = (id: string, entryName: string, lynneLabel: string | null, lynneNumber: number) => ({
+  const target = (id: string, entryName: string, lynneLabel: string | null, lynneNumber: number | null) => ({
     id, entryName, lynneLabel, lynneNumber, status: "active",
   });
 
@@ -79,6 +79,22 @@ describe("a number match survives her edge whitespace", () => {
     expect(res.matched.map((m) => [m.entryId, m.matchedBy])).toEqual([["w3", "lynne_number"]]);
     // And her row keeps its own wording.
     expect(res.matched[0].row.name).toBe("Waggs 3");
+  });
+
+  it("matches on the no-number path with edge whitespace set aside, and keeps a collision ambiguous", () => {
+    // No lynne_number on file: the label path has to read "Waggs 3 " against
+    // her parsed "Waggs 3" too (Codex, #101).
+    const parsed = parseLynneGrid(makeGrid([{ no: 4001, name: "Waggs 3", w1: "LA Chargers" }]))!;
+    const res = matchGridRows(parsed.rows, [target("w3", "Waggs #3", "Waggs 3 ", null)]);
+    expect(res.matched.map((m) => [m.entryId, m.matchedBy])).toEqual([["w3", "lynne_label"]]);
+    expect(res.otherPoolCount).toBe(0);
+    // Two labels that collapse to one key after the trim are still ambiguous.
+    const dup = matchGridRows(parsed.rows, [
+      target("a", "Waggs #3", "Waggs 3 ", null),
+      target("b", "Waggs #5", " Waggs 3", null),
+    ]);
+    expect(dup.matched).toEqual([]);
+    expect(dup.otherPoolCount).toBe(1);
   });
 
   it("still refuses a different name on the same number - whitespace is not a licence to fuzz", () => {
@@ -113,6 +129,17 @@ describe("our standing from picks and finals", () => {
   it("a burned bye lands in the middle bucket with no loss, and a missed week is a loss", () => {
     expect(derivedStandingOf([{ week: 1, team: "PHI" }, { week: 2, team: "SKIP_WEEK" }], results, 2)).toBe("loss");
     expect(derivedStandingOf([{ week: 1, team: "MISSED" }], results, 1)).toBe("loss");
+  });
+
+  it("a first loss or a missed week past the double-elimination boundary is out, and the boundary is a parameter", () => {
+    // Week 8 is the first single-elimination week with the default boundary
+    // of 7 (v_entry_standing, poolBucketOf); through Week 8 it is a first
+    // loss. Codex caught this on #101.
+    const late = new Map<string, "win" | "loss" | "tie">([["8:SEA", "loss"], ["7:SEA", "loss"]]);
+    expect(derivedStandingOf([{ week: 8, team: "SEA" }], late, 8)).toBe("out");
+    expect(derivedStandingOf([{ week: 8, team: "MISSED" }], late, 8)).toBe("out");
+    expect(derivedStandingOf([{ week: 7, team: "SEA" }], late, 7)).toBe("loss");
+    expect(derivedStandingOf([{ week: 8, team: "SEA" }], late, 8, 8)).toBe("loss");
   });
 
   it("reads only picks through the import week, and a game with no final is unscored", () => {
