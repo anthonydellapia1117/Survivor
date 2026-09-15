@@ -14,6 +14,7 @@ do $smoke$
 declare
   v_entries   int;
   v_recruited int;
+  v_standing  int;
   v_due       bigint;
   v_paid      bigint;
   v_entry     entries%rowtype;
@@ -38,10 +39,20 @@ begin
   if v_entries < 1 then
     raise exception 'smoke: no live entries read back';
   end if;
+  -- v_entry_standing serves live entries only (20260915000077). Anthony
+  -- found it returning 130 rows against 121 live entries on 2026-09-15,
+  -- nine voided entries counted as active; its row count IS the live entry
+  -- count from then on, and this is the same comparison
+  -- tests/sql/22_entry_standing_live.sql makes, run against production.
+  select count(*) into v_standing from v_entry_standing;
+  if v_standing <> v_entries then
+    raise exception 'smoke: v_entry_standing returns % rows against % live entries',
+      v_standing, v_entries;
+  end if;
   -- The totals are read and compared, never printed: a person reads this log
   -- and pastes it into a report, and the money is admin-only (CLAUDE.md).
   -- tests/unit/smoke-sql.test.ts holds every raise below to that.
-  raise notice 'smoke: % live entries (% recruited); money totals read',
+  raise notice 'smoke: % live entries (% recruited), standing rows match; money totals read',
     v_entries, v_recruited;
 
   -- 2. One entry save: an existing entry re-submitted with its own values.

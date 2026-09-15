@@ -394,6 +394,9 @@ const PRINTABLE = new Set([
   "v_entries_after",
   "v_entries + 1",
   "v_recruited",
+  // The row count of v_entry_standing, compared to v_entries and printed
+  // only when they differ: an entry count, no money in it (20260915000077).
+  "v_standing",
   "v_entry.entry_name",
   "v_team",
   "v_week",
