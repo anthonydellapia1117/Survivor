@@ -481,8 +481,12 @@ describe("Dashboard - the scoped section opens on Everyone", () => {
     expect(title).toBeGreaterThan(section);
     // Our one cell here has no stored result (null, not pending), so the
     // feed is empty and says so; tests/unit/dashboard-scope-rule.test.ts
-    // renders it with rows. Either way it names no scope.
-    const card = out.slice(title);
+    // renders it with rows. Either way it names no scope - read from the
+    // card's ROOT (data-slot="card"), not from its title, so the header
+    // above the title and the card's own attributes are in the slice.
+    const start = out.lastIndexOf('<div data-slot="card"', title);
+    expect(start, "the card wraps the title").toBeGreaterThan(-1);
+    const card = out.slice(start);
     expect(card).toContain("Results appear here as weeks are scored.");
     expect(card).not.toMatch(/Our group|Everyone|our group|\bours\b/);
   });

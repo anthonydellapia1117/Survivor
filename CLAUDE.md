@@ -395,7 +395,11 @@ that is public by design.
   on every row; the counts are exactly what `poolDistribution` produced. A
   missed week's bar reads "No pick" with no fill - `MISSED` is a value the
   rules engine writes into the team column, like `SKIP_WEEK`, and never
-  reaches a screen as a word. The OUT vocabulary as text is `OUT_TEXT_CLASS`
+  reaches a screen as a word; the Recent activity feed prints the same
+  label for it, through one `teamLabel()` beside its bye branch, because
+  the expression it inherited from `page.tsx` had only the bye branch and
+  would have printed "MISSED Missed" the first week an entry missed (found
+  on review, 2026-09-15). The OUT vocabulary as text is `OUT_TEXT_CLASS`
   in the same module, and every dashboard surface that colours a result -
   the section, the KPI strip, the survival strip, the bars - is on the
   scan lists in `tests/unit/result-colour.test.ts` and
@@ -414,9 +418,18 @@ that is public by design.
   Everyone; that all of them do under Our group; and that Recent activity
   renders identically under both states with no scope word on it. It
   failed on our entries fed to the pool scope, on one panel reading ours
-  whatever the toggle, and on a caption naming the feed's scope.
-  `tests/unit/dashboard-page.test.ts` holds the section's copy and
-  `tests/unit/dashboard-scope.test.ts` the builder's gates.
+  whatever the toggle, and on a caption naming the feed's scope. **Two
+  gaps in it were found on review the same day and closed, each broken
+  before trusted:** the fixture's out-this-week was 0 on both scopes, so a
+  panel routing that one figure to our group passed - one of our seven now
+  carries a stored loss and its NYJ loss puts it out, 1 on ours and 0 on
+  the pool's, and the KPI tile's "1 now out" and the carnage card's "1 of
+  them out" are on the our-only list; and the feed's markup was read from
+  its TITLE onward, so an eyebrow above the title or a `title` attribute on
+  the card itself passed - both tests read the card from its root
+  (`data-slot="card"`) now. `tests/unit/dashboard-page.test.ts` holds the
+  section's copy and `tests/unit/dashboard-scope.test.ts` the builder's
+  gates.
 
 ### What the colours mean
 

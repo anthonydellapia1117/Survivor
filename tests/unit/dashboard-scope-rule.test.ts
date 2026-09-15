@@ -15,22 +15,29 @@ import { renderToStaticMarkup } from "react-dom/server";
 //
 //   our group (7)                       the pool (13 rows, 1,318 published)
 //   4 NYJ (lost), 2 MIA (won), 1 GB     8 PHI (won), 2 DAL (lost), 2 OUT,
-//   (won); alive 7 of 7; lost 4, 0      1 BYE; alive 11 of 1,318; lost 2,
+//   (won); alive 6 of 7; lost 4, 1      1 BYE; alive 11 of 1,318; lost 2,
 //   out; chalk NYJ 4 picks 57% fell;    0 out; chalk PHI 8 picks 80% held;
-//   start 7, remaining 7; NYJ 57%, MIA  start 1,318, remaining 11, -2 15%;
-//   29%, GB 14%; carnage NYJ 4; No      PHI 80%, DAL 20%; carnage DAL 2; No
-//   Losses=3, Loss/Bye=4, Out=0, "We    Losses=8, Loss/Bye=3, Out=2, "11
-//   are down to 7"; scarcity NYJ 3/7,   left"; scarcity PHI 3/11, DAL 9/11.
-//   MIA 5/7, GB 6/7.
+//   start 7, remaining 6, -1 14%; NYJ   start 1,318, remaining 11, -2 15%;
+//   57%, MIA 29%, GB 14%; carnage NYJ   PHI 80%, DAL 20%; carnage DAL 2, 0
+//   4, 1 out; No Losses=3, Loss/Bye=3,  out; No Losses=8, Loss/Bye=3, Out=2,
+//   Out=1, "We are down to 6"; scarcity "11 left"; scarcity PHI 3/11, DAL
+//   NYJ 3/6, MIA 4/6, GB 5/6.           9/11.
+//
+// Ours 1 carries a stored loss already, so its NYJ loss puts it OUT: that
+// is what makes out-this-week disagree too. With every one of ours alive it
+// was 0 on both scopes, and a panel routing that one figure to our group
+// passed the guard (found on review, 2026-09-15). Every figure a panel can
+// print now differs between the scopes.
 //
 // The teams do not overlap either, so a team code is as telling as a number.
 // Every game is final and kicked off in the past, so nothing is masked and
 // the reveal gate is not what keeps a figure off the page.
 //
-// Broken three ways before it was trusted, each recorded in the commit:
-// our entries fed to the pool scope in the page; one panel (Teams running
-// out) reading ours whatever the toggle; and a scope label on Recent
-// activity.
+// Broken before it was trusted, each recorded in its commit: our entries fed
+// to the pool scope in the page; one panel (Teams running out) reading ours
+// whatever the toggle; a scope label on Recent activity; out-this-week
+// routed to ours under Everyone; an eyebrow and a title attribute on the
+// feed card ABOVE its title; and the feed's MISSED branch removed.
 
 const fixture = vi.hoisted(() => ({
   // Switchable to no sheet: the only state the page can open on Our group
@@ -39,6 +46,9 @@ const fixture = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/lib/data", () => {
+  // Ours 1 already holds one stored loss, so the week's NYJ loss is its
+  // second and scoreFromGames reads it out: 1 now out on our scope, 0 on
+  // the pool's.
   const entry = (i: number) => ({
     id: `o-${i}`,
     entryName: `Ours ${i}`,
@@ -46,9 +56,9 @@ vi.mock("../../src/lib/data", () => {
     ownerId: "o",
     ownerName: "O",
     wins: 0,
-    losses: 0,
-    livesRemaining: 2,
-    status: "active",
+    losses: i === 1 ? 1 : 0,
+    livesRemaining: i === 1 ? 1 : 2,
+    status: i === 1 ? "at_risk" : "active",
     byeUsed: false,
     teamsUsed: [],
     lastScoredWeek: null,
@@ -126,7 +136,7 @@ function readable(markup: string): string {
 
 /** Every our-only figure, as it would be printed. None of these can come from the pool's rows. */
 const OURS_ONLY = {
-  numbers: [/\b7\b/, /\b4\b/, /\b57\b/, /\b29\b/, /\b14\b/],
+  numbers: [/\b7\b/, /\b6\b/, /\b4\b/, /\b57\b/, /\b29\b/, /\b14\b/],
   strings: [
     ">NYJ<",
     ">MIA<",
@@ -135,16 +145,18 @@ const OURS_ONLY = {
     "Miami Dolphins",
     "Green Bay Packers",
     "of 7",
-    "/7<",
-    "7 left",
+    "/6<",
+    "6 left",
     "We are down to",
     "4 picks",
     "4 entries lost",
+    "1 now out",
+    "1 of them out",
     "57%",
     "29%",
     "14%",
     'title="No Losses: 3"',
-    'title="Loss/Bye: 4"',
+    'title="Out: 1"',
   ],
 };
 
@@ -155,7 +167,7 @@ describe("the dashboard scope rule - no our-only figure under Everyone", () => {
     expect(out).toMatch(/aria-checked="false"[^>]*>Our group<span[^>]*>7</);
     const p = panels(out);
     expect(p).toMatch(/Alive<\/p><p class="[^"]*">11<\/p><p class="[^"]*">of 1,318</);
-    expect(p).toMatch(/Lost this week<\/p><p class="[^"]*">2<\/p>/);
+    expect(p).toMatch(/Lost this week<\/p><p class="[^"]*">2<\/p><p class="[^"]*">0 now out</);
     expect(p).toMatch(/Chalk<\/p><p class="[^"]*">PHI<span[^>]*>80%/);
     expect(p).toMatch(/Start<\/p><p class="[^"]*">1,318</);
     expect(p).toMatch(/Remaining<\/p><p class="[^"]*">11</);
@@ -195,12 +207,13 @@ describe("the dashboard scope rule - no our-only figure under Everyone", () => {
       for (const s of OURS_ONLY.strings) {
         expect(p, `our figure "${s}" is missing under Our group`).toContain(s);
       }
-      expect(p).toMatch(/Alive<\/p><p class="[^"]*">7<\/p><p class="[^"]*">of 7</);
-      expect(p).toMatch(/Lost this week<\/p><p class="[^"]*">4<\/p>/);
+      expect(p).toMatch(/Alive<\/p><p class="[^"]*">6<\/p><p class="[^"]*">of 7</);
+      expect(p).toMatch(/Lost this week<\/p><p class="[^"]*">4<\/p><p class="[^"]*">1 now out</);
+      expect(p).toMatch(/Remaining<\/p><p class="[^"]*">6</);
       expect(p).toMatch(/Chalk<\/p><p class="[^"]*">NYJ<span[^>]*>57%/);
-      expect(p).toContain("No Losses=3, 1 Loss/Bye used=4 and Out=0. We are down to 7 left in the pool.");
-      expect(p).toContain("4 entries lost this week, 0 of them out - 3 of 3 games final.");
-      expect(p).toMatch(/>NYJ<[\s\S]*?>3\/7</);
+      expect(p).toContain("No Losses=3, 1 Loss/Bye used=3 and Out=1. We are down to 6 left in the pool.");
+      expect(p).toContain("4 entries lost this week, 1 of them out - 3 of 3 games final.");
+      expect(p).toMatch(/>NYJ<[\s\S]*?>3\/6</);
       // And none of the pool's, which is the same rule read the other way.
       expect(p).not.toContain("1,318");
       expect(p).not.toContain(">PHI<");
@@ -234,10 +247,18 @@ describe("the dashboard scope rule - no our-only figure under Everyone", () => {
 });
 
 describe("Recent activity is the one exception - ours, unlabelled, outside the toggle", () => {
+  // The WHOLE card, from its root element: Card renders data-slot="card" on
+  // its root div (src/components/ui/card.tsx). Slicing from the title left
+  // the header above it unread, so an eyebrow placed before the title, or a
+  // title attribute on the card itself, passed every test here (found on
+  // review, 2026-09-15). Nothing on the page follows the card, so the slice
+  // runs to the end of the markup.
   const card = (out: string) => {
     const i = out.indexOf(">Recent activity<");
     expect(i, "the card is on the page").toBeGreaterThan(-1);
-    return out.slice(i);
+    const start = out.lastIndexOf('<div data-slot="card"', i);
+    expect(start, "the card wraps the title").toBeGreaterThan(-1);
+    return out.slice(start);
   };
 
   it("sits after the scoped section, so no toggle state can reach it", async () => {
@@ -266,5 +287,29 @@ describe("Recent activity is the one exception - ours, unlabelled, outside the t
     // itself - a caption reading "Our group's own feed" fails here.
     expect(everyone).not.toMatch(/Our group|Everyone|our group|\bours\b|\bscope\b|\bpool\b/);
     expect(everyone).not.toMatch(/\b7 entries\b/);
+  });
+
+  it("prints a missed week as No pick and a bye as Bye - the values reach no screen as words", async () => {
+    // The rules engine writes MISSED into the team column
+    // (20260821000008_rules_engine.sql), as it writes SKIP_WEEK for a bye,
+    // and the feed rendered it verbatim - "MISSED Missed" - until
+    // 2026-09-15. Rendered directly: the page fixture cannot hold a missed
+    // week without moving the seven-entry figures every assertion above
+    // pins, and the branch is the component's.
+    const { RecentActivity } = await import("../../src/components/dashboard/recent-activity");
+    const { MISSED_TEAM, NO_PICK_LABEL } = await import("../../src/lib/dashboard");
+    const { SKIP_WEEK } = await import("../../src/lib/standing");
+    const out = renderToStaticMarkup(
+      RecentActivity({
+        rows: [
+          { entryId: "o-1", entryName: "Ours 1", team: MISSED_TEAM, week: 2, result: "missed" },
+          { entryId: "o-2", entryName: "Ours 2", team: SKIP_WEEK, week: 2, result: "bye" },
+        ],
+      }),
+    );
+    expect(out).toContain(`>${NO_PICK_LABEL}<`);
+    expect(out).toContain(">Bye<");
+    expect(out).not.toContain("MISSED");
+    expect(out).not.toContain("SKIP_WEEK");
   });
 });
