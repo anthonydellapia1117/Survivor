@@ -217,7 +217,13 @@ line per row where they differ, with her result and the score-derived one,
 NO. and entry named - and a differing row is posted as a NEEDS ANTHONY line.
 The import cannot see this on its own: a `result_conflict` needs a local
 result to already exist, and nothing writes one from a score. Neither side is
-corrected; her word is what gets written. After `y` it commits through
+corrected; her word is what gets written. On her NO./NAMES grid, which carries
+no per-week result, the command also reads her FILL as a standing (white or
+none clean, yellow her 1 loss/bye bucket, red or the word OUT out) and prints
+it against our standing from every current pick through the week and the
+finals - one line when all agree, one line per differing row otherwise, each
+recorded with the import as a `mark_conflict` and posted as NEEDS ANTHONY.
+After `y` it commits through
 `admin_apply_lynne_import`, the results-only importer, and prints the import
 id. You should see the variance table and `import <id>`; review it on
 /admin/import and /grid.

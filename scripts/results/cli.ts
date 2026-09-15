@@ -20,10 +20,12 @@ import {
   importExists,
   loadCurrentPicks,
   loadLiveEntries,
+  loadPriorPicks,
   loadScoredGames,
   loadStandings,
 } from "../lib/db";
 import { compareStoredToScores, scoreComparisonLines } from "@/lib/score-variance";
+import { compareMarksToScores, markComparisonLines, markVarianceLine, type MarkComparison } from "@/lib/lynne/mark-variance";
 import { LYNNE_EMAIL } from "../lib/constants";
 import { getAttachment, getMessageMeta, gmailClient, searchMessages, type MessageMeta } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
@@ -186,6 +188,47 @@ async function main(): Promise<void> {
   console.log("");
   for (const line of scoreComparisonLines(scoreCheck, week)) console.log(line);
 
+  // ---- her MARKS against the scores, set by Anthony on 2026-09-15
+  // Her grid carries no per-week results, only a standing per row in the
+  // NAMES fill (clean, yellow = 1 loss/bye, red = OUT). This reads that
+  // standing for every matched row against what our current picks through
+  // this week and the finals say, prints every difference with both values,
+  // records each one with the import as a mark_conflict variance, and
+  // resolves nothing. She is the elimination authority; a silent flip is what
+  // this exists to prevent.
+  let markCheck: MarkComparison | null = null;
+  if (plan.format === "grid") {
+    const priorPicks = await loadPriorPicks(client, week);
+    const priorGames = (await Promise.all(
+      Array.from({ length: week - 1 }, (_, i) => loadScoredGames(client, i + 1)),
+    )).flat();
+    const toGame = (g: { week: number; home_team: string; away_team: string; home_score: number | null; away_score: number | null; status: "scheduled" | "in_progress" | "final" }) => ({
+      week: g.week, homeTeam: g.home_team, awayTeam: g.away_team, homeScore: g.home_score, awayScore: g.away_score, status: g.status,
+    });
+    markCheck = compareMarksToScores(
+      plan.marks,
+      [
+        ...priorPicks.map((p) => ({ entryId: p.entry_id, week: p.week, team: p.team })),
+        ...localPicks.map((p) => ({ entryId: p.entry_id, week, team: p.team })),
+      ],
+      [...priorGames, ...scoredGames].map(toGame),
+      week,
+    );
+    console.log("");
+    for (const line of markComparisonLines(markCheck, week)) console.log(line);
+    const byNo = new Map(plan.marks.map((m) => [m.no, m]));
+    for (const v of markCheck.differ) {
+      const m = byNo.get(v.no);
+      plan.variances.push({
+        type: "mark_conflict",
+        entryId: m?.entryId ?? "",
+        entryName: v.entryName,
+        lynne: { team: null, result: v.hers },
+        local: { team: v.picks, result: v.ours },
+      });
+    }
+  }
+
   if (args.dryRun) {
     console.log("\nDry run. Nothing written.");
     return;
@@ -222,6 +265,16 @@ async function main(): Promise<void> {
       `week ${week}: ${plan.matchedCount} matched, ${plan.variances.length} variances, ${plan.applies.length} applied, import ${id}`,
     ),
   );
+  if (markCheck !== null && markCheck.differ.length > 0) {
+    await notify(
+      needsAnthonyLine(
+        "results",
+        "mark variance",
+        `${markCheck.differ.length} of ours where her week ${week} sheet's mark differs from the scores: ${markCheck.differ.map(markVarianceLine).join("; ")}`,
+      ),
+      { tags: "warning" },
+    );
+  }
   if (scoreCheck.differ.length > 0) {
     await notify(
       needsAnthonyLine(

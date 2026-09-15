@@ -6,8 +6,11 @@
 //
 //   - Only rows with an integer NO. and a string NAMES are entries.
 //   - Status lives in the FILL COLOR of the NAMES cell: FF0000 red = OUT,
-//     FFFF00 yellow = winner (season end). Alive entries mid-season have
-//     no fill. Read with cellStyles, never values-only.
+//     FFFF00 yellow = her "1 LOSS/BYE" bucket mid-season (and the winner on
+//     the season-end sheet). A clean row has no fill, or the white theme
+//     fill (theme 0) she paints rows with. Read with cellStyles, never
+//     values-only. src/lib/lynne/mark-variance.ts is where the fill is read
+//     as a standing and compared with ours.
 //   - BYE and OUT appear as literal cell values in week columns.
 //   - She DELETES eliminated entries week to week, so the sheet shrinks.
 //     A missing entry is NOT a data error.
@@ -81,7 +84,17 @@ function readFill(ws: XLSX.WorkSheet, r: number, c: number): {
         };
       })
     | undefined;
-  const s = cell?.s;
+  return classifyFill(cell?.s);
+}
+
+/**
+ * A cell style's fill as one of ours. Exported so the theme branch can be
+ * tested directly: xlsx-js-style does not round-trip a theme fill through a
+ * written workbook, so a fixture cannot reach it.
+ */
+export function classifyFill(
+  s: { patternType?: string; fgColor?: { rgb?: string; theme?: number } } | undefined,
+): { fill: GridFill; raw: string | null } {
   if (!s || !s.patternType || s.patternType === "none") {
     return { fill: "none", raw: null };
   }
@@ -94,6 +107,11 @@ function readFill(ws: XLSX.WorkSheet, r: number, c: number): {
     return { fill: "other", raw: rgb };
   }
   if (typeof s.fgColor?.theme === "number") {
+    // Theme colour 0 is the workbook's window background - the white she
+    // paints a clean row with. On her 2026-09-15 Week 1 Final Sheet every
+    // no-loss row carried it, so reading it as "other" made 859 clean rows
+    // look marked. It is no mark; the raw descriptor is kept for the preview.
+    if (s.fgColor.theme === 0) return { fill: "none", raw: `theme:${s.fgColor.theme}` };
     return { fill: "other", raw: `theme:${s.fgColor.theme}` };
   }
   return { fill: "other", raw: "unknown" };

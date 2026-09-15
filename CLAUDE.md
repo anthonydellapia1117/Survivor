@@ -1961,6 +1961,48 @@ in any of them.**
   has landed. Neither resolves anything - both values, NO., entry, her
   result, the score-derived result, and Anthony decides.
 
+- **HER WEEKLY SHEET CARRIES NO PER-WEEK RESULT. IT CARRIES A STANDING PER
+  ROW, IN THE FILL, AND THAT IS WHAT IS COMPARED.** Found 2026-09-15, the
+  morning her Week 1 Final Sheet arrived (`Football 2026-9.xlsx`, Gmail
+  `1a0a50be4566535a`). Her NAMES cell is painted white (theme fill 0) for a
+  clean row, **yellow for her "1 LOSS/BYE" bucket** and red for OUT; her own
+  stats block on the sheet said 859 / 459 / 0 and the fills said the same.
+  So the grid path of `npm run results` applies no `picks.result` - it never
+  did, "the scores engine owns them" - and **the Tuesday comparison Anthony
+  asked for is her MARK against our derived STANDING**, not a result against
+  a result. `src/lib/lynne/mark-variance.ts` reads the fill as clean, 1
+  loss/bye or OUT (the word OUT in the week cell counts too), derives ours
+  from every current pick THROUGH the import week and the finals (two losses
+  out, one loss or a burned bye her middle bucket, a tie a loss, a game with
+  no final "unscored" and set aside), and the results command prints every
+  difference with both values, records each as a `mark_conflict` variance
+  with the import, and posts a NEEDS ANTHONY line. It resolves nothing. From
+  Week 2 yellow means "one loss somewhere", not "lost this week", which is
+  why the derived side is a standing and never one week's result. Week 1's
+  first run: 121 matched, 0 differing.
+
+  **Two readers had to be fixed before that run could be trusted.** The grid
+  matcher compared her parsed (trimmed) NAMES to our verbatim `lynne_label`,
+  so `Waggs 3 ` on file against `Waggs 3` parsed was a "number name
+  disagree" and Waggs #3 would have been filed as absent from her sheet:
+  edge whitespace is set aside on both sides now, exact then case-insensitive
+  and nothing looser (`Waggs  3` with her double space still disagrees). And
+  `parse-grid` read theme fill 0 - the white she paints clean rows with - as
+  an unknown colour; it is no mark. `classifyFill` is exported because
+  xlsx-js-style cannot round-trip a theme fill through a written fixture.
+  Her two unmarked losers on that sheet (NO. 205 Rydo #2 on Tennessee, NO.
+  497 Clem 3 on LA Chargers) are not ours and were reported, not drafted.
+
+  **`picks.result` is still `pending` for all 121 after her import.** The
+  only scorer of picks in the database is `admin_set_game_score` (hand-entered
+  finals on `/admin/scores`, `result_source = 'game'`); the ESPN ingest is
+  write-only to `nfl_games` by the 2026-09-11 rule, and her grid applies none.
+  The public site is covered by `scoreFromGames`; the DB standing
+  (`v_entry_standing`, the Lynne submission's OUT cell, chase, distribute)
+  moves only when picks are scored. Whether the ingest should score picks
+  the way `admin_set_game_score` does is Anthony's call and was put to him
+  as one line on 2026-09-15.
+
 - **The share card carries HER two figures, and the dashboard has no
   subtitle.** Set by Anthony on 2026-09-11. `/api/og` shows **Total in Pool**
   and **Total Payout**, read through the same `poolStats()` the dashboard
@@ -2115,6 +2157,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Her masked cells, the one seam      | `herCell` / `herCellIsLocked` in `src/lib/master-list.ts` |
 | Our standing from the scores, display only | `scoreFromGames` in `src/lib/live-standing.ts` |
 | Her result against the scores, read-only | `compareStoredToScores` in `src/lib/score-variance.ts`, `scripts/ops/reporters/result-variance.ts` |
+| Her fill mark against our standing | `compareMarksToScores` in `src/lib/lynne/mark-variance.ts`, printed by `npm run results` |
 | Team counts once a week locks   | `v_team_pick_counts`, `src/lib/team-counts.ts`, `tests/sql/21_team_pick_counts.sql` |
 | Who gets a pick email, and for what | `src/lib/emails/recipients.ts`               |
 | Pick email bodies                   | `src/lib/emails/pick-request.ts`             |

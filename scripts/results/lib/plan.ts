@@ -15,6 +15,7 @@
 
 import { createHash } from "node:crypto";
 import { computeImportPlan, type Apply, type Variance } from "@/lib/lynne/compare";
+import type { MarkRow } from "@/lib/lynne/mark-variance";
 import { matchRows } from "@/lib/lynne/match";
 import { parseLynneFile, type LynneRow } from "@/lib/lynne/parse";
 import { parseLynneGrid, type GridEntryRow, type HerWeekCounts } from "@/lib/lynne/parse-grid";
@@ -66,6 +67,8 @@ interface PlanBase {
 
 export interface GridResultsPlan extends PlanBase {
   format: "grid";
+  /** Her fill mark per matched row, for the standing comparison the CLI prints. */
+  marks: MarkRow[];
   conflicts: ConflictSummary[];
   numberSuggestions: NumberSuggestion[];
   /** Ours with no row in her sheet, split below. */
@@ -147,6 +150,13 @@ export function buildResultsPlan(input: PlanInput): ResultsPlan {
     return {
       format: "grid",
       sha256: grid.sha256,
+      marks: matched.map((m) => ({
+        entryId: m.entryId,
+        no: m.row.no,
+        entryName: names.get(m.entryId) ?? m.row.name,
+        fill: m.row.fill,
+        weekCellText: m.row.cells[week] ?? null,
+      })),
       rows,
       rowCount: rows.length + otherPoolCount,
       matchedCount: matched.length,

@@ -55,10 +55,21 @@ export interface GridMatchResult {
   otherPoolCount: number;
 }
 
+/**
+ * Whether the name on her row is the name we hold for that number. Exact,
+ * then case-insensitive, never fuzzy (CLAUDE.md) - with EDGE whitespace set
+ * aside on both sides. The parser trims her NAMES cell while lynne_label is
+ * stored verbatim, so "Waggs 3 " on file against "Waggs 3" parsed read as a
+ * number-name disagreement on the first real grid import (2026-09-15) and
+ * would have filed a live entry as absent from her sheet. Edge whitespace
+ * is not identity here any more than it is on the roster loader's diff;
+ * internal spacing, case and the separator still are.
+ */
 function nameAgrees(row: GridEntryRow, t: GridTarget): boolean {
-  if (t.lynneLabel !== null && row.name === t.lynneLabel) return true;
-  if (row.name === t.entryName) return true;
-  return row.name.toLowerCase() === t.entryName.toLowerCase();
+  const name = row.name.trim();
+  if (t.lynneLabel !== null && name === t.lynneLabel.trim()) return true;
+  if (name === t.entryName.trim()) return true;
+  return name.toLowerCase() === t.entryName.trim().toLowerCase();
 }
 
 export function matchGridRows(
