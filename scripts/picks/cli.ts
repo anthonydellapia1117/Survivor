@@ -361,7 +361,14 @@ async function main(): Promise<void> {
       // as an identity question, never as a written pick; and delivery
       // failures from a mailer, matched to the roster by the failed address.
       known = await listSweepFrom(gmail, addresses, skip);
-      strangers = strangerMessages(await listSweepMatching(gmail, subjectSweepQuery(terms, ops.sweepExcludeSenders), skip), addresses, excluded, terms);
+      // The admin mailbox and Lynne are excluded in the SEARCH, not only after
+      // the fetch: without is:unread the subject read listed 190 candidates in
+      // the fortnight on 2026-09-15, nearly all his own sent mail and hers,
+      // fetched in full and then dropped, and Gmail's per-minute quota ended
+      // the run. With them out of the query it is 25. strangerMessages still
+      // drops them after the fetch, so a copy arriving by another route is
+      // still refused.
+      strangers = strangerMessages(await listSweepMatching(gmail, subjectSweepQuery(terms, excluded), skip), addresses, excluded, terms);
       bounces = classifyBounces(await listSweepMatching(gmail, bounceSweepQuery(), skip), addresses, entriesFor);
       // A DSN whose subject happened to carry a term is a bounce, not a stranger.
       const bounceIds = new Set(bounces.map((b) => b.messageId));

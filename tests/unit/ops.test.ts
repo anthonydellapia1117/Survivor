@@ -157,7 +157,7 @@ describe("the wiring the dispatcher and the commands keep", () => {
     expect(src).toMatch(/args\.yes \|\| \(await confirm\(/);
     expect(src).toMatch(/x === "--yes"/);
     expect(src).toMatch(/listSweepFrom\(gmail, addresses, skip\)/);
-    expect(src).toMatch(/strangerMessages\(await listSweepMatching\(gmail, subjectSweepQuery\(terms, ops\.sweepExcludeSenders\), skip\), addresses, excluded, terms\)/);
+    expect(src).toMatch(/strangerMessages\(await listSweepMatching\(gmail, subjectSweepQuery\(terms, excluded\), skip\), addresses, excluded, terms\)/);
     // The excluded set is the admin, the runner and the machine senders, and
     // it is applied in BOTH places: the Gmail query above and strangerMessages.
     expect(src).toMatch(/const excluded = \[ADMIN_MAILBOX, LYNNE_EMAIL, \.\.\.ops\.sweepExcludeSenders\]/);

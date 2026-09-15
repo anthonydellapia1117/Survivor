@@ -635,7 +635,10 @@ address whatever its subject, label or read state that is not yet filed
 under Pool-Survivor-Done or on file by id, plus mail from anyone else whose
 subject carries a phrase in `sweepSubjectTerms`, which is staged for you as
 an identity question and never written, plus delivery failures from a
-mailer, matched to the roster by the failed address (section 2a).
+mailer, matched to the roster by the failed address (section 2a). The
+subject search excludes the admin mailbox and Lynne in the query itself, and
+every Gmail read and file call waits out a per-minute quota error (1, 2, 4,
+8, 16, 32 seconds, six tries) rather than ending the run.
 
 10b. `pick-reminder` and `chase` are the only jobs the config may mark as
 sending, and the loader refuses a config that says otherwise or hands

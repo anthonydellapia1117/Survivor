@@ -203,6 +203,47 @@ export async function listSweepMatching(gmail: gmail_v1.Gmail, q: string, skip: 
 }
 
 /**
+ * A Gmail call under the per-user quota, retried with exponential backoff.
+ *
+ * Found 2026-09-15 on the first dry run of the read-state sweep: the subject
+ * read listed 190 candidates in the fortnight (nearly all Anthony's own sent
+ * mail and Lynne's, dropped only AFTER the fetch) and Gmail answered "Quota
+ * exceeded for quota metric 'Total Query Cost' and limit 'Units per minute
+ * per user'" part way through, so the run died having read nothing. Two
+ * things fix that: the CLI now excludes the admin mailbox and Lynne in the
+ * search itself (25 candidates, not 190), and every read and file call here
+ * waits and tries again when Gmail says quota - 1, 2, 4, 8, 16 and 32
+ * seconds, six tries - rather than abandoning an hourly run that 43 people's
+ * picks depend on. Any other error is thrown straight through; a retry is
+ * only ever for the quota, never for a message that cannot be read.
+ */
+export function isQuotaError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  const code = (e as { code?: number; status?: number })?.code ?? (e as { status?: number })?.status;
+  return /quota exceeded|rate ?limit ?exceeded|userRateLimitExceeded|too many requests/i.test(msg) || code === 429;
+}
+
+export const QUOTA_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 32000] as const;
+
+export async function withQuotaRetry<T>(
+  fn: () => Promise<T>,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<T> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (e: unknown) {
+      if (!isQuotaError(e) || attempt >= QUOTA_RETRY_DELAYS_MS.length) throw e;
+      const wait = QUOTA_RETRY_DELAYS_MS[attempt];
+      attempt += 1;
+      console.log(`Gmail quota: waiting ${wait / 1000}s before try ${attempt + 1} of ${QUOTA_RETRY_DELAYS_MS.length + 1}`);
+      await sleep(wait);
+    }
+  }
+}
+
+/**
  * The read itself. The search gives ids only; every candidate's labelIds are
  * fetched (format metadata, cheap) and a message carrying the DONE label or
  * an id already on file is dropped there; everything else is fetched IN FULL
@@ -217,7 +258,7 @@ async function listSweepByQueries(gmail: gmail_v1.Gmail, queries: string[], skip
   for (const q of queries) {
     let pageToken: string | undefined;
     do {
-      const res = await gmail.users.messages.list({ userId: "me", q, pageToken, maxResults: 100 });
+      const res = await withQuotaRetry(() => gmail.users.messages.list({ userId: "me", q, pageToken, maxResults: 100 }));
       for (const m of res.data.messages ?? []) if (m.id) ids.add(m.id);
       pageToken = res.data.nextPageToken ?? undefined;
     } while (pageToken);
@@ -225,7 +266,7 @@ async function listSweepByQueries(gmail: gmail_v1.Gmail, queries: string[], skip
   const out: InboundMessage[] = [];
   for (const id of ids) {
     if (skip.onFileIds.has(id)) continue;
-    const meta = await gmail.users.messages.get({ userId: "me", id, format: "metadata" });
+    const meta = await withQuotaRetry(() => gmail.users.messages.get({ userId: "me", id, format: "metadata" }));
     if ((meta.data.labelIds ?? []).includes(skip.doneLabelId)) continue;
     out.push(await getMessageFull(gmail, id));
   }
@@ -243,7 +284,7 @@ async function listSweepByQueries(gmail: gmail_v1.Gmail, queries: string[], skip
  * would silently return nothing.
  */
 export async function getMessageFull(gmail: gmail_v1.Gmail, id: string): Promise<InboundMessage> {
-  const res = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+  const res = await withQuotaRetry(() => gmail.users.messages.get({ userId: "me", id, format: "full" }));
   const headers = res.data.payload?.headers;
   const from = header(headers, "From");
   const internal = Number(res.data.internalDate ?? 0);
@@ -586,11 +627,13 @@ export async function ensureLabel(gmail: gmail_v1.Gmail, name: string): Promise<
  */
 export async function markProcessed(gmail: gmail_v1.Gmail, id: string, label: string): Promise<boolean> {
   const lid = await labelId(gmail, label);
-  await gmail.users.messages.modify({
-    userId: "me",
-    id,
-    requestBody: { removeLabelIds: ["UNREAD"], addLabelIds: lid ? [lid] : [] },
-  });
+  await withQuotaRetry(() =>
+    gmail.users.messages.modify({
+      userId: "me",
+      id,
+      requestBody: { removeLabelIds: ["UNREAD"], addLabelIds: lid ? [lid] : [] },
+    }),
+  );
   return lid !== null;
 }
 

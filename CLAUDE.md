@@ -1792,6 +1792,22 @@ in any of them.**
     read so his inbox stays tidy, and nothing reads that back.
     `--keep-unread` is now `--keep-unfiled`; the old spelling is accepted
     for one release and prints the new name. The 14-day window stays.
+    **The first dry run without `is:unread` died on Gmail's quota** (found
+    2026-09-15, the same evening): the subject read listed 190 candidates in
+    the fortnight, nearly all Anthony's own sent mail and Lynne's, fetched
+    in full and dropped only after, and Gmail answered "Quota exceeded ...
+    Units per minute per user" part way through. Two fixes, both in
+    `tests/unit/sweep-quota-retry.test.ts` and each broken before trusted:
+    the CLI hands `subjectSweepQuery` the same `excluded` list it hands
+    `strangerMessages`, so the admin mailbox and Lynne are out of the SEARCH
+    (25 candidates, not 190), and every read and file call the sweep makes
+    goes through `withQuotaRetry`, which waits 1, 2, 4, 8, 16 and 32 seconds
+    on a quota error and throws anything else straight through. **The
+    fortnight of roster mail handled by hand before this rule was filed
+    under the label on 2026-09-15 without staging** (54 messages received
+    before that day, every one a Week 1 conversation already answered), so
+    the hourly sweep started from that day's mail and not from a backlog of
+    38 questions nobody needed.
     `tests/unit/sweep-read-state.test.ts` drives the readers with a fake
     Gmail: a read, unlabelled message is swept; an unread one under the
     label is skipped; an unlabelled one whose id is on file is skipped; a
