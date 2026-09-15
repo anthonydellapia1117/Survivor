@@ -272,15 +272,19 @@ async function main(): Promise<void> {
       `week ${week}: ${plan.matchedCount} matched, ${plan.variances.length} variances, ${plan.applies.length} applied, import ${id}`,
     ),
   );
-  if (markCheck !== null && markCheck.differ.length > 0) {
-    await notify(
-      needsAnthonyLine(
-        "results",
-        "mark variance",
-        `${markCheck.differ.length} of ours where her week ${week} sheet's mark differs from the scores: ${markCheck.differ.map(markVarianceLine).join("; ")}`,
-      ),
-      { tags: "warning" },
-    );
+  // A row set aside is actionable too, not a footnote: on the unattended
+  // Tuesday run every game is final, so "unscored" means the ingest missed a
+  // final and "unknown" means a fill this reader cannot name. Either can hide
+  // a real conflict behind a run that reports success (Codex, #101).
+  if (markCheck !== null && (markCheck.differ.length > 0 || markCheck.unknown > 0 || markCheck.unscored > 0)) {
+    const parts = [
+      markCheck.differ.length > 0
+        ? `${markCheck.differ.length} of ours where her week ${week} sheet's mark differs from the scores: ${markCheck.differ.map(markVarianceLine).join("; ")}`
+        : null,
+      markCheck.unscored > 0 ? `${markCheck.unscored} of ours not compared - a pick on a game with no final on file` : null,
+      markCheck.unknown > 0 ? `${markCheck.unknown} of ours not compared - a fill colour this reader does not know` : null,
+    ].filter((x): x is string => x !== null);
+    await notify(needsAnthonyLine("results", "mark variance", parts.join(" | ")), { tags: "warning" });
   }
   if (scoreCheck.differ.length > 0) {
     await notify(

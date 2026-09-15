@@ -133,6 +133,15 @@ describe("our standing from picks and finals", () => {
     expect(derivedStandingOf([{ week: 1, team: "LAC" }, { week: 2, team: "NO" }], results, 2)).toBe("out");
   });
 
+  it("a repeated team is out before any score is read - an elimination in her pool, not two wins", () => {
+    // PHI won both weeks it was picked; the repeat is what eliminates.
+    const both = new Map<string, "win" | "loss" | "tie">([["1:PHI", "win"], ["2:PHI", "win"]]);
+    expect(derivedStandingOf([{ week: 1, team: "PHI" }, { week: 2, team: "PHI" }], both, 2)).toBe("out");
+    // A bye and a missed week are not teams and never a repeat.
+    expect(derivedStandingOf([{ week: 1, team: "MISSED" }, { week: 2, team: "MISSED" }], both, 2)).toBe("out");
+    expect(derivedStandingOf([{ week: 1, team: "PHI" }, { week: 2, team: "SKIP_WEEK" }, { week: 3, team: "SKIP_WEEK" }], both, 3)).toBe("loss");
+  });
+
   it("a burned bye lands in the middle bucket with no loss, and a missed week is a loss", () => {
     expect(derivedStandingOf([{ week: 1, team: "PHI" }, { week: 2, team: "SKIP_WEEK" }], results, 2)).toBe("loss");
     expect(derivedStandingOf([{ week: 1, team: "MISSED" }], results, 1)).toBe("loss");
@@ -208,6 +217,15 @@ describe("her marks against the scores", () => {
     // Through Week 17 the same yellow is still her 1 loss/bye bucket.
     const w17 = [{ week: 17, homeTeam: "DET", awayTeam: "CHI", homeScore: 30, awayScore: 10, status: "final" as const }];
     expect(compareMarksToScores([row(977, "a", "yellow")], [pick("a", 17, "DET")], w17, 17).differ).toHaveLength(1);
+  });
+
+  it("posts NEEDS ANTHONY for a row set aside, not only for a difference", () => {
+    // On the unattended Tuesday run "unscored" means the ingest missed a
+    // final and "unknown" a fill this reader cannot name; either can hide a
+    // conflict behind a run that reports success.
+    const src = readFileSync("scripts/results/cli.ts", "utf8");
+    const guard = /markCheck !== null && \(markCheck\.differ\.length > 0 \|\| markCheck\.unknown > 0 \|\| markCheck\.unscored > 0\)/;
+    expect(src).toMatch(guard);
   });
 
   it("is computed before the plan is printed, so the count the operator approves carries it", () => {
