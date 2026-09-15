@@ -32,7 +32,7 @@
         "--yes"
       ],
       "sends": false,
-      "what": "Unread mail from every owner and player_email address on a live entry, whatever its subject or label, plus mail from anyone else whose subject names the pool or the picks; picks recorded through admin_submit_pick, everything else staged for Anthony."
+      "what": "Every message from every owner and player_email address on a live entry, whatever its subject, label or READ STATE, that is not yet filed under Pool-Survivor-Done or on file by id (2026-09-15: read state is not the marker); plus mail from anyone else whose subject names the pool or the picks; plus delivery failures from a mailer, matched to the roster by the failed address. Picks recorded through admin_submit_pick, everything else staged for Anthony; over 25 noise rows the strangers are held back and the roster still goes through, over 121 roster rows the run stops."
     },
     "pick-reminder": {
       "schedule": "0 12 * * 3,4,5",

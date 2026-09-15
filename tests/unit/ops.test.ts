@@ -156,8 +156,8 @@ describe("the wiring the dispatcher and the commands keep", () => {
     const src = code("scripts/picks/cli.ts");
     expect(src).toMatch(/args\.yes \|\| \(await confirm\(/);
     expect(src).toMatch(/x === "--yes"/);
-    expect(src).toMatch(/listUnreadFrom\(gmail, addresses\)/);
-    expect(src).toMatch(/strangerMessages\(await listUnreadMatching\(gmail, subjectSweepQuery\(terms, ops\.sweepExcludeSenders\)\), addresses, excluded, terms\)/);
+    expect(src).toMatch(/listSweepFrom\(gmail, addresses, skip\)/);
+    expect(src).toMatch(/strangerMessages\(await listSweepMatching\(gmail, subjectSweepQuery\(terms, excluded\), skip\), addresses, excluded, terms\)/);
     // The excluded set is the admin, the runner and the machine senders, and
     // it is applied in BOTH places: the Gmail query above and strangerMessages.
     expect(src).toMatch(/const excluded = \[ADMIN_MAILBOX, LYNNE_EMAIL, \.\.\.ops\.sweepExcludeSenders\]/);

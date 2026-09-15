@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { google, type gmail_v1 } from "googleapis";
 import { requireEnv } from "./env";
-import { SWEEP_WINDOW_DAYS } from "./constants";
+import { DONE_LABEL, SWEEP_WINDOW_DAYS } from "./constants";
 import { assertNoRetiredAddresses } from "./roster";
 
 export const TOKEN_PATH = path.join(os.homedir(), ".config", "survivor", "gmail-token.json");
@@ -120,6 +120,10 @@ function bodyOf(payload: gmail_v1.Schema$MessagePart | undefined): string {
   const html: string[] = [];
   const walk = (p: gmail_v1.Schema$MessagePart) => {
     if (p.mimeType === "text/plain" && p.body?.data) plain.push(decode(p.body.data));
+    // A bounce carries its machine-readable half as message/delivery-status
+    // ("Final-Recipient: rfc822; x@y"). It is plain text and it is where the
+    // failed address is stated exactly, so it is read as text (2026-09-15).
+    else if (p.mimeType === "message/delivery-status" && p.body?.data) plain.push(decode(p.body.data));
     else if (p.mimeType === "text/html" && p.body?.data) html.push(decode(p.body.data));
     for (const c of p.parts ?? []) walk(c);
   };
@@ -129,9 +133,36 @@ function bodyOf(payload: gmail_v1.Schema$MessagePart | undefined): string {
   return "";
 }
 
+/** The Gmail search clause that keeps a processed message out of a sweep read. */
+export function notDoneClause(label: string = DONE_LABEL): string {
+  const name = label.trim();
+  if (!name) throw new Error("notDoneClause: the label name is empty");
+  // Gmail's search names a label by its name with spaces as hyphens; ours has
+  // none. Quoted anyway, so a name carrying a character Gmail treats as
+  // syntax is still one term.
+  return `-label:"${name}"`;
+}
+
 /**
- * Every unread message from any of the addresses, whatever its subject or
- * label, inside the window.
+ * What a sweep read skips, and what it is told to skip.
+ *
+ * READ STATE IS NOT THE MARKER (Anthony, 2026-09-15). A message he reads on
+ * his phone before the sweep runs used to be invisible to it, because both
+ * readers asked Gmail for `is:unread`. Processed now means: the message
+ * carries the DONE label, or its id is already on file (a pending_actions row
+ * or a pick written from it). The search-side `-label:` is a prefilter; the
+ * message's own labelIds are the truth and are checked on every candidate.
+ */
+export interface SweepSkip {
+  /** The DONE label's id, as Gmail names it in labelIds. */
+  doneLabelId: string;
+  /** Message ids already on file in the database. */
+  onFileIds: ReadonlySet<string>;
+}
+
+/**
+ * Every message from any of the addresses, whatever its subject, label or
+ * READ STATE, inside the window, that the sweep has not already processed.
  *
  * The window is the only thing filtering this path - there is deliberately no
  * subject test on a known player, because a real reply may carry any subject
@@ -139,63 +170,105 @@ function bodyOf(payload: gmail_v1.Schema$MessagePart | undefined): string {
  * player's thread, became a staged question on 2026-09-10: nothing else here
  * could have stopped it.
  */
-export async function listUnreadFrom(
+export async function listSweepFrom(
   gmail: gmail_v1.Gmail,
   addresses: string[],
+  skip: SweepSkip,
   windowDays: number = SWEEP_WINDOW_DAYS,
 ): Promise<InboundMessage[]> {
-  return listUnreadByQueries(gmail, unreadFromQueries(addresses, windowDays));
+  return listSweepByQueries(gmail, sweepFromQueries(addresses, windowDays), skip);
 }
 
 /**
- * The searches listUnreadFrom runs, as a pure function so the window can be
+ * The searches listSweepFrom runs, as a pure function so the window can be
  * proved without Gmail. Chunked at 15 addresses because a Gmail query has a
- * length limit and the roster is 41.
+ * length limit and the roster is 41. No `is:unread` (2026-09-15): the DONE
+ * label is the marker, and a message Anthony has already read is still a
+ * pick.
  */
-export function unreadFromQueries(addresses: string[], windowDays: number = SWEEP_WINDOW_DAYS): string[] {
-  if (!Number.isInteger(windowDays) || windowDays < 1) throw new Error("listUnreadFrom: windowDays must be a positive integer");
+export function sweepFromQueries(addresses: string[], windowDays: number = SWEEP_WINDOW_DAYS, doneLabel: string = DONE_LABEL): string[] {
+  if (!Number.isInteger(windowDays) || windowDays < 1) throw new Error("listSweepFrom: windowDays must be a positive integer");
   const unique = Array.from(new Set(addresses.map((a) => a.trim().toLowerCase()).filter(Boolean)));
   const queries: string[] = [];
   for (let i = 0; i < unique.length; i += 15) {
     const chunk = unique.slice(i, i + 15);
-    queries.push(`is:unread -in:draft newer_than:${windowDays}d (${chunk.map((a) => `from:${a}`).join(" OR ")})`);
+    queries.push(`-in:draft newer_than:${windowDays}d ${notDoneClause(doneLabel)} (${chunk.map((a) => `from:${a}`).join(" OR ")})`);
   }
   return queries;
 }
 
-/** Every unread message a Gmail search matches, in full. The subject sweep's reader. */
-export async function listUnreadMatching(gmail: gmail_v1.Gmail, q: string): Promise<InboundMessage[]> {
-  return listUnreadByQueries(gmail, [q]);
+/** Every unprocessed message a Gmail search matches, in full. The subject and bounce sweeps' reader. */
+export async function listSweepMatching(gmail: gmail_v1.Gmail, q: string, skip: SweepSkip): Promise<InboundMessage[]> {
+  return listSweepByQueries(gmail, [q], skip);
 }
 
-async function listUnreadByQueries(gmail: gmail_v1.Gmail, queries: string[]): Promise<InboundMessage[]> {
+/**
+ * A Gmail call under the per-user quota, retried with exponential backoff.
+ *
+ * Found 2026-09-15 on the first dry run of the read-state sweep: the subject
+ * read listed 190 candidates in the fortnight (nearly all Anthony's own sent
+ * mail and Lynne's, dropped only AFTER the fetch) and Gmail answered "Quota
+ * exceeded for quota metric 'Total Query Cost' and limit 'Units per minute
+ * per user'" part way through, so the run died having read nothing. Two
+ * things fix that: the CLI now excludes the admin mailbox and Lynne in the
+ * search itself (25 candidates, not 190), and every read and file call here
+ * waits and tries again when Gmail says quota - 1, 2, 4, 8, 16 and 32
+ * seconds, six tries - rather than abandoning an hourly run that 43 people's
+ * picks depend on. Any other error is thrown straight through; a retry is
+ * only ever for the quota, never for a message that cannot be read.
+ */
+export function isQuotaError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  const code = (e as { code?: number; status?: number })?.code ?? (e as { status?: number })?.status;
+  return /quota exceeded|rate ?limit ?exceeded|userRateLimitExceeded|too many requests/i.test(msg) || code === 429;
+}
+
+export const QUOTA_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 32000] as const;
+
+export async function withQuotaRetry<T>(
+  fn: () => Promise<T>,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<T> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (e: unknown) {
+      if (!isQuotaError(e) || attempt >= QUOTA_RETRY_DELAYS_MS.length) throw e;
+      const wait = QUOTA_RETRY_DELAYS_MS[attempt];
+      attempt += 1;
+      console.log(`Gmail quota: waiting ${wait / 1000}s before try ${attempt + 1} of ${QUOTA_RETRY_DELAYS_MS.length + 1}`);
+      await sleep(wait);
+    }
+  }
+}
+
+/**
+ * The read itself. The search gives ids only; every candidate's labelIds are
+ * fetched (format metadata, cheap) and a message carrying the DONE label or
+ * an id already on file is dropped there; everything else is fetched IN FULL
+ * (format full) and its body read from the message itself. Never a search
+ * preview, never a snippet: the five Week 1 picks lost to a preview cutting at
+ * five messages were lost by hand through the claude.ai Gmail connector, not
+ * by this code, and this is what keeps it that way.
+ */
+async function listSweepByQueries(gmail: gmail_v1.Gmail, queries: string[], skip: SweepSkip): Promise<InboundMessage[]> {
+  if (!skip.doneLabelId) throw new Error("listSweepByQueries: the DONE label id is empty; resolve it with ensureLabel first");
   const ids = new Set<string>();
   for (const q of queries) {
     let pageToken: string | undefined;
     do {
-      const res = await gmail.users.messages.list({ userId: "me", q, pageToken, maxResults: 100 });
+      const res = await withQuotaRetry(() => gmail.users.messages.list({ userId: "me", q, pageToken, maxResults: 100 }));
       for (const m of res.data.messages ?? []) if (m.id) ids.add(m.id);
       pageToken = res.data.nextPageToken ?? undefined;
     } while (pageToken);
   }
   const out: InboundMessage[] = [];
   for (const id of ids) {
-    const res = await gmail.users.messages.get({ userId: "me", id, format: "full" });
-    const headers = res.data.payload?.headers;
-    const from = header(headers, "From");
-    const internal = Number(res.data.internalDate ?? 0);
-    const dateHeader = header(headers, "Date");
-    const receivedAt = internal > 0 ? new Date(internal).toISOString() : new Date(dateHeader).toISOString();
-    out.push({
-      id,
-      threadId: res.data.threadId ?? "",
-      from,
-      fromAddress: addressOf(from),
-      subject: header(headers, "Subject"),
-      date: dateHeader,
-      receivedAt,
-      body: bodyOf(res.data.payload),
-    });
+    if (skip.onFileIds.has(id)) continue;
+    const meta = await withQuotaRetry(() => gmail.users.messages.get({ userId: "me", id, format: "metadata" }));
+    if ((meta.data.labelIds ?? []).includes(skip.doneLabelId)) continue;
+    out.push(await getMessageFull(gmail, id));
   }
   out.sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime());
   return out;
@@ -204,13 +277,14 @@ async function listUnreadByQueries(gmail: gmail_v1.Gmail, queries: string[]): Pr
 /**
  * One message, in full, whatever its read state or label.
  *
- * The unread listers above are the sweep's readers and only ever see
- * `is:unread`. A message named by its id -- her pick email, quoted back by
- * Anthony or found by hand -- has usually been read already, so it needs a
- * reader of its own rather than a search that would silently return nothing.
+ * The sweep readers above skip what carries the DONE label. A message named
+ * by its id - her pick email, quoted back by Anthony or found by hand, or one
+ * of the five staged on 2026-09-15 being re-read under --message-id - may
+ * already be filed, so it needs a reader of its own rather than a search that
+ * would silently return nothing.
  */
 export async function getMessageFull(gmail: gmail_v1.Gmail, id: string): Promise<InboundMessage> {
-  const res = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+  const res = await withQuotaRetry(() => gmail.users.messages.get({ userId: "me", id, format: "full" }));
   const headers = res.data.payload?.headers;
   const from = header(headers, "From");
   const internal = Number(res.data.internalDate ?? 0);
@@ -225,6 +299,29 @@ export async function getMessageFull(gmail: gmail_v1.Gmail, id: string): Promise
     receivedAt: internal > 0 ? new Date(internal).toISOString() : new Date(dateHeader).toISOString(),
     body: bodyOf(res.data.payload),
   };
+}
+
+/**
+ * The messages named on the command line (--message-id, repeatable), each in
+ * full, in the order given, whatever their labels or read state. This reader
+ * takes NO SweepSkip on purpose: a named id is read even when it carries the
+ * DONE label or is already on file, because naming it IS the instruction to
+ * read it again - the five messages staged on 2026-09-15 before the parser
+ * understood them are re-read exactly this way. It fetches nothing but the
+ * message (no metadata get, no label list). A message from `refuse` - the
+ * admin mailbox - stops the run: this sweep never reads it, on any path, and
+ * dictated picks go through `npm run picks:self`.
+ */
+export async function readNamedMessages(gmail: gmail_v1.Gmail, ids: string[], refuse: string): Promise<InboundMessage[]> {
+  const out: InboundMessage[] = [];
+  for (const id of ids) {
+    const m = await getMessageFull(gmail, id);
+    if (m.fromAddress === refuse) {
+      throw new Error(`${id} is from the admin mailbox; this sweep never reads it. Dictated picks go through npm run picks:self.`);
+    }
+    out.push(m);
+  }
+  return out;
 }
 
 /**
@@ -494,14 +591,49 @@ async function labelId(gmail: gmail_v1.Gmail, name: string): Promise<string | nu
   return labelCache.get(name) ?? null;
 }
 
-/** Mark read and file under the sweep's label so the next run skips it. */
+/**
+ * The label's id, creating the label when the mailbox has none by that name.
+ *
+ * Called BEFORE a sweep reads anything (2026-09-15). Now that the sweep no
+ * longer keys on unread, the label is the only thing that keeps a processed
+ * message from being read again, so a run that cannot mark a message
+ * processed must not start: it would stage the same mail every hour forever,
+ * which is the flood guard's nightmare. Creation goes through
+ * gmail.users.labels.create under the gmail.modify scope the token already
+ * has; if that fails the error names the label and the run stops.
+ */
+export async function ensureLabel(gmail: gmail_v1.Gmail, name: string): Promise<string> {
+  const have = await labelId(gmail, name);
+  if (have) return have;
+  let created: string | null | undefined;
+  try {
+    const res = await gmail.users.labels.create({
+      userId: "me",
+      requestBody: { name, labelListVisibility: "labelShow", messageListVisibility: "show" },
+    });
+    created = res.data.id;
+  } catch (e: unknown) {
+    throw new Error(`Gmail label "${name}" is missing and could not be created (${e instanceof Error ? e.message : String(e)}). Nothing was read: a sweep that cannot file a message would read it again every hour.`);
+  }
+  if (!created) throw new Error(`Gmail label "${name}" is missing and the create call returned no id. Nothing was read.`);
+  labelCache?.set(name, created);
+  return created;
+}
+
+/**
+ * File under the sweep's label so the next run skips it, and mark read so
+ * Anthony's inbox stays tidy. The LABEL is what the sweep keys on; the read
+ * state is a courtesy and nothing reads it back (2026-09-15).
+ */
 export async function markProcessed(gmail: gmail_v1.Gmail, id: string, label: string): Promise<boolean> {
   const lid = await labelId(gmail, label);
-  await gmail.users.messages.modify({
-    userId: "me",
-    id,
-    requestBody: { removeLabelIds: ["UNREAD"], addLabelIds: lid ? [lid] : [] },
-  });
+  await withQuotaRetry(() =>
+    gmail.users.messages.modify({
+      userId: "me",
+      id,
+      requestBody: { removeLabelIds: ["UNREAD"], addLabelIds: lid ? [lid] : [] },
+    }),
+  );
   return lid !== null;
 }
 

@@ -6,6 +6,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GameDay } from "@/lib/data/types";
 import { loadEnv, requireEnv } from "./env";
+import { fetchAllPages } from "./paged";
 import { promptHidden } from "./prompt";
 
 export interface Admin {
@@ -446,4 +447,74 @@ export async function stagePending(
     p_actor: p.actor,
   });
   if (error) throw new Error(`admin_stage_pending: ${error.message}`);
+}
+
+/** The audit action that ties a written pick to the Gmail message it came from. */
+export const PICK_FROM_MESSAGE_ACTION = "pick_from_message";
+
+/**
+ * The Gmail message id a pick was written from, recorded beside the pick.
+ *
+ * admin_submit_pick takes no message id and no note - its six arguments are
+ * entry, week, team, source, actor and the receipt time - so the id goes in
+ * its own audit_log row, target the pick, action pick_from_message, written
+ * right after the RPC returns (2026-09-15). It is what lets the sweep treat a
+ * message as processed by its id alone, whatever its Gmail labels say. A row
+ * here is a record, not a write of pool data: the pick and its own audit row
+ * were committed by the RPC in one transaction before this is called.
+ */
+export async function recordPickMessage(
+  client: SupabaseClient,
+  p: { actor: string; pickId: string; messageId: string; entryId: string; week: number; team: string },
+): Promise<number> {
+  return recordAudit(client, {
+    actor: p.actor,
+    action: PICK_FROM_MESSAGE_ACTION,
+    targetTable: "picks",
+    targetId: p.pickId,
+    after: { message_id: p.messageId, entry_id: p.entryId, week: p.week, team: p.team },
+    note: `written by the picks sweep from Gmail message ${p.messageId}`,
+  });
+}
+
+/**
+ * Every Gmail message id the database already holds: the source_message_id
+ * of every pending_actions row, resolved or not, and every pick_from_message
+ * audit row. A message on this list has been processed whatever its labels
+ * say, so the sweep never reads it again (2026-09-15). Paged, because the
+ * 2026-09-10 flood left more than a thousand pending rows and PostgREST caps
+ * a response at 1,000.
+ */
+export async function loadFiledMessageIds(client: SupabaseClient): Promise<Set<string>> {
+  const out = new Set<string>();
+  const pending = await fetchAllPages<{ source_message_id: string | null }>(async (from, to) =>
+    unwrap(
+      await client
+        .from("pending_actions")
+        .select("source_message_id")
+        .not("source_message_id", "is", null)
+        .order("staged_at")
+        .range(from, to)
+        .returns<{ source_message_id: string | null }[]>(),
+      "pending_actions (source_message_id)",
+    ),
+  );
+  for (const r of pending) if (r.source_message_id) out.add(r.source_message_id);
+  const audits = await fetchAllPages<{ after: Record<string, unknown> | null }>(async (from, to) =>
+    unwrap(
+      await client
+        .from("audit_log")
+        .select("after")
+        .eq("action", PICK_FROM_MESSAGE_ACTION)
+        .order("id")
+        .range(from, to)
+        .returns<{ after: Record<string, unknown> | null }[]>(),
+      `audit_log (${PICK_FROM_MESSAGE_ACTION})`,
+    ),
+  );
+  for (const r of audits) {
+    const id = r.after?.message_id;
+    if (typeof id === "string" && id) out.add(id);
+  }
+  return out;
 }

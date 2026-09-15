@@ -18,15 +18,17 @@ const msg = (from: string, subject: string): InboundMessage => ({
 });
 
 describe("the subject sweep", () => {
-  it("searches unread, non-draft mail whose subject carries any of the words", () => {
+  it("searches non-draft mail not yet filed under DONE whose subject carries any of the words, whatever its read state", () => {
+    // No is:unread since 2026-09-15: read state is not the marker, the label is.
     expect(subjectSweepQuery(["survivor", "my picks"])).toBe(
-      'is:unread -in:draft newer_than:14d subject:(survivor OR "my picks")',
+      '-in:draft newer_than:14d -label:"Pool-Survivor-Done" subject:(survivor OR "my picks")',
     );
     // A phrase is quoted so Gmail matches it whole; the window and the
     // machine senders are in the query itself, so their mail is never fetched.
     expect(subjectSweepQuery(["survivor"], ["notifications@github.com"], 7)).toBe(
-      "is:unread -in:draft newer_than:7d -from:notifications@github.com subject:(survivor)",
+      '-in:draft newer_than:7d -label:"Pool-Survivor-Done" -from:notifications@github.com subject:(survivor)',
     );
+    expect(subjectSweepQuery(["survivor"])).not.toContain("is:unread");
     expect(() => subjectSweepQuery([" "])).toThrow(/no terms/);
     expect(() => subjectSweepQuery(["survivor"], [], 0)).toThrow(/positive integer/);
   });

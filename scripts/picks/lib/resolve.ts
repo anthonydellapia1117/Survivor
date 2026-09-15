@@ -20,6 +20,8 @@ export interface RosterEntry {
   playerEmail: string | null;
   /** Somebody else plays this entry (entries.is_gifted). */
   isGifted?: boolean;
+  /** Her number for this entry, when it carries one; what "1042 -> 49ers" names. */
+  lynneNumber?: number | null;
 }
 
 /** Case, "#" and whitespace do not count. Nothing else is loosened. */
@@ -29,6 +31,27 @@ export function entryKey(s: string): string {
 
 function tokens(s: string): string[] {
   return s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/**
+ * The words run together: "Waggs3", "Waggs 3" and "Waggs #3" are one key.
+ * Added 2026-09-15 for Ashley Scalia's "Waggs3-Tampa", which entryKey kept
+ * apart from "Waggs #3" by the one space. Case, "#", spacing and punctuation
+ * are all that is dropped; a letter is still a letter.
+ */
+export function compactKey(s: string): string {
+  return tokens(s).join("");
+}
+
+/**
+ * The trailing word-runs of an entry name, each run together: "Marc Mass #1"
+ * gives "1", "mass1", "marcmass1". A player's shorthand for his own entry is
+ * the tail of its name with the words run together ("Mass1", 2026-09-15), and
+ * a run that starts inside a word ("ass1") is not one of these.
+ */
+function trailingRuns(entryName: string): string[] {
+  const t = tokens(entryName);
+  return t.map((_, i) => t.slice(i).join(""));
 }
 
 export function levenshtein(a: string, b: string): number {
@@ -73,6 +96,36 @@ const TEAM_ALIASES: Record<string, string> = {
   philly: "PHI",
   bengal: "CIN",
   cowboy: "DAL",
+  // Added 2026-09-15 from the Week 2 mail: "Waggs3-Tampa". Every word below
+  // names exactly one team; a word that could name two ("New York", "LA",
+  // "birds", "bears" as a plain word) is deliberately not here.
+  tampa: "TB",
+  cincy: "CIN",
+  cinci: "CIN",
+  pitt: "PIT",
+  indy: "IND",
+  niner: "SF",
+  "49er": "SF",
+  eagle: "PHI",
+  raven: "BAL",
+  steeler: "PIT",
+  packer: "GB",
+  charger: "LAC",
+  bronco: "DEN",
+  seahawk: "SEA",
+  patriot: "NE",
+  titan: "TEN",
+  viking: "MIN",
+  dolphin: "MIA",
+  texan: "HOU",
+  chief: "KC",
+  raider: "LV",
+  buccaneer: "TB",
+  commander: "WAS",
+  jaguar: "JAX",
+  cardinal: "ARI",
+  falcon: "ATL",
+  panther: "CAR",
 };
 const ABBR_ALIASES: Record<string, string> = {
   JAC: "JAX",
@@ -141,10 +194,15 @@ export function strictTeam(raw: string): string | null {
   const words = cleaned.split(" ");
   if (words.length === 1) return team;
   const nameWords = (TEAM_NAME[team] ?? "").toLowerCase().split(" ");
+  // The team's own code counts as one of its words: "SF 49ers" (Ashley
+  // Scalia, 2026-09-15) is the code and the nickname, not a stranger's word
+  // in front of a team.
   const fits = (w: string) =>
     nameWords.some((nw) => nw === w || (w.length >= 4 && nw.length >= 4 && levenshtein(w, nw) <= 1)) ||
     TEAM_ALIASES[w] === team ||
-    NICK.get(w) === team;
+    NICK.get(w) === team ||
+    w.toUpperCase() === team ||
+    ABBR_ALIASES[w.toUpperCase()] === team;
   return words.every(fits) ? team : null;
 }
 
@@ -156,10 +214,10 @@ export interface EntryScope {
 }
 
 export type EntryResolution =
-  | { ok: true; entry: RosterEntry; how: "exact" | "cosmetic" | "alias" | "tokens" | "owner_name" }
+  | { ok: true; entry: RosterEntry; how: "exact" | "cosmetic" | "compact" | "lynne_number" | "alias" | "tokens" | "owner_name" | "suffix" }
   | {
       ok: false;
-      reason: "ambiguous" | "owner_has_multiple_entries" | "unmatched";
+      reason: "ambiguous" | "owner_has_multiple_entries" | "unmatched" | "no_live_entry_carries_lynne_number";
       candidates: RosterEntry[];
     };
 
@@ -175,10 +233,36 @@ export function resolveEntry(raw: string, roster: RosterEntry[], scope: EntrySco
   const exact = roster.filter((e) => e.entryName === trimmed);
   if (exact.length === 1) return { ok: true, entry: exact[0], how: "exact" };
 
+  // A bare number is her NO. (Maria DiCicco's "1042 -> 49ers", 2026-09-15):
+  // exact against lynne_number, never a near one. The caller's scope check
+  // stages a number that names somebody else's entry - a giftee picking for
+  // the buyer's other entry, or a typo, is Anthony's call. A number no live
+  // entry carries is reported by that number; it is not a name to go on
+  // matching as words.
+  if (/^\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    const byNumber = roster.filter((e) => e.lynneNumber === n);
+    if (byNumber.length === 1) return { ok: true, entry: byNumber[0], how: "lynne_number" };
+    if (byNumber.length > 1) return { ok: false, reason: "ambiguous", candidates: byNumber };
+    if (trimmed.length >= 3) return { ok: false, reason: "no_live_entry_carries_lynne_number", candidates: [] };
+  }
+
   const key = entryKey(trimmed);
   const cosmetic = roster.filter((e) => entryKey(e.entryName) === key);
   if (cosmetic.length === 1) return { ok: true, entry: cosmetic[0], how: "cosmetic" };
   if (cosmetic.length > 1) return { ok: false, reason: "ambiguous", candidates: cosmetic };
+
+  // The words run together ("Waggs3" for "Waggs #3"), the sender's own
+  // entries first. Exactly one, or it is not a match.
+  const compact = compactKey(trimmed);
+  if (compact) {
+    const hits = roster.filter((e) => compactKey(e.entryName) === compact);
+    const mine = scope.preferredIds ? hits.filter((e) => scope.preferredIds!.has(e.id)) : [];
+    if (mine.length === 1) return { ok: true, entry: mine[0], how: "compact" };
+    if (mine.length > 1) return { ok: false, reason: "ambiguous", candidates: mine };
+    if (hits.length === 1) return { ok: true, entry: hits[0], how: "compact" };
+    if (hits.length > 1) return { ok: false, reason: "ambiguous", candidates: hits };
+  }
 
   const { base, n } = splitNumber(trimmed);
   const alias = ENTRY_ALIASES[entryKey(base)];
@@ -232,6 +316,16 @@ export function resolveEntry(raw: string, roster: RosterEntry[], scope: EntrySco
     if (candidates.length === 1) return { ok: true, entry: candidates[0], how: "tokens" };
     if (candidates.length > 1) return { ok: false, reason: "ambiguous", candidates };
   }
+
+  // The tail of one of the SENDER'S OWN entries, words run together: Marc
+  // Massimino's "Mass1" for "Marc Mass #1" (2026-09-15). Scope only - a
+  // sender may shorten his own entry's name, nobody else's - at a word
+  // boundary, and exactly one; two stays unresolved.
+  if (compact && scope.preferredIds && scope.preferredIds.size > 0) {
+    const tails = roster.filter((e) => scope.preferredIds!.has(e.id) && trailingRuns(e.entryName).includes(compact));
+    if (tails.length === 1) return { ok: true, entry: tails[0], how: "suffix" };
+    if (tails.length > 1) return { ok: false, reason: "ambiguous", candidates: tails };
+  }
   return { ok: false, reason: "unmatched", candidates: [] };
 }
 
@@ -247,61 +341,227 @@ export interface RawPick {
   all: boolean;
 }
 
-const SEPARATORS = [" - ", " – ", " — ", ": ", " = ", " -> ", "\t", ", ", " , "];
+/**
+ * A line that is teams and nothing else, two or more of them: "Chargers &
+ * 49ers" (Kris Tomasco, 2026-09-15). Two teams for two entries with the order
+ * unstated is NEVER assigned by order; the caller stages one question naming
+ * the entries and the teams.
+ */
+export interface RawMulti {
+  teams: string[];
+  line: string;
+}
+
+/**
+ * What splits an entry from its team, in the order tried. The spaced forms
+ * first, then the arrows, then a bare dash, colon and equals sign. Added
+ * 2026-09-15 from the real Week 2 lines: "Waggs3-Tampa" (no spaces),
+ * "1042 -> 49ers" (an arrow), "Waggs1- SF 49ers" (a space on one side only).
+ * " to " is deliberately NOT a separator: "I'll go to the Eagles" is prose.
+ */
+const SEPARATORS = [" - ", " \u2013 ", " \u2014 ", "->", "\u2192", "\u2014", "\u2013", "-", ":", "=", "\t", ", "];
+
+/** The most words a team can take: "Los Angeles Chargers" is three. */
+const MAX_TEAM_WORDS = 4;
+
+/**
+ * Words a player puts in front of a team when naming no entry at all: "I'll
+ * do the niners" (Ant Giletto, one live entry, 2026-09-15). A line whose
+ * entry part is only these words names no entry, so with one entry in scope
+ * it is that entry's pick and with more it is a question. A closed list,
+ * matched on letters alone (the curly apostrophe in "I'll" is dropped);
+ * nothing here is fuzzy.
+ *
+ * The run has to carry a FIRST-PERSON word (FIRST_PERSON below) before it
+ * counts as "no entry named". Found on review the same day: "Go Eagles" from
+ * a sender with one live entry was WRITTEN as that entry's pick, because
+ * "go" is on this list and nothing else was in front of the team - a cheer
+ * became a pick that would have overridden one already on file. "I'll go
+ * with the Eagles" says who is choosing; "Go Eagles" does not, and is staged
+ * as the question it always was.
+ */
+const FILLER_WORDS = new Set([
+  "i", "ill", "im", "id", "will", "take", "taking", "took", "go", "going", "gonna", "with", "do", "the",
+  "pick", "picks", "picking", "lets", "for", "me", "this", "week", "please", "my", "is", "are", "we",
+  "on", "put", "down", "give", "gimme", "its", "it", "a", "an", "to", "have", "got", "get", "again",
+  "lock", "in", "and", "choose", "choosing", "select", "ok", "okay", "yes", "sure", "also", "wanna",
+  "want", "like", "roll", "rolling", "ride", "riding", "all", "both", "entries", "entry",
+]);
+
+/**
+ * A line that hedges is not a pick. "I don't think I'm taking buffalo or
+ * Detroit this week" (2026-09-15) names two teams and picks neither; so does
+ * "Eagles or Cowboys". Such a line is left unparsed - it becomes a question
+ * for Anthony, never a write - whatever else is on it.
+ *
+ * The correction words joined the list the same day, on review: "Waggs1 -
+ * Eagles I think", "I guess", "wait", "actually", "I mean", "changing to",
+ * "leaning" each read as a firm pick of the first team with the doubt staged
+ * beside it. A line that doubts itself is Anthony's to read, whole.
+ */
+const HEDGE = /\b(or|not|no|don'?t|dont|maybe|either|if|unless|vs|versus|instead|rather|might|probably|thinking|considering|think|guess|wait|actually|meant?|changed?|changing|leaning)\b/i;
+
+/** Trailing "*", "." and ")" off a part, and the whitespace round it. */
+function stripPart(s: string): string {
+  return s.trim().replace(/[*.)]+$/, "").trim();
+}
+
+/** The words on the filler list that say the sender is the one choosing. */
+const FIRST_PERSON = new Set(["i", "ill", "im", "id", "me", "my", "we", "lets", "gimme"]);
+
+function fillerOnly(entryRaw: string): boolean {
+  const words = entryRaw
+    .split(/\s+/)
+    .map((w) => w.toLowerCase().replace(/[^a-z]/g, ""))
+    .filter(Boolean);
+  return words.length > 0 && words.every((w) => FILLER_WORDS.has(w)) && words.some((w) => FIRST_PERSON.has(w));
+}
+
+/** The longest leading run of words that is a team, and what follows it. */
+function leadingTeam(text: string): { team: string; teamRaw: string; rest: string } | null {
+  const words = text.split(/\s+/).filter(Boolean);
+  for (let take = Math.min(MAX_TEAM_WORDS, words.length); take >= 1; take--) {
+    const teamRaw = words.slice(0, take).join(" ");
+    const team = strictTeam(teamRaw);
+    if (team) return { team, teamRaw, rest: words.slice(take).join(" ") };
+  }
+  return null;
+}
+
+/**
+ * Every team a piece of text names, in order, each once: every run of one to
+ * MAX_TEAM_WORDS words that strictTeam reads as a team. A one-word run that
+ * is only a code ("no", "tb") counts when it is WRITTEN as a code, in
+ * capitals; "I have no idea" names nobody. Used to decide whether a line
+ * carries a second team the parser could not pair with an entry, and to say
+ * so in the reason Anthony reads; never to write anything.
+ */
+export function teamsNamedIn(text: string): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  let i = 0;
+  while (i < words.length) {
+    let took = 0;
+    for (let take = Math.min(MAX_TEAM_WORDS, words.length - i); take >= 1; take--) {
+      const raw = words.slice(i, i + take).join(" ");
+      const team = strictTeam(raw);
+      if (!team || team === SKIP_WEEK) continue;
+      const cleaned = cleanTeam(raw);
+      const isWord = FULL.has(cleaned) || NICK.has(cleaned) || cleaned in TEAM_ALIASES || CITY.has(cleaned);
+      const letters = raw.replace(/[^A-Za-z]/g, "");
+      if (take === 1 && !isWord && letters !== letters.toUpperCase()) continue;
+      if (!out.includes(team)) out.push(team);
+      took = take;
+      break;
+    }
+    i += took || 1;
+  }
+  return out;
+}
+
+interface ParsedLine {
+  picks: RawPick[];
+  multi: RawMulti | null;
+  unparsed: string[];
+}
+
+/**
+ * One line, in the shapes players use. Deterministic and never fuzzy: every
+ * team goes through strictTeam, and an entry token is handed back verbatim
+ * for resolveEntry to match against the roster.
+ */
+function parseLine(line: string): ParsedLine {
+  const none: ParsedLine = { picks: [], multi: null, unparsed: [line] };
+  if (HEDGE.test(line)) return none;
+
+  const both = line.match(/^(.+?)\s+for\s+(?:both|all|each)\b.*$/i);
+  if (both) {
+    const team = strictTeam(both[1]);
+    if (team) return { picks: [{ entryRaw: null, teamRaw: both[1].trim(), team, line, all: true }], multi: null, unparsed: [] };
+  }
+
+  // Teams and nothing else, two or more: never assigned by order.
+  const parts = line.split(/\s*(?:&|,|\/|\band\b)\s*/i).map(stripPart).filter(Boolean);
+  if (parts.length >= 2) {
+    const teams = parts.map((p) => strictTeam(p));
+    if (teams.every((t): t is string => t !== null)) return { picks: [], multi: { teams, line }, unparsed: [] };
+  }
+
+  for (const sep of SEPARATORS) {
+    const idx = line.indexOf(sep);
+    if (idx <= 0) continue;
+    const left = stripPart(line.slice(0, idx));
+    const right = stripPart(line.slice(idx + sep.length));
+    if (!left || !right) continue;
+    const rightTeam = strictTeam(right);
+    if (rightTeam) return { picks: [{ entryRaw: left, teamRaw: right, team: rightTeam, line, all: false }], multi: null, unparsed: [] };
+    // Two picks on one line: "Mass1 - Ravens Mass2 Niners" (2026-09-15). The
+    // team is the leading words of the right-hand part and the remainder is
+    // parsed again; it counts only when it yields an entry AND a team.
+    //
+    // A REMAINDER THAT NAMES A TEAM IT CANNOT PAIR MAKES THE WHOLE LINE
+    // UNPARSED - the first pick does not stand. Found on review the same day:
+    // "Waggs3 - Tampa, actually make it Eagles", "Mass1 - Ravens, Niners" and
+    // "Waggs1 - Eagles. Actually Cowboys" each WROTE the first team and staged
+    // only the second, so a retracted pick reached admin_submit_pick while
+    // the correction sat on the queue. The main-branch parser staged every
+    // one of these whole; this keeps that. Only a remainder with no team in
+    // it at all ("Mass1 - Ravens please") leaves the first pick standing,
+    // with the remainder left to the unparsed reason.
+    const lead = leadingTeam(right);
+    if (lead && lead.rest) {
+      const first: RawPick = { entryRaw: left, teamRaw: lead.teamRaw, team: lead.team, line, all: false };
+      const restLine = lead.rest.replace(/^(?:and|&|,|;)\s*/i, "");
+      const more = parseLine(restLine);
+      // A comma still inside the remainder is where a correction starts
+      // ("Tampa. Scratch that, Eagles" would otherwise read "Scratch that" as
+      // an entry with a comma for its separator), so the second pair is only
+      // taken from a remainder with none left in it.
+      const clean = !restLine.includes(",");
+      if (clean && more.picks.length > 0 && more.multi === null && more.unparsed.length === 0 && more.picks.every((p) => p.entryRaw !== null && !p.all)) {
+        return { picks: [first, ...more.picks.map((p) => ({ ...p, line }))], multi: null, unparsed: [] };
+      }
+      if (more.picks.length > 0 || more.multi !== null || teamsNamedIn(restLine).length > 0) return none;
+      return { picks: [first], multi: null, unparsed: [restLine] };
+    }
+    const leftTeam = strictTeam(left);
+    if (leftTeam) return { picks: [{ entryRaw: right, teamRaw: left, team: leftTeam, line, all: false }], multi: null, unparsed: [] };
+  }
+
+  const whole = strictTeam(stripPart(line));
+  if (whole) return { picks: [{ entryRaw: null, teamRaw: line, team: whole, line, all: false }], multi: null, unparsed: [] };
+
+  const words = stripPart(line).split(/\s+/);
+  for (let k = 1; k <= 3 && k < words.length; k++) {
+    const teamRaw = words.slice(-k).join(" ");
+    const team = strictTeam(teamRaw);
+    if (team) {
+      const entryRaw = stripPart(words.slice(0, -k).join(" "));
+      // "I'll do the niners": no entry named, only the words in front of one.
+      return { picks: [{ entryRaw: fillerOnly(entryRaw) ? null : entryRaw, teamRaw, team, line, all: false }], multi: null, unparsed: [] };
+    }
+  }
+  return none;
+}
 
 /**
  * Lines of "entry, team" in any of the shapes players use. A line that does
- * not name a resolvable team is returned as unparsed, never dropped.
+ * not name a resolvable team is returned as unparsed, never dropped; a line
+ * that is two or more teams and nothing else comes back under `multi`.
  */
-export function parsePickLines(text: string): { picks: RawPick[]; unparsed: string[] } {
+export function parsePickLines(text: string): { picks: RawPick[]; unparsed: string[]; multi: RawMulti[] } {
   const picks: RawPick[] = [];
   const unparsed: string[] = [];
+  const multi: RawMulti[] = [];
   for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim();
+    const line = rawLine.replace(/^\s*(?:[-*\u2022]|\d+[.)])\s*/, "").trim();
     if (!line) continue;
-    const both = line.match(/^(.+?)\s+for\s+(?:both|all|each)\b.*$/i);
-    if (both) {
-      const team = strictTeam(both[1]);
-      if (team) {
-        picks.push({ entryRaw: null, teamRaw: both[1].trim(), team, line, all: true });
-        continue;
-      }
-    }
-    let found: RawPick | null = null;
-    for (const sep of SEPARATORS) {
-      const idx = line.indexOf(sep);
-      if (idx <= 0) continue;
-      const left = line.slice(0, idx).trim();
-      const right = line.slice(idx + sep.length).trim();
-      const rightTeam = strictTeam(right);
-      if (rightTeam && left) {
-        found = { entryRaw: left, teamRaw: right, team: rightTeam, line, all: false };
-        break;
-      }
-      const leftTeam = strictTeam(left);
-      if (leftTeam && right) {
-        found = { entryRaw: right, teamRaw: left, team: leftTeam, line, all: false };
-        break;
-      }
-    }
-    if (!found) {
-      const whole = strictTeam(line);
-      if (whole) found = { entryRaw: null, teamRaw: line, team: whole, line, all: false };
-    }
-    if (!found) {
-      const words = line.split(/\s+/);
-      for (let k = 1; k <= 3 && k < words.length && !found; k++) {
-        const teamRaw = words.slice(-k).join(" ");
-        const team = strictTeam(teamRaw);
-        if (team) {
-          found = { entryRaw: words.slice(0, -k).join(" "), teamRaw, team, line, all: false };
-        }
-      }
-    }
-    if (found) picks.push(found);
-    else unparsed.push(line);
+    const parsed = parseLine(line);
+    picks.push(...parsed.picks);
+    unparsed.push(...parsed.unparsed);
+    if (parsed.multi) multi.push(parsed.multi);
   }
-  return { picks, unparsed };
+  return { picks, unparsed, multi };
 }
 
 /** The player's own words: quoted history and signatures removed. */
@@ -541,6 +801,29 @@ export function conflictedKeys(proposals: { key: string; team: string }[], stage
 }
 
 /**
+ * The lines of one message on which ANY pick failed to resolve to an entry
+ * inside the sender's scope, each with the teams the line named. A line is
+ * one statement: "Mass1 - Ravens Mass9 Niners" names two teams and one of
+ * them for nobody the roster knows, and writing the half that resolved would
+ * record a pick from a line whose meaning is not settled. The CLI fails every
+ * pick on such a line, naming the teams, so nothing on it is written (added
+ * on review, 2026-09-15, as the second guard behind the parser's own).
+ */
+export function unpairedLines(picks: { line: string; team: string }[], resolved: (index: number) => boolean): Map<string, string[]> {
+  const bad = new Set<string>();
+  picks.forEach((p, i) => {
+    if (!resolved(i)) bad.add(p.line);
+  });
+  const out = new Map<string, string[]>();
+  for (const line of bad) {
+    const teams: string[] = [];
+    for (const p of picks) if (p.line === line && !teams.includes(p.team)) teams.push(p.team);
+    out.set(line, teams);
+  }
+  return out;
+}
+
+/**
  * What identifies one message for the per-message checks (one entry, one
  * team; conflicts; duplicates): the Gmail message id, never the display
  * label. Two replies from one sender with the same subject and Date header
@@ -563,13 +846,16 @@ export function stagedDetail(week: number): string {
 }
 
 /**
- * The push detail when a run trips the staging ceiling. Two integers and
- * nothing else: like stagedDetail, it exists so no push can be built by
- * interpolating message content inline. A ceiling trip carries no week,
- * because the run stopped before it decided anything about a week.
+ * The push detail when a run trips a staging ceiling. Two integers and a
+ * class name and nothing else: like stagedDetail, it exists so no push can
+ * be built by interpolating message content inline. A ceiling trip carries
+ * no week, because the run stopped before it decided anything about a week,
+ * and no address - the senders are on the terminal, never on the push.
  */
-export function ceilingDetail(staged: number, limit: number): string {
-  return `${staged} rows would stage, limit ${limit} - nothing written, see the terminal`;
+export function ceilingDetail(klass: RowClass, staged: number, limit: number): string {
+  return klass === "roster"
+    ? `${staged} roster rows would stage, limit ${limit} - nothing written, see the terminal`
+    : `${staged} noise rows would stage, limit ${limit} - strangers left unfiled, roster picks went through, see the terminal`;
 }
 
 /** Two-letter team text that names two teams: staged as a question, never dropped as noise. */
@@ -588,6 +874,14 @@ export function unparsedReason(line: string): string | null {
   if (AMBIGUOUS_TEAM_TEXT.has(letters)) return `"${t}" names two teams; which one?`;
   if (!/[A-Za-z]{3,}/.test(t)) return null;
   if (/^(hi|hey|hello|thanks|thank you|thx)\b/i.test(t)) return null;
+  // A sign-off is noise, not a question (2026-09-15: "Sincerely", "Sent via
+  // the iPhone" were each staged as a question for Anthony).
+  if (/^(sincerely|regards|best regards|best|cheers|thanks again|sent (from|via) )/i.test(t)) return null;
+  // A line naming two or more teams that parsed as no pick - a correction on
+  // one line, a hedge, prose - says so, with the teams, rather than claiming
+  // no team was recognised on it (which was false and read as a parser gap).
+  const named = teamsNamedIn(t);
+  if (named.length >= 2) return `names ${named.length} teams (${named.join(", ")}) on one line and no single pick can be read from it`;
   return "no team recognised on this line";
 }
 
@@ -657,10 +951,15 @@ export function picksToCarryForward<T>(
  * 65 such messages became 1,951. A sender with nothing to pick for gets ONE
  * question about the message instead, wherever the caller stages it.
  */
-export function unparsedLinesToAsk(placed: boolean, lines: string[]): { line: string; reason: string }[] {
+export function unparsedLinesToAsk(placed: boolean, lines: string[], signatures: string[] = []): { line: string; reason: string }[] {
   if (!placed) return [];
+  // A line that is the sender's own name is a signature, not a question
+  // ("Kris Tomasco", "Maria DiCicco*", 2026-09-15). Exact on the name after
+  // case, spacing and a trailing asterisk or full stop; nothing looser.
+  const signed = new Set(signatures.map((n) => entryKey(n)).filter(Boolean));
   const out: { line: string; reason: string }[] = [];
   for (const l of lines) {
+    if (signed.has(entryKey(l.trim().replace(/[*.]+$/, "")))) continue;
     const reason = unparsedReason(l);
     if (reason !== null) out.push({ line: l, reason });
   }
@@ -674,12 +973,31 @@ export function unparsedLinesToAsk(placed: boolean, lines: string[]): { line: st
 // queue is a staging table so nothing was broken, but 1,951 rows is not
 // reviewable, and the run had no idea it had gone wrong.
 //
-// This has the same shape as the roster count gate on a send: it STOPS the
-// run and prints, it never trims to the limit and it never writes a subset.
-// A sweep over the ceiling is reading the wrong mail; picks written from that
-// same run would be picks chosen out of the wrong mail too.
+// SPLIT BY CLASS on 2026-09-15, on his instruction, with 43 people holding
+// the Week 2 email: "raise it for pick rows only and keep it low for unparsed
+// noise". One count of every row stopped the whole run when it tripped, clean
+// picks included, and a newsletter flood on a Wednesday would have held 43
+// people's picks.
+//
+//   NOISE  - kind identity: a sender with no live entry. Limit 25. Over it,
+//            the noise rows are left unstaged and unfiled and reported by
+//            sender, and the rest of the run STILL GOES THROUGH.
+//   ROSTER - kinds pick and player_question: rows from placed senders. Limit
+//            121, the roster size - more than one row per live entry in one
+//            run is a reader defect, not a batch. Over it, the whole run stops
+//            exactly as before: nothing written, nothing staged, nothing filed.
+//
+// Neither ever trims to the limit and neither writes a subset of its own
+// class. Raising either is never the fix.
 
-export interface StagingCeiling {
+export type RowClass = "noise" | "roster";
+
+/** Which ceiling a queue row counts against. */
+export function rowClassOf(kind: "identity" | "player_question" | "pick"): RowClass {
+  return kind === "identity" ? "noise" : "roster";
+}
+
+export interface CeilingCount {
   ok: boolean;
   staged: number;
   limit: number;
@@ -687,8 +1005,16 @@ export interface StagingCeiling {
   bySender: { sender: string; rows: number }[];
 }
 
-export function stagingCeiling(senders: (string | null)[], limit: number): StagingCeiling {
-  if (!Number.isInteger(limit) || limit < 1) throw new Error("stagingCeiling: limit must be a positive integer");
+export interface StagingCeiling {
+  /** Neither class is over its limit. */
+  ok: boolean;
+  /** The class whose trip decides the run: roster stops it, noise trims strangers, null is clear. */
+  tripped: RowClass | null;
+  noise: CeilingCount;
+  roster: CeilingCount;
+}
+
+function countClass(senders: (string | null)[], limit: number): CeilingCount {
   const counts = new Map<string, number>();
   for (const s of senders) {
     const key = (s ?? "").trim().toLowerCase() || "(no sender)";
@@ -698,4 +1024,22 @@ export function stagingCeiling(senders: (string | null)[], limit: number): Stagi
     .map(([sender, rows]) => ({ sender, rows }))
     .sort((a, b) => b.rows - a.rows || a.sender.localeCompare(b.sender));
   return { ok: senders.length <= limit, staged: senders.length, limit, bySender };
+}
+
+export function stagingCeiling(
+  rows: { sender: string | null; klass: RowClass }[],
+  limits: { noise: number; roster: number },
+): StagingCeiling {
+  for (const [name, limit] of Object.entries(limits)) {
+    if (!Number.isInteger(limit) || limit < 1) throw new Error(`stagingCeiling: the ${name} limit must be a positive integer`);
+  }
+  const noise = countClass(rows.filter((r) => r.klass === "noise").map((r) => r.sender), limits.noise);
+  const roster = countClass(rows.filter((r) => r.klass === "roster").map((r) => r.sender), limits.roster);
+  const tripped: RowClass | null = !roster.ok ? "roster" : !noise.ok ? "noise" : null;
+  return { ok: tripped === null, tripped, noise, roster };
+}
+
+/** The terminal lines naming who a tripped class came from. Never a push line. */
+export function ceilingSenderLines(c: CeilingCount): string[] {
+  return c.bySender.map((s) => `  ${String(s.rows).padStart(5)}  ${s.sender}`);
 }

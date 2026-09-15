@@ -57,18 +57,68 @@ gate in section 4c and is left unset unless you mean it.
 
 ## 2. Picks
 
-2a. From Gmail. Every unread message from any confirmed owner's email or
-any player email on their live entries, whatever its subject and whatever
-label it carries. Your own mailbox is never on that list (the free entries
-sit under your owner row), so your self-sent copies and DECISION notes are
-not read as picks; picks for the AAA entries go in by paste (2b). An
-entry the standings mark eliminated is off the intake roster, as it is off
-the pick-email screen: the command names it at the start, and a reply for
-it is staged, never written:
+2a. From Gmail. Every message from any confirmed owner's email or any
+player email on their live entries, whatever its subject, whatever label it
+carries and WHETHER OR NOT YOU HAVE READ IT (set 2026-09-15: a message you
+read on your phone before the sweep ran was never swept while it keyed on
+unread). Processed means the message carries the Pool-Survivor-Done label or
+its Gmail id is already on file (a pending_actions row, or the
+pick_from_message audit row written beside every pick the sweep records);
+the label is resolved or created before anything is read, and a run that
+cannot have it stops with nothing read. Your own mailbox is never on that
+list (the free entries sit under your owner row), so your self-sent copies
+and DECISION notes are not read as picks; picks for the AAA entries go in by
+paste (2b) or by self-email (`npm run picks:self`). An entry the standings
+mark eliminated is off the intake roster, as it is off the pick-email
+screen: the command names it at the start, and a reply for it is staged,
+never written:
 
 ```
 npm run picks
 ```
+
+A third read looks for bounces: delivery failures from mailer-daemon or
+postmaster in the window, each in full. The failed recipient is read out
+of the notice (Gmail's "wasn't delivered to X", the older "Delivery to the
+following recipient failed", or the DSN's "Final-Recipient: rfc822; X").
+If it is a roster address you get ONE identity row on /admin/queue naming
+the person's entries and a NEEDS ANTHONY line on the terminal; a bounce for
+an address on no roster row is filed and not staged.
+
+To re-read particular messages whatever their labels or read state - the
+ones staged before the parser understood their shape, for instance:
+
+```
+npm run picks -- --message-id <gmail id> --message-id <gmail id> --dry-run
+npm run picks -- --message-id <gmail id> --message-id <gmail id> --yes
+```
+
+The on-file check is skipped for the named id; every pick-level check still
+runs (the same team already current is a no-op, a different team after a
+current pick goes through the override rules, a repeated team stages). A
+message from your own mailbox is refused here; that is `picks:self`.
+
+THE FIRST RUN AFTER THIS DEPLOYS IS BY HAND, AS A DRY RUN, BEFORE THE NEXT
+OPS TICK. Read state was the marker until 2026-09-15, and the label was only
+ever put on messages the sweep itself processed, so every roster message of
+the last fortnight that you handled by hand (Week 1 replies of 1 to 11
+September, anything read on the phone since) is unlabelled, not on file,
+and will be read by the first run that no longer asks for unread:
+
+```
+npm run picks -- --dry-run
+```
+
+Read the table. A message naming the team an entry already holds is a
+no-op and is filed; a message naming a different team for a scored week is
+staged as a question (the "already scored" reason) and is not written; a
+message naming no week is recorded in the week that was OPEN WHEN IT
+ARRIVED, never the week open now, so a 10 September reply cannot become a
+Week 2 pick. If the table reads right, run it for real (`npm run picks`,
+then y); if a row surprises you, stop and read that message by id before
+anything is written. The Ops Tick runs the same command hourly and will do
+this on its own if you do not; the point of the hand run is that a person
+reads the backlog once.
 
 2b. From a text or a phone call. Paste the lines, one pick per line, in any
 of the shapes players use ("Maria & Mary #3 - Eagles", "Mary/Maria 3:
@@ -121,9 +171,53 @@ Unresolved lines become pending_actions rows (kind identity when there is no
 sender or the sender matches nobody on the roster, player_question when a
 known person sent it and the line itself is the problem) carrying the Gmail
 message id, for /admin/queue. Mail read from Gmail is always recorded with
-source email; `--source` applies to pasted or filed text only. Processed messages are marked read and filed under
-Pool-Survivor-Done; `--keep-unread` leaves them. `--dry-run` shows the table
-and stops.
+source email; `--source` applies to pasted or filed text only. Processed
+messages are filed under Pool-Survivor-Done and marked read; `--keep-unfiled`
+leaves them (the old `--keep-unread` still works for one release and prints
+the new name). `--dry-run` shows the table and stops.
+
+2c-i. The ceiling, plainly (set 2026-09-15). Before anything is written or
+filed the run counts what it would stage, in two classes. NOISE is every
+identity row - a sender with no live entry: a stranger on the subject rule,
+a declined owner, a bounce - and its limit is 25; over it those rows are
+left unstaged and unfiled, the terminal names the senders, and the roster's
+rows and picks in the same run still go through. ROSTER is every pick and
+player_question row from a placed sender and its limit is 121, the roster
+size; over it the whole run stops - nothing written, nothing staged,
+nothing filed, NEEDS ANTHONY - because more than one row per live entry in
+one run is a reader defect. Neither limit is ever raised to make a run pass.
+
+2c-ii. Shapes the parser reads since 2026-09-15, from the real lines:
+`Waggs3-Tampa` (a bare hyphen, the words of the entry run together);
+`Waggs1- SF 49ers` (the code beside the nickname); `Mass1 - Ravens Mass2
+Niners` (two picks on one line, the entry the tail of the sender's own
+entry name); `1042 -> 49ers*` (her NO., exact, an arrow, a trailing
+asterisk); `I'll do the niners` from a sender with ONE live entry (that
+entry). `Chargers & 49ers` from a sender with two entries is one question
+naming both lists - never assigned by order. A line with a hedge word ("I
+don't think I'm taking buffalo or Detroit", and since the same day's review
+"I think", "I guess", "wait", "actually", "I mean", "changing", "leaning")
+is never a pick. Sign-offs and the sender's own name as a line are noise,
+not questions.
+
+Three rules from the review of that change, the same day, each because the
+first version WROTE a pick it should have staged:
+
+- A line naming a second team the parser cannot pair with an entry is
+  staged WHOLE. `Waggs3 - Tampa, actually make it Eagles`, `Mass1 - Ravens,
+  Niners`, `Waggs1 - Eagles. Actually Cowboys` each wrote the first team and
+  staged only the remainder - a retracted pick reached the database while
+  the correction sat on the queue. Now the first pick stands only when the
+  remainder has no team in it at all (`Mass1 - Ravens please`), and the
+  staged reason names the teams it saw ("names 2 teams (TB, PHI) on one
+  line and no single pick can be read from it").
+- A line is one statement in the CLI too: `Mass1 - Ravens Mass9 Niners`
+  parses as two picks and the roster places one; nothing on that line is
+  written, both are staged, and the reason names both teams.
+- "Go Eagles" from a sender with one live entry was written as that entry's
+  pick, because "go" is a filler word. The words in front of a team count as
+  "no entry named" only when one of them is first-person ("I'll go with the
+  Eagles"); a cheer is staged as the question it always was.
 
 2d. Name shorthand that cannot be derived from an entry name lives in
 `scripts/picks/aliases.ts`. Add a line there when a new one turns up. Stored
@@ -536,10 +630,15 @@ for a daily run, and its absence is reported rather than swallowed: without it
 the sheet watch cannot see whether a newer sheet of hers is waiting, and
 silence would read as "nothing is waiting".
 
-10a. `sweep` is `npm run picks -- --yes`: every unread message from a known
-player address whatever its subject or label, plus unread mail from anyone
-else whose subject carries a word in `sweepSubjectTerms` (`survivor`,
-`picks`), which is staged for you as an identity question and never written.
+10a. `sweep` is `npm run picks -- --yes`: every message from a known player
+address whatever its subject, label or read state that is not yet filed
+under Pool-Survivor-Done or on file by id, plus mail from anyone else whose
+subject carries a phrase in `sweepSubjectTerms`, which is staged for you as
+an identity question and never written, plus delivery failures from a
+mailer, matched to the roster by the failed address (section 2a). The
+subject search excludes the admin mailbox and Lynne in the query itself, and
+every Gmail read and file call waits out a per-minute quota error (1, 2, 4,
+8, 16, 32 seconds, six tries) rather than ending the run.
 
 10b. `pick-reminder` and `chase` are the only jobs the config may mark as
 sending, and the loader refuses a config that says otherwise or hands
