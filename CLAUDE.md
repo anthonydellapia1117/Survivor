@@ -528,16 +528,25 @@ her sheet.**
   ("correct as they stand"). The guard is
   `tests/unit/dashboard-scope-rule.test.ts`: our group and the pool disagree
   on every figure a panel can print (7 entries of ours against 10 rows of
-  hers, on teams her rows never name, with the play week unpublished on her
-  sheet), the page is rendered on Everyone with the Recent activity card and
-  the toggle's own button cut out, and none of our figures may remain - in a
-  number, a caption, a title attribute, an aria-label or an empty-state
-  sentence - while all of them must appear under `?scope=ours`. Broken six
-  ways before it was trusted, each confirmed to FAIL: the view reading ours
+  hers, on teams her rows never name), the page is rendered on Everyone with
+  the Recent activity card and the toggle's own button cut out, and none of
+  our figures may remain - in a number, a caption, a title attribute, an
+  aria-label or an empty-state sentence - while all of them must appear under
+  `?scope=ours`. **Her play week is rendered in all three states it can be
+  in**: unpublished on her sheet, carried but held entirely by the reveal
+  gate, and published with every cell revealed. The third was added on
+  review the same day, because the first two never reach the picks card's
+  PUBLISHED branch under Everyone - the "Most picked" headline, the bars, the
+  legend and the "Most picked each week" line - and two mutations of that
+  branch (`chalkByWeek(weeks, ours.cells)`, a headline total of
+  `ours.entries.length`) passed the guard as first written. Broken nine ways
+  before it was trusted, each confirmed to FAIL: the view reading ours
   whatever the scope, the picks card falling through to our rows (main's
   behaviour), a scope label on Recent activity, one panel (teams running out)
-  reading ours, the feed emptied under Everyone, and a missed week printed as
-  its value.
+  reading ours, the feed emptied under Everyone, a missed week printed as
+  its value, and in the published state the chalk line from our cells, the
+  headline total from our entry count, and our revealed rows taking
+  precedence over her published ones.
 - **The whole pool is called "Everyone", on every surface.** One scope, one
   word: the toggle on `/grid`, the toggle on `/teams` and the dashboard's
   distribution caption all use it. **The removed page's name is in no live

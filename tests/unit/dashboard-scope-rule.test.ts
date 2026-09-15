@@ -27,7 +27,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 // Her sheet carries Week 1 only while the play week is 2, so the picks card's
 // stand-in is exercised: it must say the week is unpublished and show nothing
 // of ours. A second setting locks every Week 2 cell of hers instead, which is
-// a held week, not an unpublished one.
+// a held week, not an unpublished one. A THIRD publishes her Week 2 with every
+// cell revealed, because the first two never render the card's PUBLISHED
+// branch under Everyone - the "Most picked" headline, the bars, the legend and
+// the "Most picked each week" line - and a panel in that branch reading ours
+// went uncaught (found on review, 2026-09-15: `chalkByWeek(weeks, ours.cells)`
+// and a headline total of `ours.entries.length` both passed the first two).
 //
 // Every date is in the past so the render never depends on today: both
 // deadlines have passed (play week 2), every game has kicked off (every cell
@@ -36,6 +41,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 const fx = vi.hoisted(() => ({
   /** Her Week 2 cells present but every one held by the reveal gate. */
   week2Locked: false,
+  /** Her Week 2 published and every cell revealed: five NY Jets (won), three
+   *  Detroit (lost), nothing on the two rows she struck OUT. */
+  week2Published: false,
 }));
 
 const SKIP = "SKIP_WEEK";
@@ -117,9 +125,15 @@ vi.mock("../../src/lib/data", () => ({
       { id: "g3", week: 1, kickoffAt: "2026-09-05T20:25:00Z", dayOfWeek: "Sunday", awayTeam: "LV", homeTeam: "SEA", homeScore: 20, awayScore: 10, status: "final", revealOverride: null, network: "CBS" },
       { id: "g4", week: 2, kickoffAt: "2026-09-09T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "MIA", homeTeam: "NYJ", homeScore: 20, awayScore: 10, status: "final", revealOverride: null, network: "CBS" },
       { id: "g5", week: 2, kickoffAt: "2026-09-09T20:25:00Z", dayOfWeek: "Sunday", awayTeam: "TB", homeTeam: "ATL", homeScore: null, awayScore: null, status: "in_progress", revealOverride: null, network: "FOX" },
+      // A Week 2 final none of ours is on, so her published Week 2 has a
+      // loser of its own and her carnage is hers, not a copy of our Miami.
+      { id: "g6", week: 2, kickoffAt: "2026-09-09T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "DET", homeTeam: "GB", homeScore: 27, awayScore: 13, status: "final", revealOverride: null, network: "FOX" },
     ],
     // Ten of hers, Week 1 only: five Philadelphia (won), two Dallas (lost),
     // one NO PICK (a loss), two OUT. So 5 / 3 / 2, 8 alive, nothing in 7s.
+    // Published, her Week 2 puts the five clean rows on NY Jets (won, 5 of 8,
+    // 63%) and the three damaged ones on Detroit (lost, 38%, all three out):
+    // 5 / 0 / 5, 5 alive, still nothing in 7s and no team of ours.
     getMasterList: async () => ({
       loadedAt: "2026-09-08T21:53:00Z",
       rows: [
@@ -128,7 +142,13 @@ vi.mock("../../src/lib/data", () => ({
         { no: 8, names: "Row 8", cells: { "Week 1": "NO PICK" }, entryId: null },
         { no: 9, names: "Row 9", cells: { "Week 1": "OUT" }, entryId: null },
         { no: 10, names: "Row 10", cells: { "Week 1": "OUT" }, entryId: null },
-      ].map((r) => (fx.week2Locked ? { ...r, cells: { ...r.cells, "Week 2": "LOCKED" } } : r)),
+      ]
+        .map((r) => (fx.week2Locked ? { ...r, cells: { ...r.cells, "Week 2": "LOCKED" } } : r))
+        .map((r) =>
+          fx.week2Published && r.no <= 8
+            ? { ...r, cells: { ...r.cells, "Week 2": r.no <= 5 ? "NY Jets" : "Detroit" } }
+            : r,
+        ),
     }),
   }),
 }));
@@ -187,6 +207,8 @@ const OURS_ONLY: (string | RegExp)[] = [
   /\bTB\b/,
   "Tampa Bay Buccaneers",
   />4<\/span> of <span[^>]*>7</,
+  // The headline's total on its own: 7 is our entry count and hers is never 7.
+  / of <span[^>]*>7<\/span>/,
   "57%",
   "43%",
   "chalk fell",
@@ -212,6 +234,14 @@ function expectNone(out: string, figures: (string | RegExp)[]): void {
   const leaked = figures.filter((f) => (typeof f === "string" ? out.includes(f) : f.test(out))).map(String);
   expect(leaked, "our-only figures reached the Everyone page").toEqual([]);
 }
+
+// Two strings in OURS_ONLY are the panel's POSITION, not a figure of ours:
+// with her Week 2 unpublished her carnage stands on Week 1 and her chalk line
+// does not render, so they are our-only THERE. Once her Week 2 is published
+// and scored both scopes stand on Week 2 and both have a chalk line, so the
+// published test sets these two aside and checks what the two panels carry.
+const SHARED_WHEN_PUBLISHED: (string | RegExp)[] = ["Carnage, Week 2", "Most picked each week"];
+const OURS_ONLY_WHEN_PUBLISHED = OURS_ONLY.filter((f) => !SHARED_WHEN_PUBLISHED.includes(f));
 
 function expectAll(out: string, figures: (string | RegExp)[]): void {
   for (const f of figures) {
@@ -252,6 +282,41 @@ describe("The dashboard scope rule: every viewer panel is the whole pool unless 
       expect(panels).toMatch(/Week 2 picks<span[^>]*>Everyone<\/span>/);
     } finally {
       fx.week2Locked = false;
+    }
+  });
+
+  it("renders her published week under Everyone - headline, bars, legend and chalk line all hers - and still nothing of ours", async () => {
+    fx.week2Published = true;
+    try {
+      const out = await render();
+      expect(out).toMatch(/aria-current="true"[^>]*>Everyone/);
+      const panels = viewerPanels(out);
+      expect(OURS_ONLY_WHEN_PUBLISHED.length).toBe(OURS_ONLY.length - SHARED_WHEN_PUBLISHED.length);
+      expectNone(panels, OURS_ONLY_WHEN_PUBLISHED);
+      // The headline: her top team and HER total, 5 of 8, never 4 of 7 and
+      // never "of 7" at all.
+      expect(panels).toMatch(/Week 2 picks<span[^>]*>Everyone<\/span>/);
+      expect(panels).toMatch(
+        /Most picked: <span[^>]*>New York Jets<\/span>, <span[^>]*>5<\/span> of <span[^>]*>8<\/span> - <span[^>]*>chalk held<\/span>/,
+      );
+      expect(panels).toContain("63%");
+      expect(panels).toContain("38%");
+      expect(panels).toContain("Detroit Lions");
+      expect(panels).toContain("Every entry in the master pool, from the published sheet");
+      // The chalk line names only her teams, week by week.
+      const chalkLine = panels.match(/Most picked each week:.*?<\/p>/);
+      expect(chalkLine, "no chalk line on the published Everyone page").not.toBeNull();
+      const teams = [...chalkLine![0].matchAll(/W(\d) ([A-Z]{2,3}) <span/g)].map((m) => `W${m[1]} ${m[2]}`);
+      expect(teams).toEqual(["W1 PHI", "W2 NYJ"]);
+      // Her carnage on the same week: three Detroit rows finished, none of ours.
+      expect(panels).toContain("Carnage, Week 2");
+      expect(panels).toContain("(38% of 8)");
+      expect(panels).toContain("Detroit Lions: 3 lost a life, 3 out");
+      expect(panels).toContain("After Week 2: 5 of 10 alive (50%), 5 without a loss (50%), 5 out.");
+      expect(panels).toContain("Share of the 5 alive entries");
+      expect(panels).not.toContain("not published yet");
+    } finally {
+      fx.week2Published = false;
     }
   });
 
