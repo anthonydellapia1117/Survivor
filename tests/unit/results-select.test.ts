@@ -91,7 +91,7 @@ describe("selectFootballMessage", () => {
   });
 });
 
-import { duplicateImport } from "../../scripts/results/lib/select";
+import { backfillImport, duplicateImport } from "../../scripts/results/lib/select";
 
 describe("duplicateImport", () => {
   const prior = (week: number | null) => ({ id: "imp-1", week, imported_at: "2026-09-16T14:00:00Z" });
@@ -105,7 +105,19 @@ describe("duplicateImport", () => {
     expect(d.kind === "same_week" && d.line).toBe(
       "Already imported 2026-09-16T14:00:00Z as import imp-1 (week 2): seen before, nothing to do.",
     );
+    // The import id rides along: it is what --backfill applies onto.
+    expect(d.kind === "same_week" && d.importId).toBe("imp-1");
     expect(duplicateImport(null, 2)).toEqual({ kind: "none" });
+  });
+
+  it("backfillImport takes the same-week import and refuses a fresh sha256 or another week's by name", () => {
+    expect(backfillImport(duplicateImport(prior(2), 2), 2, "Football 2026-9.xlsx")).toBe("imp-1");
+    // Not yet imported: the ordinary path records the import and applies together.
+    expect(() => backfillImport(duplicateImport(null, 2), 2, "Football 2026-9.xlsx")).toThrow(
+      /Football 2026-9.xlsx has not been imported: run the ordinary path \(without --backfill\)/,
+    );
+    // Another week's sheet is that week's, not this one's.
+    expect(() => backfillImport(duplicateImport(prior(1), 2), 2, "Football 2026-9.xlsx")).toThrow(/not week 2/);
   });
 
   it("is NOT a no-op when the prior import was another week, or no week at all", () => {

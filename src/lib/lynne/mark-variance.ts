@@ -173,7 +173,8 @@ export function compareMarksToScores(
   return out;
 }
 
-const MARK_WORD: Record<HerMark, string> = {
+/** Her bucket in her words; mark-results.ts reads the same vocabulary for the conflicts it records. */
+export const MARK_WORD: Record<HerMark, string> = {
   clean: "no losses",
   loss: "1 loss/bye",
   out: "OUT",

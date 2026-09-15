@@ -4,6 +4,7 @@
 // anything; a null side prints as "-" and stays null in the import.
 
 import type { Variance } from "@/lib/lynne/compare";
+import type { MarkResultsPlan } from "@/lib/lynne/mark-results";
 import type { HerWeekCounts } from "@/lib/lynne/parse-grid";
 import type { ConflictSummary, NumberSuggestion, ResultsPlan } from "./plan";
 
@@ -71,14 +72,14 @@ export function matchedByText(b: Record<string, number>): string {
 export function planSummaryLines(plan: ResultsPlan): string[] {
   if (plan.format === "grid") {
     const lines = [
-      "Path: grid (her NO./NAMES sheet). Results are NOT applied on this path; the scores engine owns them.",
+      "Path: grid (her NO./NAMES sheet). The week's results are DERIVED from her fill marks and the stored prior record, and applied where the derivation is certain.",
       `Weeks in file: ${plan.weeksInFile.join(", ")}; latest filled week: ${plan.latestFilledWeek ?? "-"}`,
       `Matched ${plan.matchedCount} (${matchedByText(plan.matchedBy)}); conflicts ${plan.conflicts.length}; missing ${plan.missingCount} (${plan.confirmedRemovals} confirmed removals, ${plan.absentButAlive} absent but alive); other pool ${plan.otherPoolCount}`,
       `Agreements: team ${plan.teamAgreements}, status ${plan.statusAgreements}; quiet rows ${plan.quietRows}`,
       `Variances ${plan.variances.length}; applies ${plan.applies.length}; rows stored ${plan.rows.length} of ${plan.rowCount} on her sheet`,
     ];
     if (plan.noFillInfo) {
-      lines.push("Note: this file carries no fill colours; OUT is read from cell text only.");
+      lines.push("Note: this file carries no fill colours; OUT is read from cell text only, and NO result is derived from it.");
     }
     return lines;
   }
@@ -88,4 +89,56 @@ export function planSummaryLines(plan: ResultsPlan): string[] {
     `Already applied ${plan.alreadyApplied}; no result yet ${plan.noResultYet}`,
     `Variances ${plan.variances.length}; applies ${plan.applies.length}`,
   ];
+}
+
+/** "LAC 39, DAL 3, TEN 2" - most first, then by code; "none" when no loss was derived. */
+export function lossesByTeamText(lossesByTeam: Record<string, number>): string {
+  const parts = Object.entries(lossesByTeam)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([team, n]) => `${team} ${n}`);
+  return parts.length ? parts.join(", ") : "none";
+}
+
+/**
+ * The derivation in one line, every count on it: what will be written by
+ * result and by losing team, what is already on file, and every row set
+ * aside by the name of its reason. A null plan is a sheet with no fill
+ * information, where nothing is derived and the line says why.
+ */
+export function derivedSummaryLine(week: number, d: MarkResultsPlan | null): string {
+  if (d === null) {
+    return `Her marks give no Week ${week} results: this sheet carries no fill information, so a clean fill cannot be told from a stripped one. Nothing derived, nothing applied.`;
+  }
+  const tail = [
+    `${d.alreadyApplied} already on file`,
+    `${d.conflicts.length} conflicts`,
+    `${d.unknown} unknown fill`,
+    `${d.undecidable} undecidable`,
+    d.priorUnscored > 0 ? `${d.priorUnscored} with a prior week still pending` : null,
+    d.noCurrentPick > 0 ? `${d.noCurrentPick} with no current pick` : null,
+    d.cellDiffers > 0 ? `${d.cellDiffers} where her cell is not our pick` : null,
+  ].filter((x): x is string => x !== null);
+  return `Her marks give Week ${week} results: ${d.byResult.win} won, ${d.byResult.loss} lost (${lossesByTeamText(d.lossesByTeam)}), ${d.byResult.bye} byes, ${d.byResult.missed} missed; ${tail.join("; ")}`;
+}
+
+/** Which write a run's conflicts ride on: the import row, or the backfill's summary audit row. */
+export type ConflictRecord = "import" | "backfill";
+
+/**
+ * The derivation's conflicts as printed: a title and one line each with both
+ * values; nothing when there are none. The title says where the values are
+ * kept, and that differs by path: the ordinary import carries them in
+ * lynne_imports.variances, the backfill writes no import row and carries
+ * them on its lynne_results_backfill audit row - which exists only when the
+ * run wrote a result, so on a run that writes nothing they are printed and
+ * nowhere else. The first version said "recorded with the import" on both
+ * paths (verifier, 2026-09-15).
+ */
+export function derivedConflictLines(d: MarkResultsPlan | null, recordedOn: ConflictRecord): string[] {
+  if (d === null || d.conflicts.length === 0) return [];
+  const where =
+    recordedOn === "import"
+      ? "both values recorded with the import"
+      : "both values carried on the backfill's summary audit row when this run writes one, otherwise only printed here";
+  return [`Derivation conflicts (${d.conflicts.length}), NOT applied, ${where}:`, ...d.conflicts.map((v) => `- ${varianceLine(v)}`)];
 }

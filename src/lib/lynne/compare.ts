@@ -22,7 +22,12 @@ export interface Variance {
     | "absent_but_alive"
     // Her fill mark (clean, 1 loss/bye, OUT) against the standing our
     // scores derive (src/lib/lynne/mark-variance.ts).
-    | "mark_conflict";
+    | "mark_conflict"
+    // Her fill mark against the STORED prior record: no candidate result for
+    // the week reads as her mark (src/lib/lynne/mark-results.ts). Its own
+    // type, so a row the score comparison also reports is never one type
+    // counted twice.
+    | "derived_conflict";
   entryId: string;
   entryName: string;
   lynne: { team: string | null; result: string | null };

@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Variance } from "@/lib/lynne/compare";
+import type { MarkResultsPlan } from "@/lib/lynne/mark-results";
 import {
   conflictLine,
+  derivedConflictLines,
+  derivedSummaryLine,
   herCountsLine,
+  lossesByTeamText,
   matchedByText,
   numberSuggestionLine,
   planSummaryLines,
@@ -24,6 +28,8 @@ const VARIANCES: Variance[] = [
   { type: "missing_on_sheet", entryId: "e5", entryName: "TNat", lynne: { team: null, result: null }, local: { team: "SEA", result: "pending" } },
   { type: "unreadable_team", entryId: "e6", entryName: "E.A.T.", lynne: { team: "Philly??", result: null }, local: { team: "PHI", result: null } },
   { type: "absent_but_alive", entryId: "e7", entryName: "Still Here", lynne: { team: null, result: "not in her sheet" }, local: { team: "NE", result: "active" } },
+  { type: "mark_conflict", entryId: "e8", entryName: "Rydo 2", lynne: { team: null, result: "no losses" }, local: { team: "W1 TEN", result: "loss" } },
+  { type: "derived_conflict", entryId: "e9", entryName: "Waggs 3", lynne: { team: "Baltimore", result: "OUT" }, local: { team: "BAL", result: "0 losses and no bye before week 2; win reads no losses, loss reads 1 loss/bye" } },
 ];
 
 describe("side", () => {
@@ -123,9 +129,23 @@ describe("matchedByText", () => {
   });
 });
 
+const DERIVED: MarkResultsPlan = {
+  applies: [{ entry_id: "e1", result: "win" }],
+  byResult: { win: 75, loss: 46, bye: 0, missed: 0 },
+  lossesByTeam: { DAL: 3, LAC: 39, TEN: 2, GB: 1, TB: 1 },
+  alreadyApplied: 0,
+  conflicts: [VARIANCES[2]],
+  unknown: 0,
+  undecidable: 0,
+  priorUnscored: 0,
+  noCurrentPick: 0,
+  cellDiffers: 0,
+};
+
 const GRID_PLAN: GridResultsPlan = {
   format: "grid",
   marks: [],
+  derived: null,
   sha256: "abc",
   rows: [],
   rowCount: 1204,
@@ -167,7 +187,7 @@ describe("planSummaryLines", () => {
   it("names the path and says whether results are applied on it", () => {
     const grid = planSummaryLines(GRID_PLAN);
     expect(grid[0]).toContain("grid");
-    expect(grid[0]).toContain("NOT applied");
+    expect(grid[0]).toContain("DERIVED from her fill marks");
     expect(grid.join("\n")).toContain("1 confirmed removals, 1 absent but alive");
     expect(grid.join("\n")).toContain("other pool 1200");
     expect(grid.join("\n")).toContain("no fill colours");
@@ -176,6 +196,57 @@ describe("planSummaryLines", () => {
     expect(legacy[0]).toContain("IS applied");
     expect(legacy.join("\n")).toContain("Already applied 1; no result yet 1");
     expect(legacy.join("\n")).toContain("applies 1");
+  });
+});
+
+describe("derivedSummaryLine", () => {
+  it("carries every count: by result, the losing teams most first, and every row set aside by reason", () => {
+    expect(derivedSummaryLine(1, DERIVED)).toBe(
+      "Her marks give Week 1 results: 75 won, 46 lost (LAC 39, DAL 3, TEN 2, GB 1, TB 1), 0 byes, 0 missed; 0 already on file; 1 conflicts; 0 unknown fill; 0 undecidable",
+    );
+    const setAside = derivedSummaryLine(2, { ...DERIVED, priorUnscored: 2, noCurrentPick: 1, cellDiffers: 3 });
+    expect(setAside).toContain("2 with a prior week still pending");
+    expect(setAside).toContain("1 with no current pick");
+    expect(setAside).toContain("3 where her cell is not our pick");
+  });
+
+  it("says that nothing is derived from a sheet with no fill information, and why", () => {
+    const line = derivedSummaryLine(1, null);
+    expect(line).toContain("no Week 1 results");
+    expect(line).toContain("no fill information");
+    expect(line).toContain("Nothing derived, nothing applied");
+  });
+
+  it("orders the losing teams most first and says none when there are none", () => {
+    expect(lossesByTeamText({ DAL: 3, LAC: 39, GB: 1, TB: 1 })).toBe("LAC 39, DAL 3, GB 1, TB 1");
+    expect(lossesByTeamText({})).toBe("none");
+  });
+});
+
+describe("derivedConflictLines", () => {
+  it("is nothing when there is no conflict, else a title and one line per conflict with both values", () => {
+    expect(derivedConflictLines(null, "import")).toEqual([]);
+    expect(derivedConflictLines({ ...DERIVED, conflicts: [] }, "import")).toEqual([]);
+    const lines = derivedConflictLines(DERIVED, "import");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain("NOT applied");
+    expect(lines[1]).toContain("Nicco E");
+    expect(lines[1]).toContain("DAL / loss");
+    expect(lines[1]).toContain("DAL / win");
+  });
+
+  it("says where the values are kept, and that differs by path: the import row, or the backfill's summary row when one is written", () => {
+    // The ordinary run stores them in lynne_imports.variances; the backfill
+    // writes no import row and its summary audit row exists only when a
+    // result was written. One header for both claimed a record the backfill
+    // does not make (verifier, 2026-09-15).
+    const onImport = derivedConflictLines(DERIVED, "import")[0];
+    const onBackfill = derivedConflictLines(DERIVED, "backfill")[0];
+    expect(onImport).toContain("recorded with the import");
+    expect(onBackfill).not.toContain("recorded with the import");
+    expect(onBackfill).toContain("summary audit row when this run writes one");
+    expect(onBackfill).toContain("otherwise only printed here");
+    expect(derivedConflictLines(DERIVED, "backfill").slice(1)).toEqual(derivedConflictLines(DERIVED, "import").slice(1));
   });
 });
 
@@ -190,6 +261,10 @@ describe("every printed line", () => {
       herCountsLine(3, null),
       ...planSummaryLines(GRID_PLAN),
       ...planSummaryLines(LEGACY_PLAN),
+      derivedSummaryLine(1, DERIVED),
+      derivedSummaryLine(1, null),
+      ...derivedConflictLines(DERIVED, "import"),
+      ...derivedConflictLines(DERIVED, "backfill"),
     ];
     expect(all.length).toBeGreaterThan(15);
     for (const line of all) expect(line).not.toMatch(DASHES);

@@ -36,8 +36,8 @@ export function selectFootballMessage(messages: MessageMeta[]): FootballSelectio
 /** The refusal for a file already imported, null when it is new. The sha256 is the identity. */
 export type DuplicateImport =
   | { kind: "none" }
-  /** Her sheet for THIS week is already on file: the schedule looking twice, nothing to do. */
-  | { kind: "same_week"; line: string }
+  /** Her sheet for THIS week is already on file: the schedule looking twice, nothing to do - or, with --backfill, the import to apply the derived results onto. */
+  | { kind: "same_week"; line: string; importId: string }
   /** The newest file is already imported AGAINST ANOTHER WEEK: her sheet for this week has not arrived. */
   | { kind: "other_week"; line: string };
 
@@ -62,7 +62,7 @@ export function duplicateImport(
 ): DuplicateImport {
   if (!prior) return { kind: "none" };
   const where = `${prior.imported_at} as import ${prior.id} (week ${prior.week ?? "unknown"})`;
-  if (prior.week === week) return { kind: "same_week", line: `Already imported ${where}: seen before, nothing to do.` };
+  if (prior.week === week) return { kind: "same_week", line: `Already imported ${where}: seen before, nothing to do.`, importId: prior.id };
   return {
     kind: "other_week",
     line: `Already imported ${where}, not week ${week}: her week ${week} sheet has not arrived, so the newest file is an older week's. Nothing imported for week ${week}.`,
@@ -93,4 +93,19 @@ export function refuseWeekMismatch(latestFilledWeek: number | null, week: number
 export function refuseUnverifiedLegacy(format: "grid" | "legacy", explicitMessage: boolean, week: number, filename: string): string | null {
   if (format !== "legacy" || explicitMessage) return null;
   return `${filename} is a per-week file that carries no week of its own, so it is not taken by date. Pass --message-id for the message that carries her Week ${week} file.`;
+}
+
+/**
+ * The import a --backfill run applies onto: the sheet must already be on
+ * file FOR THIS WEEK. A sha256 not yet imported is the ordinary path's job
+ * (the import row, its applies and its audit rows go in together there), and
+ * a sha256 imported against another week is that week's sheet, not this
+ * one's. Either is refused by name rather than guessed at.
+ */
+export function backfillImport(duplicate: DuplicateImport, week: number, filename: string): string {
+  if (duplicate.kind === "same_week") return duplicate.importId;
+  if (duplicate.kind === "other_week") throw new Error(duplicate.line);
+  throw new Error(
+    `--backfill applies derived results onto a sheet already imported for week ${week}, and ${filename} has not been imported: run the ordinary path (without --backfill), which records the import and applies the results together.`,
+  );
 }

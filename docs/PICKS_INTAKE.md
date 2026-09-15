@@ -218,29 +218,83 @@ NO. and entry named - and a differing row is posted as a NEEDS ANTHONY line.
 The import cannot see this on its own: a `result_conflict` needs a local
 result to already exist, and nothing writes one from a score. Neither side is
 corrected; her word is what gets written. On her NO./NAMES grid, which carries
-no per-week result, the command also reads her FILL as a standing (white or
-none clean, yellow her 1 loss/bye bucket, red or the word OUT out) and prints
-it against our standing from every current pick through the week and the
-finals - one line when all agree, one line per differing row otherwise, each
-recorded with the import as a `mark_conflict` and posted as NEEDS ANTHONY.
-After `y` it commits through
-`admin_apply_lynne_import`, the results-only importer, and prints the import
-id. You should see the variance table and `import <id>`; review it on
-/admin/import and /grid.
+no per-week result column, the command also reads her FILL as a standing
+(white or none clean, yellow her 1 loss/bye bucket, red or the word OUT out)
+and prints it against our standing from every current pick through the week
+and the finals - one line when all agree, one line per differing row
+otherwise, each recorded with the import as a `mark_conflict` and posted as
+NEEDS ANTHONY. Then, since 2026-09-15, it prints what her marks GIVE as the
+week's results - `Her marks give Week N results: X won, Y lost (LAC 39,
+...), B byes, M missed; A already on file; C conflicts; U unknown fill; D
+undecidable` - and every conflict on its own line with both values. After
+`y` it commits through `admin_apply_lynne_import`, the results-only
+importer, and prints the import id. You should see the variance table,
+the derivation line and `import <id>`; review it on /admin/import and
+/grid.
 
-5a. What is applied. Her grid carries teams and OUT status, not per-week
-results, so on that format the importer records the file, the rows and the
-variances and applies no result; scores come from /admin/scores. A legacy
+5a. What is applied. Set by Anthony on 2026-09-15: "Write her Week 1
+results to picks.result for our 121, from her Final Sheet, audited. She is
+the elimination authority and that field is where her authority lives." Her
+grid carries a STANDING per row in the fill, and the week's result is
+derived from that mark plus the stored prior record
+(`src/lib/lynne/mark-results.ts`): what the row spent before the week is
+read off the stored prior record (its losses, a burned bye, a loss past the
+boundary); the week's pick has candidates (a team win or loss, a bye, a
+missed week); each predicts a mark the way the grid's own readers bucket her
+fill (a row already out stays OUT, a loss past the boundary OUT, two losses
+OUT, one loss or a bye her 1 LOSS/BYE bucket, never the two stacked into
+OUT - her vocabulary is inferred from the bucket's name, not stated by her);
+the one candidate whose predicted mark is hers is the result. A tie is a
+loss to her. No candidate matching is a `derived_conflict` (its own type,
+apart from the `mark_conflict` the score comparison records, so one row is
+never counted twice) and two matching (a row already out) is undecidable;
+neither is applied. A stored non-pending
+result is never overwritten: the same class is "already on file", a
+different one a `result_conflict`, both values printed. A row whose cell
+names a team other than our pick, or whose prior week is still pending, is
+set aside and counted. A sheet with no fill information derives nothing -
+a clean fill cannot be told from a stripped one. Every derived result is
+applied through `admin_apply_lynne_import` with `result_source = 'lynne'`,
+one `lynne_result` audit row each, in the import's transaction. A legacy
 per-week file (entry, team, result columns) applies a result to each entry
-whose current pick agrees with hers. `--message-id <gmail id>` picks a
-specific message; `--dry-run` stops before the commit; `--yes` skips the
-prompt. The sheet's latest filled week must be the week being imported: an
+whose current pick agrees with hers, as before. `--message-id <gmail id>`
+picks a specific message; `--file <path>` reads the sheet from disk instead
+of Gmail (its sha256 is still what is checked and recorded); `--dry-run`
+stops before the commit; `--yes` skips the prompt. The sheet's latest
+filled week must be the week being imported: an
 older sheet has an empty Week N column and would record every entry as
 missing, and a newer one is the next week's file and must keep its sha256
 for that import. Either is refused by name; `--message-id` picks the right
 message. A legacy per-week file carries no week of its own, so it is never
 taken by date at all: it imports only from a message named with
 `--message-id`.
+
+5a-i. The Week 1 backfill. Her Week 1 Final Sheet (`Football 2026-9.xlsx`,
+sha256 `8b1806d4...`) was imported on the morning of 2026-09-15 with 0
+applies, before the rule above, and `admin_apply_lynne_import` refuses a
+sha256 it has seen. `--backfill` is for exactly that sheet:
+
+```
+npm run results -- --week 1 --file "Football 2026-9.xlsx" --backfill
+```
+
+With the sha256 already imported FOR THIS WEEK it runs the whole plan
+anyway (parse, marks, derivation, both comparisons, the print above), asks
+the ordinary y/N (honouring `--yes` and `--dry-run`), then applies each
+derived result through `admin_set_result` with `result_source = 'lynne'` -
+the pick and its `set_result` audit row in one transaction each, skipping
+what is already on file and every conflict - and finally writes ONE
+`lynne_results_backfill` audit row on the existing import naming the week,
+the file, the sha256 prefix, the counts by result and by team, every
+conflict with both values (`conflict_rows`), and that the import row
+predates the derivation. The summary row is written only when at least one
+result was, so a re-run that finds everything on file writes nothing - and
+a run that writes nothing leaves its conflicts on stdout only, which the
+conflict header says. A failure mid-run leaves each written
+pick audited and the re-run picks up the rest. `--backfill` on a sha256 not
+yet imported is refused: run the ordinary path. The notify line says how
+many were written and how many conflicts were left; conflicts, unknown fills
+and undecidable rows post NEEDS ANTHONY.
 
 5b. Her master sheet as a reference. Every row of the newest Football
 xlsx she sends, one row per NO., the NAMES cell verbatim (trailing spaces,
