@@ -472,8 +472,11 @@ her sheet.**
   and a 404 would strand every one of them. There is no Master List tab.
 - **Public stats default to the whole pool.** The dashboard's pick
   distribution and the Teams table read her sheet's week cells for every
-  entry when she has published them, with "Our group" as the other setting;
-  until she publishes a week, our group stands in and says so.
+  entry when she has published them, with "Our group" as the other setting.
+  Until she publishes a week the Teams table opens on our group and says so;
+  **the dashboard's picks card no longer does** (2026-09-15, the rule below)
+  - under Everyone it says the week is not published and shows nothing of
+  ours.
 - **EVERY viewer figure is the whole pool** (Anthony, 2026-09-15): the
   Dashboard, Grid, Schedule, Teams and Records count her newest sheet's rows
   (1,318 on her Week 1 Final Sheet), and **this group's own figures appear only
@@ -486,9 +489,64 @@ her sheet.**
   and hands every figure the same entries and cells - the whole pool from
   `poolAsEntries`, ours from `scoreFromGames` - so no chart can mix them. Her
   four figures are hers in either scope. What stays our-group whatever the
-  toggle: the roster CSV, and nothing else on a viewer route.
+  toggle: the roster CSV and the dashboard's Recent activity (below), and
+  nothing else on a viewer route.
   `tests/unit/dashboard-page.test.ts` and `tests/unit/viewer-scope.test.ts`
   render each page both ways.
+
+  **Restated by Anthony on 2026-09-15, the afternoon #102 merged, in his
+  words: "this is the rule not a list of fixes: every panel on the dashboard
+  shows the WHOLE POOL, 1,318, unless the toggle is set to our group."** Two
+  departures were still live on main after #102, both found by reading
+  `src/app/page.tsx` below the toggle, and both are closed:
+
+  - **The week's picks card let our group stand in.** Under Everyone, while
+    her sheet did not yet carry the play week, the card fell through to OUR
+    revealed picks - the "Most picked" headline, the bars, the legend and the
+    total, all from our cells - under a label that read "Our group" while the
+    toggle read Everyone. It now says "The master pool's Week N picks are not
+    published yet" and shows nothing of ours: no count, no share, no team.
+    The label follows the toggle whatever the state. A week her sheet carries
+    but the reveal gate still holds entirely (a sheet loaded Saturday, before
+    Sunday's kickoffs) is HIDDEN, not unpublished, and the card says that
+    instead - "not published" would assert something false about her sheet.
+    Our picks are computed only in Our group scope, so nothing of ours can
+    fall through by accident.
+  - **Recent activity was hidden under Everyone.** It is the ONE exception
+    and stays ours in both scopes: "It is our intake, it can only ever be
+    ours, and it needs no label saying so." It renders under both scopes,
+    from our entries and cells, with no scope word, caption or count on it.
+    A missed week in it reads "No pick" and a bye "Bye" - it printed the value
+    `MISSED` until this went in, the same shape as `SKIP_WEEK` reaching a
+    screen.
+
+  Everything else below the toggle was read for the same thing: the survival
+  columns, carnage, chalk and teams running out read the one `view`; the
+  health row reads her buckets or ours by scope; `lynneSentence` and the
+  alive count are built from ours and render only under Our group. **Grid,
+  Schedule and Teams were not touched by this change, on his instruction**
+  ("correct as they stand"). The guard is
+  `tests/unit/dashboard-scope-rule.test.ts`: our group and the pool disagree
+  on every figure a panel can print (7 entries of ours against 10 rows of
+  hers, on teams her rows never name), the page is rendered on Everyone with
+  the Recent activity card and the toggle's own button cut out, and none of
+  our figures may remain - in a number, a caption, a title attribute, an
+  aria-label or an empty-state sentence - while all of them must appear under
+  `?scope=ours`. **Her play week is rendered in all three states it can be
+  in**: unpublished on her sheet, carried but held entirely by the reveal
+  gate, and published with every cell revealed. The third was added on
+  review the same day, because the first two never reach the picks card's
+  PUBLISHED branch under Everyone - the "Most picked" headline, the bars, the
+  legend and the "Most picked each week" line - and two mutations of that
+  branch (`chalkByWeek(weeks, ours.cells)`, a headline total of
+  `ours.entries.length`) passed the guard as first written. Broken nine ways
+  before it was trusted, each confirmed to FAIL: the view reading ours
+  whatever the scope, the picks card falling through to our rows (main's
+  behaviour), a scope label on Recent activity, one panel (teams running out)
+  reading ours, the feed emptied under Everyone, a missed week printed as
+  its value, and in the published state the chalk line from our cells, the
+  headline total from our entry count, and our revealed rows taking
+  precedence over her published ones.
 - **The whole pool is called "Everyone", on every surface.** One scope, one
   word: the toggle on `/grid`, the toggle on `/teams` and the dashboard's
   distribution caption all use it. **The removed page's name is in no live
@@ -2296,4 +2354,5 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | His dictated picks by self-email    | `scripts/picks/lib/self-email.ts`, `scripts/picks/self.ts` |
 | The two recipient exceptions        | `src/lib/emails/recipient-exceptions.ts`     |
 | Which week /admin/picks opens on    | `src/lib/default-week.ts`                    |
+| The dashboard scope rule, guarded   | `tests/unit/dashboard-scope-rule.test.ts`, `src/app/page.tsx` |
 | Scheduled reporters                 | `docs/ROUTINES.md`                           |
