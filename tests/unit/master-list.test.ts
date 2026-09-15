@@ -5,12 +5,14 @@ import {
   filterRows,
   herCell,
   herCellIsLocked,
+  herNoPick,
   herOut,
   herTextCells,
   matchPick,
   mergeWeekColumns,
   poolAsEntries,
   poolDistribution,
+  poolStandings,
   poolStats,
   poolWeekFilled,
   weekColumns,
@@ -93,9 +95,10 @@ describe("poolDistribution", () => {
         { team: "SEA", count: 1, pct: 33 },
       ],
       other: 1,
+      noPick: 0,
       revealed: 4,
     });
-    expect(poolDistribution(ROWS, 2)).toEqual({ rows: [{ team: "BUF", count: 1, pct: 100 }], other: 0, revealed: 1 });
+    expect(poolDistribution(ROWS, 2)).toEqual({ rows: [{ team: "BUF", count: 1, pct: 100 }], other: 0, noPick: 0, revealed: 1 });
     expect(poolDistribution(ROWS, 3)).toBeNull();
     expect(poolWeekFilled(ROWS, 1)).toBe(true);
     expect(poolWeekFilled(ROWS, 3)).toBe(false);
@@ -209,5 +212,63 @@ describe("her masked cells", () => {
     expect(d!.revealed, "only the revealed pick counts").toBe(1);
     expect(d!.other, "a masked pick is not an unrecognised one").toBe(0);
     expect(d!.rows.map((r) => r.team)).toEqual(["DAL"]);
+  });
+});
+
+// Her NO PICK, set 2026-09-15 when her Week 1 Final Sheet said 459 with one
+// loss and the site said 445: 14 of her rows read NO PICK, a missed week, and
+// a missed week is a LOSS in her pool (not an elimination). Read as "not a
+// team" those rows sat in No Losses.
+describe("her NO PICK", () => {
+  const FINAL = [{ week: 1, homeTeam: "PHI", awayTeam: "DAL", homeScore: 24, awayScore: 17, status: "final" as const, revealOverride: null, kickoffAt: "2026-09-06T17:00:00Z" }];
+  const NP: MasterRow[] = [
+    { no: 1, names: "Winner", cells: { "Week 1": "Philadelphia" }, entryId: null },
+    { no: 2, names: "Loser", cells: { "Week 1": "Dallas" }, entryId: null },
+    { no: 3, names: "Missed", cells: { "Week 1": "NO PICK" }, entryId: null },
+    { no: 4, names: "Missed, her spacing", cells: { "Week 1": " no  pick " }, entryId: null },
+    { no: 5, names: "A note", cells: { "Week 1": "Nopickyet?" }, entryId: null },
+  ];
+
+  it("reads her two words exactly, any case, and nothing looser", () => {
+    expect(herNoPick("NO PICK")).toBe(true);
+    expect(herNoPick(" no  pick ")).toBe(true);
+    expect(herNoPick("NOPICK")).toBe(true);
+    expect(herNoPick("Nopickyet?")).toBe(false);
+    expect(herNoPick("No pick - late")).toBe(false);
+    expect(herNoPick(undefined)).toBe(false);
+  });
+
+  it("counts a NO PICK as the loss it is in her buckets, and a note as nothing", () => {
+    const s = poolStandings({ rows: NP }, FINAL);
+    expect({ noLosses: s.noLosses, lossBye: s.lossBye, out: s.out }).toEqual({ noLosses: 2, lossBye: 3, out: 0 });
+  });
+
+  it("eliminates on a second miss, as a second loss does", () => {
+    const rows: MasterRow[] = [{ no: 9, names: "Twice", cells: { "Week 1": "NO PICK", "Week 2": "NO PICK" }, entryId: null }];
+    expect(poolStandings({ rows }, FINAL).out).toBe(1);
+  });
+
+  it("carries it as a MISSED cell that uses no team, so the cell counts agree with the buckets", () => {
+    const { entries, cells } = poolAsEntries({ loadedAt: "2026-09-15T16:59:22Z", rows: NP }, FINAL);
+    const missed = entries.find((e) => e.id === "pool-3")!;
+    expect(missed.losses).toBe(1);
+    expect(missed.status).toBe("at_risk");
+    expect(missed.teamsUsed).toEqual([]);
+    expect(cells.filter((c) => c.entryId === "pool-3").map((c) => [c.week, c.team, c.result])).toEqual([[1, "MISSED", "missed"]]);
+    // A note stays her text: no cell, no loss.
+    expect(cells.some((c) => c.entryId === "pool-5")).toBe(false);
+    expect(entries.find((e) => e.id === "pool-5")!.losses).toBe(0);
+  });
+
+  it("counts it apart in the distribution: no share of any team, and not an unreadable note", () => {
+    expect(poolDistribution(NP, 1)).toEqual({
+      rows: [
+        { team: "DAL", count: 1, pct: 50 },
+        { team: "PHI", count: 1, pct: 50 },
+      ],
+      other: 1,
+      noPick: 2,
+      revealed: 5,
+    });
   });
 });

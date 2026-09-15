@@ -3,26 +3,36 @@ import Link from "next/link";
 import { getData } from "@/lib/data";
 import { currentPlayWeek } from "@/lib/dashboard";
 import { scoreFromGames } from "@/lib/live-standing";
+import { poolAsEntries } from "@/lib/master-list";
+import { ScopeToggle, scopeFrom } from "@/components/scope-toggle";
 import { GameBoard } from "@/components/schedule/game-board";
 import { ScheduleGrid } from "@/components/schedule/schedule-grid";
 import { WindowLegend } from "@/components/schedule/window-legend";
 
 export const metadata: Metadata = { title: "Schedule" };
-export const dynamic = "force-dynamic";
+// Rendered on every request: scores and her sheet move.
+export const revalidate = 0;
 
 export default async function SchedulePage(props: {
-  searchParams: Promise<{ week?: string; view?: string }>;
+  searchParams: Promise<{ week?: string; view?: string; scope?: string }>;
 }) {
-  const { week: weekParam, view } = await props.searchParams;
+  const { week: weekParam, view, scope: scopeParam } = await props.searchParams;
   const data = getData();
-  const [games, storedEntries, storedCells, weeks] = await Promise.all([
+  const [games, storedEntries, storedCells, weeks, master] = await Promise.all([
     data.getSchedule(),
     data.getEntries(),
     data.getGridCells(),
     data.getWeeks(),
+    data.getMasterList(),
   ]);
-  // What a final game COST is read from the scores, not only from her file.
-  const { entries, cells } = scoreFromGames(storedEntries, storedCells, games);
+  // What a final game COST is read from the scores, not only from her file,
+  // and for the WHOLE POOL by default (Anthony, 2026-09-15): a viewer's
+  // count of who a game eliminated is her sheet's, our group's only when the
+  // toggle says so.
+  const ours = scoreFromGames(storedEntries, storedCells, games);
+  const poolLoaded = master.rows.length > 0;
+  const scope = scopeFrom(scopeParam, poolLoaded);
+  const { entries, cells } = scope === "pool" ? poolAsEntries(master, games) : ours;
   const playWeek = currentPlayWeek(weeks, new Date())?.week ?? 1;
   const week = Math.min(18, Math.max(1, Number(weekParam) || playWeek));
   const season = view === "season";
@@ -66,6 +76,16 @@ export default async function SchedulePage(props: {
           </Link>
         </div>
       </div>
+
+      {!season ? (
+        <ScopeToggle
+          scope={scope}
+          poolCount={poolLoaded ? master.rows.length : null}
+          oursCount={ours.entries.length}
+          path="/schedule"
+          params={{ week: weekParam }}
+        />
+      ) : null}
 
       <WindowLegend />
 

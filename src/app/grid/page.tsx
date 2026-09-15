@@ -9,7 +9,8 @@ import { EmptyState } from "@/components/empty-state";
 
 export const metadata: Metadata = { title: "Grid" };
 // Always render fresh: results and picks change while the site is open.
-export const dynamic = "force-dynamic";
+// Rendered on every request, as every public viewer page is (src/app/page.tsx).
+export const revalidate = 0;
 
 export default async function GridPage() {
   const data = getData();

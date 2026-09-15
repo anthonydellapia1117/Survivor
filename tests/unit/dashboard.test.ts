@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  chalkByWeek,
   currentPlayWeek,
   eliminationWeek,
+  latestScoredWeek,
   nextDeadline,
   nextLockBoundary,
   pickDistribution,
   standingsBreakdown,
+  survivalByWeek,
   survivalCurve,
+  teamsRunningOut,
+  weekDamage,
+  weekTeamResults,
 } from "@/lib/dashboard";
 import type { EntrySummary, GridCell, WeekRow } from "@/lib/data/types";
 
@@ -298,5 +304,109 @@ describe("standingsBreakdown", () => {
       byeUsed: 1,
       eliminated: 1,
     });
+  });
+});
+
+// The dashboard's charts, set by Anthony on 2026-09-15. Each reads one scope's
+// entries and cells; these hold the arithmetic under them.
+describe("survivalByWeek", () => {
+  it("puts every entry in one of her three buckets after each scored week", () => {
+    const entries = [entry("clean", "active"), entry("hit", "at_risk"), entry("twice", "eliminated"), entry("struck", "eliminated")];
+    const cells = [
+      cell("clean", 1, "win"),
+      cell("clean", 2, "win"),
+      cell("hit", 1, "win"),
+      cell("hit", 2, "loss"),
+      cell("twice", 1, "loss"),
+      cell("twice", 2, "missed"),
+    ];
+    // "struck" is out with no losing cell to date it (her OUT, a repeated
+    // team) and no scored week of its own: out from the latest scored week.
+    expect(survivalByWeek(entries, cells)).toEqual([
+      { week: 0, noLosses: 4, lossBye: 0, out: 0 },
+      { week: 1, noLosses: 3, lossBye: 1, out: 0 },
+      { week: 2, noLosses: 1, lossBye: 1, out: 2 },
+    ]);
+    // Dated by the week her OUT sits in, it is out from that week.
+    const dated = entries.map((e) => (e.id === "struck" ? { ...e, lastScoredWeek: 1 } : e));
+    expect(survivalByWeek(dated, cells)[1]).toEqual({ week: 1, noLosses: 2, lossBye: 1, out: 1 });
+  });
+
+  it("counts a burned bye in the middle bucket without a loss", () => {
+    const e = { ...entry("bye", "active"), byeUsed: true };
+    const series = survivalByWeek([e], [{ ...cell("bye", 1, "bye"), team: "SKIP_WEEK" }]);
+    expect(series.at(-1)).toEqual({ week: 1, noLosses: 0, lossBye: 1, out: 0 });
+  });
+});
+
+describe("weekDamage", () => {
+  it("counts every life lost on each team that week, a missed week included, and the share it finished", () => {
+    const entries = [entry("a", "at_risk"), entry("b", "eliminated"), entry("c", "active"), entry("d", "at_risk")];
+    const cells = [
+      cell("a", 1, "win", "PHI"),
+      cell("a", 2, "loss", "LAC"),
+      cell("b", 1, "loss", "DAL"),
+      cell("b", 2, "loss", "LAC"),
+      cell("c", 2, "win", "BUF"),
+      { ...cell("d", 2, "missed"), team: "MISSED" },
+    ];
+    expect(weekDamage(entries, cells, 2)).toEqual({
+      week: 2,
+      rows: [
+        { team: "LAC", lost: 2, out: 1 },
+        { team: "MISSED", lost: 1, out: 0 },
+      ],
+      lost: 3,
+      out: 1,
+      aliveBefore: 4,
+    });
+    expect(latestScoredWeek(cells)).toBe(2);
+  });
+
+  it("says nothing about a week with no result yet", () => {
+    expect(weekDamage([entry("a", "active")], [cell("a", 3, null)], 3)).toBeNull();
+    expect(latestScoredWeek([cell("a", 3, "pending")])).toBeNull();
+  });
+});
+
+describe("chalkByWeek", () => {
+  it("names each scored week's most-picked team and how it did, never a bye, a miss or a masked pick", () => {
+    const cells = [
+      cell("a", 1, "loss", "LAC"),
+      cell("b", 1, "loss", "LAC"),
+      cell("c", 1, "win", "JAX"),
+      { ...cell("d", 1, "missed"), team: "MISSED" },
+      { ...cell("e", 1, "missed"), team: "MISSED" },
+      { ...cell("f", 1, "missed"), team: "MISSED" },
+      cell("a", 2, null, "LOCKED"),
+    ];
+    expect(chalkByWeek([{ week: 1 }, { week: 2 }], cells)).toEqual([{ week: 1, team: "LAC", count: 2, result: "loss" }]);
+  });
+});
+
+describe("teamsRunningOut", () => {
+  it("ranks the teams the fewest alive entries still hold, and ignores the out", () => {
+    const a = { ...entry("a", "active"), teamsUsed: ["LAC"] };
+    const b = { ...entry("b", "at_risk"), teamsUsed: ["LAC", "JAX"] };
+    const c = { ...entry("c", "eliminated"), teamsUsed: ["DET"] };
+    expect(teamsRunningOut([a, b, c], ["LAC", "JAX", "DET", "KC"])).toEqual({
+      rows: [
+        { team: "LAC", left: 0 },
+        { team: "JAX", left: 1 },
+      ],
+      alive: 2,
+    });
+  });
+});
+
+describe("weekTeamResults", () => {
+  it("reads a team's result in the week from the finals only", () => {
+    const games = [
+      { week: 1, homeTeam: "LAC", awayTeam: "ARI", homeScore: 14, awayScore: 26, status: "final" as const },
+      { week: 1, homeTeam: "JAX", awayTeam: "CLE", homeScore: null, awayScore: null, status: "scheduled" as const },
+    ];
+    const of = weekTeamResults(games, 1);
+    expect([of("LAC"), of("ARI"), of("JAX"), of("CLE")]).toEqual(["loss", "win", undefined, undefined]);
+    expect(weekTeamResults(games, 2)("ARI")).toBeUndefined();
   });
 });

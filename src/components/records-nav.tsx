@@ -1,7 +1,8 @@
 "use client";
 
-// The two pages under Records: the roster (this group's entries, as the
-// Entries page was) and the 2025 archive. Anthony named the parent Records on
+// The two pages under Records: the roster (every row of her newest sheet by
+// default, this group's entries under Our group; it was the Entries page) and
+// the 2025 archive. Anthony named the parent Records on
 // 2026-09-09 and will rename it if it reads wrong; the subpages are unchanged.
 
 import Link from "next/link";

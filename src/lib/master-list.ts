@@ -265,28 +265,32 @@ export function poolWeekFilled(rows: Pick<MasterRow, "cells">[], week: number): 
 export function poolDistribution(
   rows: Pick<MasterRow, "cells">[],
   week: number,
-): { rows: PoolDistributionRow[]; other: number; revealed: number } | null {
+): { rows: PoolDistributionRow[]; other: number; noPick: number; revealed: number } | null {
   const col = weekColumns(rows).find((c) => c.week === week);
   if (!col) return null;
   const counts = new Map<string, number>();
   let total = 0;
   let other = 0;
+  // Her NO PICK is not a pick of any team, so it takes no share, but it is
+  // not an unreadable note either: it is counted as itself (herNoPick).
+  let noPick = 0;
   for (const r of rows) {
     const cell = herCell(r, col);
     if (cell === undefined) continue;
     const team = herTeam(cell);
     if (team === null) {
-      other += 1;
+      if (herNoPick(cell)) noPick += 1;
+      else other += 1;
       continue;
     }
     counts.set(team, (counts.get(team) ?? 0) + 1);
     total += 1;
   }
-  if (total === 0 && other === 0) return null;
+  if (total === 0 && other === 0 && noPick === 0) return null;
   const out = [...counts]
     .map(([team, count]) => ({ team, count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }))
     .sort((a, b) => b.count - a.count || a.team.localeCompare(b.team));
-  return { rows: out, other, revealed: total + other };
+  return { rows: out, other, noPick, revealed: total + other + noPick };
 }
 
 export interface PoolStat {
@@ -375,6 +379,31 @@ export function poolAsEntries(
       const cell = herCell(r, col);
       const team = herTeam(cell);
       if (team === null) {
+        // Her OUT dates the row: it is out from the week she wrote it in,
+        // which is the only week this copy of her sheet can say it ended.
+        if (cell !== undefined && /^\s*out\s*$/i.test(cell)) {
+          lastScoredWeek = Math.max(lastScoredWeek ?? 0, col.week);
+          continue;
+        }
+        // Her NO PICK is a missed week: a loss that uses no team, carried as
+        // the same MISSED cell our own missed weeks are, so every count that
+        // reads cells - the curve, the damage by team, the Grid's chips -
+        // agrees with the buckets. The Grid still shows her words for it.
+        if (herNoPick(cell)) {
+          losses += 1;
+          lastScoredWeek = col.week;
+          cells.push({
+            entryId: id,
+            week: col.week,
+            team: MISSED_TEAM,
+            result: "missed",
+            late: false,
+            submittedAt: at,
+            source: MASTER_LIST_SOURCE,
+            resultSource: null,
+          });
+          continue;
+        }
         // A published BYE is a real week with a real state, and the legend
         // advertises it; dropping it left a blank where the grid should show
         // the bye. Other non-team text (OUT, a note) is still left alone.
@@ -520,6 +549,23 @@ export function herBye(row: Pick<MasterRow, "cells">): boolean {
   return Object.values(row.cells).some((v) => /^\s*bye\s*$/i.test(v));
 }
 
+/** The team code a missed week carries, here as in `picks`: a loss that uses no team. */
+export const MISSED_TEAM = "MISSED";
+
+/**
+ * Her cell for a week reads NO PICK: the entry sent nothing by the deadline.
+ * In her pool that is a LOSS, not an elimination - the rule this group's own
+ * MISSED pick follows and the one its emails state. Read that way our count of
+ * her sheet matches the stats block she prints on it: Week 1 of 2026 was 445
+ * losing picks plus 14 NO PICK, her 459 with one loss. Read as "not a team",
+ * those 14 rows sat in No Losses and the public site said 873 / 445 while her
+ * sheet said 859 / 459. Her two words exactly, any case, spacing free; any
+ * other text is still hers and still left alone.
+ */
+export function herNoPick(cell: string | undefined): boolean {
+  return cell !== undefined && /^\s*no\s*pick\s*$/i.test(cell);
+}
+
 export type PoolBucket = "No Losses" | "1 Loss/Bye" | "Out";
 
 export interface PoolStandings {
@@ -555,7 +601,16 @@ export function poolBucketOf(
   let losses = 0;
   const used = new Set<string>();
   for (const col of columns) {
-    const team = herTeam(herCell(row, col));
+    const cell = herCell(row, col);
+    // A missed week is a loss that uses no team (herNoPick). The view serves
+    // a non-team cell only once every game of its week has kicked off, so it
+    // is never read early.
+    if (herNoPick(cell)) {
+      losses += 1;
+      if (col.week > doubleElimThrough || losses >= 2) return "Out";
+      continue;
+    }
+    const team = herTeam(cell);
     if (team === null) continue;
     // A repeated team is an ELIMINATION in this pool, not a caution
     // (CLAUDE.md), and it eliminates whatever the repeated team's results
@@ -698,7 +753,7 @@ export function tallySentence(
 
 /** A cell that names a team. A bye, a miss and a pick the public view still masks are not picks to count. */
 function countsInTally(team: string): boolean {
-  return team !== SKIP_WEEK && team !== LOCKED_TEAM && team !== "MISSED";
+  return team !== SKIP_WEEK && team !== LOCKED_TEAM && team !== MISSED_TEAM;
 }
 
 /**

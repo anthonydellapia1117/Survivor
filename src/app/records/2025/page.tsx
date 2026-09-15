@@ -4,15 +4,24 @@ import { fromLynneTeamName } from "@/lib/lynne/names";
 import { TEAM_PALETTE } from "@/lib/team-colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ScopeToggle, scopeFrom } from "@/components/scope-toggle";
 
 export const metadata: Metadata = { title: "2025 archive" };
-export const dynamic = "force-dynamic";
+// Rendered on every request, like the rest of the public pages.
+export const revalidate = 0;
 
 // Part G: Lynne's final 2025 sheet, read-only. Honest about its shape:
 // she deletes eliminated entries as the season goes, so this is the
 // season's ENDING, not its roster.
-export default async function Archive2025Page() {
+export default async function Archive2025Page(
+  props: { searchParams?: Promise<{ scope?: string }> } = {},
+) {
+  const { scope: scopeParam } = (await props.searchParams) ?? {};
   const { entries, weekly } = await getData().getArchive2025();
+  // The archive is her sheet - the whole pool's ending. What Anthony's own
+  // entries did is an our-group figure and shows only under Our group
+  // (Anthony, 2026-09-15).
+  const scope = scopeFrom(scopeParam, true);
   const winners = entries.filter((e) => e.outcome === "winner");
   const outs = entries.filter((e) => e.outcome === "out");
   const mine = entries.filter((e) => [980, 1006, 1037].includes(e.lynneNumber));
@@ -56,17 +65,19 @@ export default async function Archive2025Page() {
             This is a partial final sheet, not a full season history:
           </span>{" "}
           she removes eliminated entries as the season goes, so only the last
-          56 of roughly 1,245 entries remain - and only 3 of my 66 entries
-          survived long enough to still be listed. Her weekly bucket counts
-          below are the complete attrition record she kept herself.
+          56 of roughly 1,245 entries remain
+          {scope === "ours" ? " - and only 3 of my 66 entries survived long enough to still be listed" : ""}
+          . Her weekly bucket counts below are the complete attrition record
+          she kept herself.
         </p>
       </div>
+      <ScopeToggle scope={scope} poolCount={entries.length} oursCount={mine.length} path="/records/2025" counts={false} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: "Pool size", value: "1,245", sub: "+38 free entries" },
           { label: "Winners", value: "27", sub: "$1,008.60 each" },
-          { label: "My entries", value: "72", sub: "3 still on the final sheet" },
+          ...(scope === "ours" ? [{ label: "My entries", value: "72", sub: "3 still on the final sheet" }] : []),
           { label: "In final sheet", value: String(entries.length), sub: `${winners.length} winners · ${outs.length} out` },
         ].map((c) => (
           <Card key={c.label} className="bg-surface">
@@ -154,6 +165,7 @@ export default async function Archive2025Page() {
         </CardContent>
       </Card>
 
+      {scope === "ours" ? (
       <Card className="bg-surface">
         <CardHeader>
           <CardTitle className="text-base">My 2025 entries still on the sheet</CardTitle>
@@ -177,6 +189,7 @@ export default async function Archive2025Page() {
           </p>
         </CardContent>
       </Card>
+      ) : null}
 
       <section className="space-y-2">
         <h2 className="text-lg">The final sheet - all {entries.length} remaining entries</h2>

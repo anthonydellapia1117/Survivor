@@ -97,6 +97,34 @@ export const TONE_SWATCH_CLASS: Record<ResultTone, string> = {
 export const OUT_SWATCH_CLASS = "bg-loss/70";
 
 /**
+ * A bar in one of the dashboard's charts - the pick distribution, the damage
+ * by team, the survival columns. Stronger than a cell's fill because a bar
+ * carries no text of its own to say what it is: at /15 a green bar and an
+ * empty track are the same thing on a phone in daylight. Same meanings: a
+ * team that won is subtle green, a team that lost is yellow, a game with no
+ * final is neutral - never a colour that will move.
+ */
+export const TONE_BAR_CLASS: Record<ResultTone, string> = {
+  won: "bg-win/45",
+  lost: "bg-tie/80",
+  bye: "bg-bye/60",
+  none: "bg-muted-foreground/30",
+};
+
+/** A bar for entries that are out: red, the one colour that means finished. */
+export const OUT_BAR_CLASS = "bg-loss/75";
+
+/** Text for entries that are out, the red of OUT_BAR_CLASS. */
+export const OUT_TEXT_CLASS = "text-loss";
+
+/**
+ * Her three buckets as solid fills and as text, for the dashboard's health
+ * row: No Losses reads as a win, 1 Loss/Bye as a loss, Out as out.
+ */
+export const BUCKET_FILL_CLASS = { noLosses: "bg-win", lossBye: "bg-tie", out: "bg-loss" } as const;
+export const BUCKET_TEXT_CLASS = { noLosses: TONE_TEXT_CLASS.won, lossBye: TONE_TEXT_CLASS.lost, out: OUT_TEXT_CLASS } as const;
+
+/**
  * A row's tone. "out" is the entry finished - two losses is the ordinary way
  * there, and it is always the way there in code: poolBucketOf returns Out at
  * `losses >= 2`, as does v_entry_standing. A published OUT and a repeated

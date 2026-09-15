@@ -7,7 +7,8 @@ import { TeamsSource } from "@/components/teams/teams-source";
 import { EmptyState } from "@/components/empty-state";
 
 export const metadata: Metadata = { title: "Teams" };
-export const dynamic = "force-dynamic";
+// Rendered on every request, as every public viewer page is (src/app/page.tsx).
+export const revalidate = 0;
 
 export default async function TeamsPage() {
   const data = getData();
