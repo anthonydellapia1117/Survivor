@@ -31,8 +31,8 @@ import {
   loadStandings,
   loadWeeks,
 } from "../lib/db";
-import { ADMIN_MAILBOX } from "../lib/constants";
-import { createDraft, gmailClient, listUnreadMatching, markProcessed, type InboundMessage } from "../lib/gmail";
+import { ADMIN_MAILBOX, DONE_LABEL } from "../lib/constants";
+import { createDraft, ensureLabel, gmailClient, listSweepMatching, markProcessed, type InboundMessage } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { confirm } from "../lib/prompt";
 import { takeValue, weekArg } from "../lib/args";
@@ -73,10 +73,12 @@ function parseArgs(argv: string[]): Args {
   return { messageId, week, dryRun, yes };
 }
 
-/** The label the ordinary intake files swept mail under; the same one here. */
-const DONE_LABEL = "Pool-Survivor-Done";
-
-/** Unread self-mail whose subject carries the word, newest first. */
+/**
+ * Unread self-mail whose subject carries the word. This command still keys on
+ * unread as well as on the DONE label (the ordinary sweep dropped unread on
+ * 2026-09-15): his own mailbox is where every draft and every CODE STATUS
+ * lands, and a self-mail he has read and left is not a pick list.
+ */
 function selfQuery(): string {
   return `is:unread -in:draft from:${ADMIN_MAILBOX} to:${ADMIN_MAILBOX} subject:${SELF_PICK_SUBJECT_TERM}`;
 }
@@ -91,7 +93,10 @@ async function main(): Promise<void> {
   const admin = await adminClient();
   const client = admin.client;
 
-  const found: InboundMessage[] = await listUnreadMatching(gmail, selfQuery());
+  // The label is resolved or created before anything is read, the same as
+  // the ordinary sweep: a message this cannot file would come back every run.
+  const doneLabelId = await ensureLabel(gmail, DONE_LABEL);
+  const found: InboundMessage[] = await listSweepMatching(gmail, selfQuery(), { doneLabelId, onFileIds: new Set() });
   const msgs = args.messageId ? found.filter((m) => m.id === args.messageId) : found;
   if (!msgs.length) {
     console.log("No unread self-email with a Survivor subject. Nothing to do.");

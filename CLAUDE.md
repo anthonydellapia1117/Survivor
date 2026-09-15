@@ -1556,7 +1556,11 @@ flood.
 **Fetch threads in full (`get_thread`), never rely on search previews.**
 Search returns only the ~5 oldest messages per thread with no truncation
 marker, which silently hides recent replies. Full fetches are what caught
-payments the previews missed.
+payments the previews missed. **This is the connector's trap, worked by hand
+in a session; the code in `scripts/lib/gmail.ts` fetches every message by id
+with `format: "full"` and has never read a preview** - the five Week 1 picks
+lost that way were lost through the connector, and
+`tests/unit/sweep-full-fetch.test.ts` holds the code where it is.
 
 ## Session status email (set 2026-09-10)
 
@@ -1767,11 +1771,63 @@ in any of them.**
 
   Three rules that used to live in a Routine prompt or a Gmail filter are
   code:
-  - The sweep reads unread mail from **every owner address and every
-    `player_email` on a live entry, whatever its subject or label**, plus
-    unread mail from anyone else whose subject carries `survivor` or `picks`
-    (the Gmail filter's rule); a stranger's mail is staged for Anthony, never
-    written as a pick.
+  - The sweep reads mail from **every owner address and every
+    `player_email` on a live entry, whatever its subject, label or READ
+    STATE**, plus mail from anyone else whose subject carries a phrase in
+    `sweepSubjectTerms` (the Gmail filter's rule); a stranger's mail is
+    staged for Anthony, never written as a pick. **Read state is not the
+    marker. Set by Anthony on 2026-09-15**, the morning of the Wednesday 2 PM
+    deadline: a message he read on his phone before the sweep ran was never
+    swept, because both Gmail queries asked for `is:unread`. **Processed
+    means the message carries the `Pool-Survivor-Done` label, or its Gmail
+    id is already on file** - a `pending_actions.source_message_id`, or a
+    `pick_from_message` audit row, which the sweep writes beside every pick
+    it records because `admin_submit_pick` takes no message id and no note.
+    The `-label:` in the query is a prefilter; every candidate's own
+    `labelIds` are fetched and are the truth. **The label is resolved or
+    CREATED before anything is read** (`ensureLabel`, under the
+    `gmail.modify` scope the token already has), and a run that cannot have
+    it stops with nothing read - a sweep that could not file a message would
+    re-stage the same mail every hour forever. `markProcessed` still marks
+    read so his inbox stays tidy, and nothing reads that back.
+    `--keep-unread` is now `--keep-unfiled`; the old spelling is accepted
+    for one release and prints the new name. The 14-day window stays.
+    `tests/unit/sweep-read-state.test.ts` drives the readers with a fake
+    Gmail: a read, unlabelled message is swept; an unread one under the
+    label is skipped; an unlabelled one whose id is on file is skipped; a
+    missing label that cannot be created stops the run with nothing read.
+  - **The five Week 1 picks lost to a search preview cutting at five
+    messages were lost by hand**, through the claude.ai Gmail connector's
+    `search_threads` preview (the Gmail section below); **the code never
+    read a preview.** Every sweep reader lists ids, fetches each message's
+    labels, and fetches each kept message by id with `format: "full"`;
+    `tests/unit/sweep-full-fetch.test.ts` fails if the reader stops
+    fetching in full, takes a snippet as a body, or lists threads.
+  - **`--message-id <gmail id>`, repeatable**, reads exactly those messages
+    whatever their labels or read state, skipping the on-file check for the
+    id itself and NOTHING at pick level: the same team already current is a
+    no-op, a different team after a current pick goes through
+    `overrideDecision`, a repeated team stages. Same table, same `--dry-run`
+    and `--yes`. It is how a message staged once is re-read after the parser
+    has learned its shape. A message from the admin mailbox is refused there
+    too - dictated picks are `npm run picks:self`.
+  - **Bounces are the third read.** Set by Anthony on 2026-09-15: "Watch for
+    bounces. Lynne reports Comcast bouncing on her end and three of ours are
+    Comcast." A delivery failure comes from a mailer, not the player, so
+    neither other read could see it. `from:(mailer-daemon OR postmaster)` in
+    the window, not yet filed, each in full; the failed recipient is read
+    out of the notice in its three forms (Gmail's "wasn't delivered to X",
+    the older "Delivery to the following recipient failed", the DSN's
+    `Final-Recipient: rfc822; X`, whose `message/delivery-status` part is
+    now read as text). A roster address - an owner's or a `player_email` on
+    a live entry, case-insensitive - stages **one row of kind `identity`**,
+    the kind the queue already renders, carrying the address, the person's
+    entries, the subject and `reason: "delivery failed"`, and the terminal
+    prints a NEEDS ANTHONY line naming the person and the address; **the
+    push names neither**, under the notification contract. A DSN for an
+    address on no roster row is filed under DONE and not staged. A notice
+    whose recipient cannot be read is staged, because it may be ours.
+    `scripts/picks/lib/bounce.ts`; `tests/unit/sweep-bounces.test.ts`.
   - The week reminder goes **six hours before each stored boundary**, from
     the weeks table.
   - **Only pick-reminder and chase may send**; the config loader refuses any
@@ -1806,13 +1862,42 @@ in any of them.**
 
   Four guards, in the order Anthony set them:
 
-  1. **The ceiling comes first.** More than `MAX_STAGED_PER_RUN` (**25**) rows
-     in one run and the sweep prints who they came from and **writes nothing,
-     stages nothing and marks nothing read** - so the same mail is still there
-     to sweep once the filter is right. Same shape as the roster count gate on
-     a send: it stops, it never trims to the limit. **Raising the number is
-     never the fix.** This is the guard that turns any future version of this
-     into one line instead of a flood, and it is built even if the rest slip.
+  1. **The ceiling comes first, and since 2026-09-15 it is TWO ceilings.**
+     Set by Anthony that morning, with 43 people holding the Week 2 email:
+     "43 people replying could plausibly stage more than 25 legitimate pick
+     rows in one run. Tell me plainly what happens then. If a genuine batch
+     can trip it, raise it for pick rows only and keep it low for unparsed
+     noise." Under the one number this replaced (`MAX_STAGED_PER_RUN`, 25,
+     every row whatever its sender) a genuine batch COULD trip it, and what
+     happened then was: the whole run stopped before any write, the clean
+     picks in the same run were not written either, no message was filed,
+     and the next hourly run tripped the same way until a person intervened.
+     So, plainly:
+     - **`MAX_NOISE_ROWS_PER_RUN` (25)** counts rows of kind `identity` - a
+       sender that resolves to no live entry: a stranger on the subject
+       rule, a declined owner, a bounce. **Over it, those rows are left
+       unstaged and unfiled**, the terminal prints who they came from
+       (NEEDS ANTHONY naming the senders; the push carries the two counts
+       and no address), **and the roster's rows and the clean picks in the
+       same run STILL GO THROUGH.** A newsletter flood on a Wednesday must
+       not hold 43 people's picks. **This is the one change to the
+       2026-09-10 "it stops, it never trims" rule, for the noise class only,
+       on his instruction.** It still never trims to the limit: the whole
+       class is held back, never the first 25 of it.
+     - **`MAX_ROSTER_ROWS_PER_RUN` (121)** counts rows from placed senders,
+       kinds `pick` and `player_question`. It is the roster size because more
+       than one row per live entry in one run is not a batch of picks, it is
+       a reader defect. **Over it, the whole run stops exactly as before:
+       nothing written, nothing staged, nothing filed, NEEDS ANTHONY.** A
+       roster trip outranks a noise one.
+     `stagingCeiling` in `scripts/picks/lib/resolve.ts` takes the rows with
+     their class and returns both counts and which tripped. **Raising either
+     is never the fix**: over the noise limit the filter is wrong, over the
+     roster limit the parser is. `tests/unit/sweep-flood-guards.test.ts`
+     holds 26 stranger rows beside 3 clean picks (the picks go through,
+     the strangers do not), 122 roster rows (nothing goes through) and 25
+     stranger rows (everything goes through), each confirmed to FAIL when
+     broken.
   2. **One row per MESSAGE, never one per line**, whenever the sender resolves
      to no live entry. `unparsedLinesToAsk` returns nothing for such a sender;
      a placed player keeps the per-line questions, which is the useful half.
@@ -1831,6 +1916,52 @@ in any of them.**
   `tests/unit/sweep-flood-guards.test.ts` holds all four, each confirmed to
   FAIL when broken. **The ops Routine stays paused until they are merged** -
   the Friday jobs run through connectors, not the sweep, so it costs nothing.
+
+  **The shapes the parser learned on 2026-09-15**, from the real lines that
+  sat on the queue that morning as `player_question` rows, every one a Week 2
+  pick from a roster address. Deterministic and never fuzzy: every team goes
+  through `strictTeam`, every entry token through `resolveEntry` inside the
+  sender's scope, and anything matching two things stays unresolved.
+  `tests/unit/sweep-real-lines.test.ts` holds each line to its exact
+  resolution with the roster fixture in production shape.
+  - **Separators.** A line splits on the first of `" - "`, `"-"`, en and em
+    dashes, `"->"`, the arrow `U+2192`, `":"`, `"="` between two non-space
+    runs; trailing `*`, `.` and `)` come off both parts; `" to "` is prose
+    and never a separator. Ashley Scalia's `Waggs3-Tampa`, `Waggs4-Eagles`,
+    `Waggs1- SF 49ers`, `Waggs2- Baltimore Ravens` are `Waggs #3` TB,
+    `Waggs #4` PHI, `Waggs #1` SF, `Waggs #2` BAL. "Tampa" was added to the
+    team words and a team's own code now fits beside its nickname.
+  - **Entry keys.** `Waggs3` matches `Waggs #3` because the words run
+    together are one key (`compactKey`), the sender's own entries first. A
+    token that is the TAIL of exactly one of the sender's OWN entries, words
+    run together at a word boundary, matches too: Marc Massimino's `Mass1`
+    is `Marc Mass #1`. Scope only - the same shorthand from anyone else is
+    unmatched - and two tails stay unresolved.
+  - **A Lynne number is exact.** Maria DiCicco's `1042 -> 49ers*`,
+    `1043 -> Ravens*`, `1044 -> Buccaneers*` are `ReRe #2` SF, `ReRe #3`
+    BAL, `ReRe #4` TB. A number naming an entry outside the sender's scope
+    is staged naming the number - a giftee picking for the buyer's other
+    entry, or a typo, is Anthony's call; a number no live entry carries says
+    so.
+  - **Two picks on one line.** `Mass1 - Ravens Mass2 Niners` is two picks:
+    the team is the leading words after the separator and the remainder is
+    parsed again, taken only when it yields an entry AND a team; a remainder
+    that is a bare team or prose is left to the unparsed reason.
+  - **No entry token.** Ant Giletto's `I'll do the niners` (the curly
+    apostrophe of a phone) from a sender with exactly ONE live entry is that
+    entry's pick: the words in front of the team are on a closed filler
+    list. With two or more entries in scope it is the question it always
+    was. Kris Tomasco's `Chargers & 49ers` - two teams for his two, the two
+    gifted to Chas Flaster being Chas's - is **never assigned by order**:
+    one `player_question` naming the entries and the teams, asking which is
+    which.
+  - **Prose that names teams picks nothing.** "I don't think I'm taking
+    buffalo or Detroit this week" stays unparsed: a line carrying a hedge
+    word (`or`, `not`, `don't`, `maybe`, `if`, ...) is never a pick, whatever
+    else is on it. Sign-offs (`Sincerely`, `Sent via the iPhone`) and a line
+    that is the sender's own name (`Kris Tomasco`, `Maria DiCicco*`) are
+    noise, not questions; "Am I eliminated" and the cash-to-Pung line are
+    questions and stay so.
 
 - **Game results come from ESPN, and only ever land on `nfl_games`.** Set by
   Anthony on 2026-09-11. `npm run scores` reads the free public scoreboard - no
@@ -2373,6 +2504,8 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | The one outbound link               | `scripts/lib/site-link.ts`                   |
 | The one send path and its gate      | `scripts/lib/send.ts`                        |
 | The sweep's ceiling and filter      | `scripts/picks/lib/resolve.ts`, `scripts/picks/lib/subject-sweep.ts` |
+| The sweep's read state, its label and its full reads | `listSweepFrom` / `ensureLabel` in `scripts/lib/gmail.ts`, `loadFiledMessageIds` in `scripts/lib/db.ts` |
+| Bounces, the third read             | `scripts/picks/lib/bounce.ts`, `tests/unit/sweep-bounces.test.ts` |
 | His dictated picks by self-email    | `scripts/picks/lib/self-email.ts`, `scripts/picks/self.ts` |
 | The two recipient exceptions        | `src/lib/emails/recipient-exceptions.ts`     |
 | Which week /admin/picks opens on    | `src/lib/default-week.ts`                    |

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { InboundMessage } from "../../scripts/lib/gmail";
-import { unreadFromQueries } from "../../scripts/lib/gmail";
-import { MAX_STAGED_PER_RUN, SWEEP_WINDOW_DAYS } from "../../scripts/lib/constants";
-import { stagingCeiling, unparsedLinesToAsk } from "../../scripts/picks/lib/resolve";
+import { sweepFromQueries } from "../../scripts/lib/gmail";
+import { MAX_NOISE_ROWS_PER_RUN, MAX_ROSTER_ROWS_PER_RUN, SWEEP_WINDOW_DAYS } from "../../scripts/lib/constants";
+import { rowClassOf, stagingCeiling, unparsedLinesToAsk, type RowClass } from "../../scripts/picks/lib/resolve";
 import { isSweptSubject, strangerMessages, subjectSweepQuery } from "../../scripts/picks/lib/subject-sweep";
 import { BARE_TERMS_REFUSED, loadOpsConfig } from "../../scripts/ops/lib/config";
 
@@ -35,34 +35,77 @@ const REVIEW_BODY = [
   ...Array.from({ length: 144 }, (_, i) => `line ${i} of diff context with prose in it`),
 ];
 
+// THE CEILING WAS SPLIT BY CLASS ON 2026-09-15, on Anthony's instruction
+// with 43 people holding the Week 2 email: "raise it for pick rows only and
+// keep it low for unparsed noise". The one count of every row stopped the
+// whole run when it tripped, clean picks included. Now: NOISE (identity rows,
+// senders with no live entry) is the 25 this file was written for, and over
+// it those rows are left unstaged and unfiled while the roster's rows still
+// go through; ROSTER (pick and player_question rows from placed senders) is
+// the roster size, 121, and over it the whole run still stops dead.
+const rows = (n: number, sender: string | null, klass: RowClass) => Array.from({ length: n }, () => ({ sender, klass }));
+const LIMITS = { noise: MAX_NOISE_ROWS_PER_RUN, roster: MAX_ROSTER_ROWS_PER_RUN };
+
 describe("1. the ceiling - the guard that must survive even if the others slip", () => {
-  it("passes at the limit and fails one over it, and never trims to fit", () => {
-    const at = stagingCeiling(Array.from({ length: MAX_STAGED_PER_RUN }, () => "a@b.com"), MAX_STAGED_PER_RUN);
+  it("classes a row by its kind: identity is noise, a pick or a player question is roster", () => {
+    expect(rowClassOf("identity")).toBe("noise");
+    expect(rowClassOf("player_question")).toBe("roster");
+    expect(rowClassOf("pick")).toBe("roster");
+  });
+
+  it("noise: passes at 25 and trips at 26, and the roster rows in the same run are untouched", () => {
+    const at = stagingCeiling([...rows(MAX_NOISE_ROWS_PER_RUN, "a@b.com", "noise"), ...rows(3, "kris@x.com", "roster")], LIMITS);
     expect(at.ok).toBe(true);
-    expect(at.staged).toBe(MAX_STAGED_PER_RUN);
-    const over = stagingCeiling(Array.from({ length: MAX_STAGED_PER_RUN + 1 }, () => "a@b.com"), MAX_STAGED_PER_RUN);
+    expect(at.tripped).toBeNull();
+    expect(at.noise.staged).toBe(MAX_NOISE_ROWS_PER_RUN);
+    // 26 stranger rows plus 3 clean roster rows: the noise class trips, the
+    // roster class does not, and the run is told exactly that.
+    const over = stagingCeiling([...rows(MAX_NOISE_ROWS_PER_RUN + 1, "a@b.com", "noise"), ...rows(3, "kris@x.com", "roster")], LIMITS);
     expect(over.ok).toBe(false);
-    expect(over.staged).toBe(MAX_STAGED_PER_RUN + 1);
-    // The real run: 1,951 rows against a limit of 25.
-    expect(stagingCeiling(Array.from({ length: 1951 }, () => "notifications@github.com"), 25).ok).toBe(false);
+    expect(over.tripped).toBe("noise");
+    expect(over.noise.ok).toBe(false);
+    expect(over.noise.staged).toBe(MAX_NOISE_ROWS_PER_RUN + 1);
+    expect(over.roster.ok).toBe(true);
+    expect(over.roster.staged).toBe(3);
+    // The real run: 1,951 identity rows against a limit of 25.
+    expect(stagingCeiling(rows(1951, "notifications@github.com", "noise"), LIMITS).tripped).toBe("noise");
+  });
+
+  it("roster: passes at 121 and trips at 122, and a roster trip outranks a noise one", () => {
+    expect(stagingCeiling(rows(MAX_ROSTER_ROWS_PER_RUN, "kris@x.com", "roster"), LIMITS).ok).toBe(true);
+    const over = stagingCeiling(rows(MAX_ROSTER_ROWS_PER_RUN + 1, "kris@x.com", "roster"), LIMITS);
+    expect(over.ok).toBe(false);
+    expect(over.tripped).toBe("roster");
+    // Both over: the roster trip is the one that decides, because it stops the run.
+    const both = stagingCeiling([...rows(122, "kris@x.com", "roster"), ...rows(26, "a@b.com", "noise")], LIMITS);
+    expect(both.tripped).toBe("roster");
+    expect(both.noise.ok).toBe(false);
   });
 
   it("names the senders worst first, so the wrong filter identifies itself", () => {
     const c = stagingCeiling(
-      ["notifications@github.com", "dan@tldrnewsletter.com", "notifications@github.com", null, "NOTIFICATIONS@github.com"],
-      2,
+      [
+        { sender: "notifications@github.com", klass: "noise" },
+        { sender: "dan@tldrnewsletter.com", klass: "noise" },
+        { sender: "notifications@github.com", klass: "noise" },
+        { sender: null, klass: "noise" },
+        { sender: "NOTIFICATIONS@github.com", klass: "noise" },
+      ],
+      { noise: 2, roster: 121 },
     );
-    expect(c.ok).toBe(false);
-    expect(c.bySender[0]).toEqual({ sender: "notifications@github.com", rows: 3 });
-    expect(c.bySender.map((s) => s.sender)).toContain("(no sender)");
+    expect(c.tripped).toBe("noise");
+    expect(c.noise.bySender[0]).toEqual({ sender: "notifications@github.com", rows: 3 });
+    expect(c.noise.bySender.map((s) => s.sender)).toContain("(no sender)");
   });
 
-  it("is 25, and refuses a limit that is not a positive integer", () => {
-    expect(MAX_STAGED_PER_RUN).toBe(25);
-    expect(() => stagingCeiling([], 0)).toThrow(/positive integer/);
+  it("is 25 for noise and 121 for roster, and refuses a limit that is not a positive integer", () => {
+    expect(MAX_NOISE_ROWS_PER_RUN).toBe(25);
+    expect(MAX_ROSTER_ROWS_PER_RUN).toBe(121);
+    expect(() => stagingCeiling([], { noise: 0, roster: 121 })).toThrow(/noise limit must be a positive integer/);
+    expect(() => stagingCeiling([], { noise: 25, roster: 1.5 })).toThrow(/roster limit must be a positive integer/);
   });
 
-  it("stops the run in the CLI before the confirm, before any write and before any message is filed", () => {
+  it("in the CLI: a roster trip stops the run before the confirm, any write and any filing; a noise trip drops only the noise rows and goes on", () => {
     const c = code("scripts/picks/cli.ts");
     const ceiling = c.indexOf("stagingCeiling(");
     const confirm = c.indexOf("await confirm(");
@@ -71,15 +114,25 @@ describe("1. the ceiling - the guard that must survive even if the others slip",
     for (const [name, at] of [["ceiling", ceiling], ["confirm", confirm], ["write", write], ["file", file]] as const) {
       expect(at, `${name} not found in the CLI`).toBeGreaterThan(-1);
     }
-    // Order is the guarantee: a run over the ceiling returns before it asks,
-    // before it writes and before it marks anything read - so the same mail
-    // is still unread and still sweepable once the filter is right.
     expect(ceiling).toBeLessThan(confirm);
     expect(ceiling).toBeLessThan(write);
     expect(ceiling).toBeLessThan(file);
-    expect(c).toMatch(/if \(!ceiling\.ok\) \{[\s\S]{0,700}?return;/);
-    // It reports and stops; it does not slice the list down to the limit.
+    // Roster: return, before anything else.
+    expect(c).toMatch(/if \(ceiling\.tripped === "roster"\) \{[\s\S]{0,900}?return;\s*\}/);
+    // Noise: the identity rows come OUT of unresolved and the run continues -
+    // no return in that branch. The senders are printed on the terminal.
+    const noise = c.match(/if \(ceiling\.tripped === "noise"\) \{([\s\S]*?)\n  \}\n/);
+    expect(noise, "the noise branch").not.toBeNull();
+    expect(noise![1]).toMatch(/rowClassOf\(u\.kind\) !== "noise"/);
+    expect(noise![1]).toMatch(/unresolved\.length = 0;\s*unresolved\.push\(\.\.\.kept\);/);
+    expect(noise![1]).toMatch(/ceilingSenderLines\(ceiling\.noise\)/);
+    expect(noise![1]).not.toMatch(/\breturn\b/);
+    // Neither branch slices a list down to its limit.
     expect(c).not.toMatch(/unresolved\.slice\(/);
+    // The noise rows never reach the write loop or the filing set: what is
+    // filed is `touched`, built from the rows still in `unresolved`.
+    expect(c).toMatch(/for \(const u of unresolved\)[\s\S]{0,80}?stagePending\(/);
+    expect(c).toMatch(/if \(u\.item\.messageId\) touched\.add\(u\.item\.messageId\);/);
   });
 });
 
@@ -102,7 +155,7 @@ describe("2. one row per message, never one per line", () => {
 
   it("is the only path the CLI takes for unparsed lines, and the unplaced pick line asks once", () => {
     const c = code("scripts/picks/cli.ts");
-    expect(c).toMatch(/for \(const ask of unparsedLinesToAsk\(placed, unparsed\)\) fail\(ask\.reason, ask\.line\);/);
+    expect(c).toMatch(/for \(const ask of unparsedLinesToAsk\(placed, unparsed, signatures\)\) fail\(ask\.reason, ask\.line\);/);
     // The old per-line loop must be gone, not merely bypassed.
     expect(c).not.toMatch(/for \(const u of unparsed\)/);
     // A sender with no live entry that DID name a team asks once for the
@@ -117,15 +170,15 @@ describe("3. the date floor", () => {
   it("is 14 days and is on BOTH queries, not just the subject one", () => {
     expect(SWEEP_WINDOW_DAYS).toBe(14);
     expect(subjectSweepQuery(["survivor"])).toContain("newer_than:14d");
-    for (const q of unreadFromQueries(["a@b.com", "c@d.com"])) expect(q).toContain("newer_than:14d");
+    for (const q of sweepFromQueries(["a@b.com", "c@d.com"])) expect(q).toContain("newer_than:14d");
   });
 
   it("chunks the roster and refuses a window that is not a positive integer", () => {
     const many = Array.from({ length: 40 }, (_, i) => `p${i}@x.com`);
-    const qs = unreadFromQueries(many, 3);
+    const qs = sweepFromQueries(many, 3);
     expect(qs.length).toBe(3);
     for (const q of qs) expect(q).toContain("newer_than:3d");
-    expect(() => unreadFromQueries(["a@b.com"], 0)).toThrow(/positive integer/);
+    expect(() => sweepFromQueries(["a@b.com"], 0)).toThrow(/positive integer/);
   });
 });
 

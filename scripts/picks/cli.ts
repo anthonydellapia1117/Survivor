@@ -1,16 +1,28 @@
 // npm run picks
 //
-// Reads every unread message from a known player address, or a pasted block
-// of text, turns each line into a proposed pick, shows the table, and writes
-// nothing until Anthony types y. Writes go through admin_submit_pick with the
-// source the pick arrived by; what cannot be resolved is staged for him in
-// pending_actions with the message id, never dropped and never guessed.
+// Reads every message from a known player address that the sweep has not
+// already processed - WHATEVER its read state (Anthony, 2026-09-15) - or a
+// pasted block of text, turns each line into a proposed pick, shows the
+// table, and writes nothing until Anthony types y. Writes go through
+// admin_submit_pick with the source the pick arrived by; what cannot be
+// resolved is staged for him in pending_actions with the message id, never
+// dropped and never guessed.
 //
 //   npm run picks                       scan Gmail (source email)
 //   npm run picks -- --paste            read picks from stdin (source text)
 //   npm run picks -- --file picks.txt   read picks from a file (source text)
+//   npm run picks -- --message-id <id>  exactly these messages, whatever
+//                                       their labels or read state (repeatable)
 //   options: --week N  --from <email or name>  --source text|email
-//            --dry-run  --keep-unread
+//            --dry-run  --keep-unfiled  --yes
+//
+// Processed means: the message carries the DONE label, or its Gmail id is
+// already on file (a pending_actions row, or a pick_from_message audit row
+// beside a written pick). The label is resolved or created before anything
+// is read; a run that could not file a message would read it again every
+// hour. Three reads: every roster address, whatever the subject; strangers
+// whose subject names the pool; and delivery failures from a mailer, whose
+// failed recipient is matched to the roster.
 //
 // The week a message names in its subject or first lines is the week it is
 // recorded in; --week (then the open week) is only the fallback. A mail's
@@ -25,21 +37,24 @@ import {
   currentWeek,
   loadCurrentPicks,
   loadDoubleElimThroughWeek,
+  loadFiledMessageIds,
   loadGames,
   loadLiveEntries,
   loadOwners,
   loadPriorPicks,
   loadStandings,
   loadWeeks,
+  recordPickMessage,
   stagePending,
   submitPick,
   type CurrentPickRow,
 } from "../lib/db";
-import { gmailClient, listUnreadFrom, markProcessed, type InboundMessage, listUnreadMatching } from "../lib/gmail";
+import { ensureLabel, getMessageFull, gmailClient, listSweepFrom, listSweepMatching, markProcessed, type InboundMessage, type SweepSkip } from "../lib/gmail";
 import { takeValue, weekArg } from "../lib/args";
-import { ADMIN_MAILBOX, LYNNE_EMAIL, MAX_STAGED_PER_RUN } from "../lib/constants";
+import { ADMIN_MAILBOX, DONE_LABEL, LYNNE_EMAIL, MAX_NOISE_ROWS_PER_RUN, MAX_ROSTER_ROWS_PER_RUN } from "../lib/constants";
 import { loadOpsConfig } from "../ops/lib/config";
 import { STRANGER_NOTHING_LINE, strangerIdentityRow, strangerMessages, subjectSweepQuery } from "./lib/subject-sweep";
+import { bouncePayload, bounceSweepQuery, classifyBounces, isBounceSender, type BounceRow } from "./lib/bounce";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
 import { aliveEntries, confirmedOwners, intakeAddresses } from "../lib/roster";
 import { resolveFromArg } from "./lib/from";
@@ -49,6 +64,7 @@ import { deadlineFor, formatEt, isLate, type GameLite, type WeekBounds } from ".
 import {
   byeRefusal,
   ceilingDetail,
+  ceilingSenderLines,
   conflictedKeys,
   effectiveSubmitTime,
   itemIdentity,
@@ -59,6 +75,7 @@ import {
   picksToCarryForward,
   repeatedWeek,
   resolveEntry,
+  rowClassOf,
   scopeCheck,
   scopeEntriesFor,
   senderUnplaced,
@@ -68,10 +85,9 @@ import {
   stripWeekHeading,
   type RosterEntry,
   unparsedLinesToAsk,
+  weekNamedIn,
   weekOfMessage,
 } from "./lib/resolve";
-
-const DONE_LABEL = "Pool-Survivor-Done";
 
 interface Args {
   week: number | null;
@@ -80,13 +96,16 @@ interface Args {
   from: string | null;
   source: "email" | "text" | null;
   dryRun: boolean;
-  keepUnread: boolean;
+  /** Leave processed mail unfiled (no DONE label, still unread), so the next run reads it again. */
+  keepUnfiled: boolean;
+  /** Exactly these Gmail messages, whatever their labels or read state. */
+  messageIds: string[];
   /** Skip the y/N prompt: the schedule's form (npm run ops -- sweep). */
   yes: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { week: null, paste: false, file: null, from: null, source: null, dryRun: false, keepUnread: false, yes: false };
+  const a: Args = { week: null, paste: false, file: null, from: null, source: null, dryRun: false, keepUnfiled: false, messageIds: [], yes: false };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--week") a.week = weekArg(takeValue(argv, ++i, x));
@@ -98,10 +117,17 @@ function parseArgs(argv: string[]): Args {
       if (s !== "email" && s !== "text") throw new Error("--source must be email or text");
       a.source = s;
     } else if (x === "--dry-run") a.dryRun = true;
-    else if (x === "--keep-unread") a.keepUnread = true;
+    else if (x === "--keep-unfiled") a.keepUnfiled = true;
+    else if (x === "--keep-unread") {
+      // The old spelling, from when read state was the marker. Accepted for
+      // one release so a pasted command still runs; the new name is printed.
+      console.log("--keep-unread is now --keep-unfiled (the DONE label is the marker, not read state); accepted this once.");
+      a.keepUnfiled = true;
+    } else if (x === "--message-id") a.messageIds.push(takeValue(argv, ++i, x));
     else if (x === "--yes") a.yes = true;
     else throw new Error(`Unknown argument ${x}`);
   }
+  if (a.messageIds.length && (a.paste || a.file)) throw new Error("--message-id reads Gmail; it cannot be combined with --paste or --file.");
   return a;
 }
 
@@ -161,6 +187,8 @@ interface Unresolved {
   item: Item;
   /** A fully resolved pick Anthony has to decide on (a repeated team); approving it on /admin/queue records it. */
   pick?: { entryId: string; entryName: string; week: number; team: string };
+  /** A delivery failure for a roster address: the payload is the bounce's, not a line's. */
+  bounce?: Record<string, unknown>;
 }
 
 function pad(s: string, n: number): string {
@@ -235,6 +263,7 @@ async function main(): Promise<void> {
       ownerEmail: o?.email ?? null,
       playerEmail: e.player_email,
       isGifted: e.is_gifted,
+      lynneNumber: e.lynne_number,
     };
   });
 
@@ -255,6 +284,10 @@ async function main(): Promise<void> {
 
   // ---- gather
   const items: Item[] = [];
+  /** Delivery failures for roster addresses, staged as they are; nothing to parse. */
+  const bounceRows: Unresolved[] = [];
+  /** Delivery failures for addresses on no roster row: filed, never staged. */
+  const notOursBounces = new Set<string>();
   if (args.paste || args.file) {
     const text = args.file ? fs.readFileSync(args.file, "utf8") : await readStdin();
     let sender: string | null = null;
@@ -286,22 +319,53 @@ async function main(): Promise<void> {
       throw new Error("--source applies to --paste or --file only; mail read from Gmail is always recorded as email.");
     }
     const gmail = gmailClient();
+    // THE LABEL FIRST, before anything is read. Read state is no longer the
+    // marker (2026-09-15), so the DONE label is the only thing that keeps a
+    // processed message out of the next run; if it is missing it is created,
+    // and if that fails the run stops here with nothing read.
+    const doneLabelId = await ensureLabel(gmail, DONE_LABEL);
+    const skip: SweepSkip = { doneLabelId, onFileIds: await loadFiledMessageIds(client) };
     const addresses = intakeAddresses(owners, entries, ADMIN_MAILBOX);
-    // Two reads. Every unread message from a known address, whatever its
-    // subject or label; then the Gmail filter's rule in code - unread mail
-    // from anyone else whose subject names the pool or the picks - which
-    // lands below as an identity question, never as a written pick.
-    const known: InboundMessage[] = await listUnreadFrom(gmail, addresses);
+    const addressSet = new Set(addresses);
     const ops = loadOpsConfig();
     const terms = ops.sweepSubjectTerms;
     // The machine senders are excluded twice on purpose: in the Gmail query,
     // so their mail is never fetched, and in strangerMessages, so a forwarded
     // copy arriving by another route is still dropped.
     const excluded = [ADMIN_MAILBOX, LYNNE_EMAIL, ...ops.sweepExcludeSenders];
-    const strangers = strangerMessages(await listUnreadMatching(gmail, subjectSweepQuery(terms, ops.sweepExcludeSenders)), addresses, excluded, terms);
+    let known: InboundMessage[] = [];
+    let strangers: InboundMessage[] = [];
+    let bounces: BounceRow[] = [];
+    if (args.messageIds.length) {
+      // Named messages are read whatever their labels or read state, and
+      // the on-file check is skipped for the id itself. Every pick-level
+      // check below still applies: this is how a message staged once is
+      // re-read after the parser has learned its shape.
+      for (const id of args.messageIds) {
+        const m = await getMessageFull(gmail, id);
+        if (m.fromAddress === ADMIN_MAILBOX) {
+          throw new Error(`${id} is from the admin mailbox; this sweep never reads it. Dictated picks go through npm run picks:self.`);
+        }
+        if (isBounceSender(m.fromAddress)) bounces.push(...classifyBounces([m], addresses, entriesFor));
+        else if (addressSet.has(m.fromAddress)) known.push(m);
+        else strangers.push(m);
+      }
+    } else {
+      // Three reads. Every message from a known address, whatever its
+      // subject or label; the Gmail filter's rule in code - mail from anyone
+      // else whose subject names the pool or the picks - which lands below
+      // as an identity question, never as a written pick; and delivery
+      // failures from a mailer, matched to the roster by the failed address.
+      known = await listSweepFrom(gmail, addresses, skip);
+      strangers = strangerMessages(await listSweepMatching(gmail, subjectSweepQuery(terms, ops.sweepExcludeSenders), skip), addresses, excluded, terms);
+      bounces = classifyBounces(await listSweepMatching(gmail, bounceSweepQuery(), skip), addresses, entriesFor);
+      // A DSN whose subject happened to carry a term is a bounce, not a stranger.
+      const bounceIds = new Set(bounces.map((b) => b.messageId));
+      strangers = strangers.filter((m) => !bounceIds.has(m.id));
+    }
     const msgs: InboundMessage[] = [...known, ...strangers];
     const strangerIds = new Set(strangers.map((m) => m.id));
-    if (strangers.length) console.log(`${strangers.length} unread message(s) from unknown senders with "${terms.join('" or "')}" in the subject; staged for Anthony, never written.`);
+    if (strangers.length) console.log(`${strangers.length} message(s) from unknown senders with "${terms.join('" or "')}" in the subject; staged for Anthony, never written.`);
     for (const m of msgs) {
       items.push({
         id: itemIdentity(m.id, m.subject, items.length),
@@ -316,7 +380,34 @@ async function main(): Promise<void> {
         stranger: strangerIds.has(m.id),
       });
     }
-    if (!msgs.length) console.log("No unread mail from any known player address.");
+    for (const b of bounces) {
+      const item: Item = {
+        id: itemIdentity(b.messageId, b.subject, items.length + bounceRows.length),
+        label: `${b.from} | ${b.subject || "(no subject)"} | bounce`,
+        text: "",
+        source: "email",
+        senderAddress: b.from,
+        fromOwnerId: null,
+        messageId: b.messageId,
+        week: weekFor(weekNamedIn(b.subject)),
+        receivedAt: b.receivedAt,
+        stranger: false,
+      };
+      if (b.onRoster || b.bouncedAddress === null) {
+        // ONE identity row per roster bounce - the kind the queue already
+        // renders - naming the person's entries. A notice whose recipient
+        // could not be read is staged too: it may be one of ours.
+        const reason = b.bouncedAddress === null
+          ? "delivery failed; the recipient could not be read from the notice"
+          : `delivery failed to ${b.bouncedAddress} (${b.entryNames.join(", ") || "no live entry"})`;
+        bounceRows.push({ kind: "identity", reason, line: b.subject || "(no subject)", candidates: b.entryNames, item, bounce: bouncePayload(b, item.week) });
+      } else {
+        // Not ours: filed under DONE, not staged. Nothing of the roster failed.
+        notOursBounces.add(b.messageId);
+        console.log(`bounce for ${b.bouncedAddress}, not a roster address: filed, not staged`);
+      }
+    }
+    if (!msgs.length && !bounces.length) console.log("No unprocessed mail from any known player address.");
   }
 
   // ---- resolve
@@ -349,7 +440,7 @@ async function main(): Promise<void> {
     const kind = pendingKind(item.senderAddress, scopeEntries.length);
     const preferredIds = new Set(scopeEntries.map((e) => e.id));
     const body = stripWeekHeading(stripQuotedReply(item.text));
-    const { picks, unparsed } = parsePickLines(body);
+    const { picks, unparsed, multi } = parsePickLines(body);
     const fail = (reason: string, line: string, candidates: RosterEntry[] = []) =>
       unresolved.push({
         kind,
@@ -371,11 +462,30 @@ async function main(): Promise<void> {
       askedForThisItem = true;
       fail(reason, STRANGER_NOTHING_LINE);
     };
-    for (const ask of unparsedLinesToAsk(placed, unparsed)) fail(ask.reason, ask.line);
+    // A line that is the sender's own name is a signature, not a question.
+    const signatures = [...new Set(scopeEntries.map((e) => e.ownerName))];
+    for (const ask of unparsedLinesToAsk(placed, unparsed, signatures)) fail(ask.reason, ask.line);
     // A known address, or a --from owner, with no live entry behind it (a
     // declined owner, a voided roster) may name anything; nothing it names
     // is written.
     const unplaced = senderUnplaced(item, scopeEntries.length);
+    // TWO TEAMS FOR TWO ENTRIES WITH THE ORDER UNSTATED ("Chargers & 49ers",
+    // Kris Tomasco, 2026-09-15) is NEVER assigned by order. One question for
+    // the message naming the entries and the teams, and Anthony says which is
+    // which. Any other count of teams against entries is the same question
+    // with the mismatch stated.
+    for (const m of multi) {
+      if (unplaced) {
+        askOnce("sender matches no live entry on the roster");
+        continue;
+      }
+      const names = scopeEntries.map((e) => e.entryName).join(", ");
+      if (scopeEntries.length === m.teams.length) {
+        fail(`names ${m.teams.length} teams for ${scopeEntries.length} entries with the order unstated: which is which? entries ${names}; teams ${m.teams.join(", ")}`, m.line, scopeEntries);
+      } else {
+        fail(`names ${m.teams.length} teams (${m.teams.join(", ")}) and the sender has ${scopeEntries.length} entr${scopeEntries.length === 1 ? "y" : "ies"} (${names})`, m.line, scopeEntries);
+      }
+    }
     for (const p of picks) {
       if (unplaced) {
         askOnce("sender matches no live entry on the roster");
@@ -504,6 +614,7 @@ async function main(): Promise<void> {
     const nothingHeard = strangerIdentityRow(!placed, unresolved.length + proposals.length - rowsBefore);
     if (nothingHeard) unresolved.push({ ...nothingHeard, candidates: [], item });
   }
+  unresolved.push(...bounceRows);
 
   // ---- one entry, one team, per message: two teams for one entry are staged,
   // a repeated team staged as an elimination counting as one of them.
@@ -586,33 +697,58 @@ async function main(): Promise<void> {
     return;
   }
   // A message whose every pick is already on file is handled: it is filed
-  // like any other, or it stays unread and comes back on every run.
-  const fileOnly = new Set<string>();
+  // like any other, or it comes back on every run. A bounce for an address
+  // on no roster row is filed the same way.
+  const fileOnly = new Set<string>(notOursBounces);
   for (const p of already) if (p.messageId) fileOnly.add(p.messageId);
   for (const p of toWrite) if (p.messageId) fileOnly.delete(p.messageId);
   for (const u of unresolved) if (u.item.messageId) fileOnly.delete(u.item.messageId);
   const fileMessages = async (ids: Set<string>) => {
-    if (!ids.size || args.keepUnread || args.paste || args.file) return;
+    if (!ids.size || args.keepUnfiled || args.paste || args.file) return;
     const gmail = gmailClient();
     for (const id of ids) {
       const labelled = await markProcessed(gmail, id, DONE_LABEL);
       if (!labelled) console.log(`label ${DONE_LABEL} not found; ${id} marked read only`);
     }
-    console.log(`${ids.size} message(s) marked read and filed under ${DONE_LABEL}.`);
+    console.log(`${ids.size} message(s) filed under ${DONE_LABEL} and marked read.`);
   };
-  // THE CEILING. Before the confirm, before any write, before a single
-  // message is marked read: a run that would stage more than the limit stops
-  // dead and prints who it came from. Nothing is written, nothing is staged,
-  // nothing is filed - so the same mail is still there to be swept once the
-  // filter is right. Raising the limit is never the fix.
-  const ceiling = stagingCeiling(unresolved.map((u) => u.item.senderAddress), MAX_STAGED_PER_RUN);
-  if (!ceiling.ok) {
-    console.log(`\nNEEDS ANTHONY: this run would stage ${ceiling.staged} rows, over the ceiling of ${ceiling.limit}.`);
-    console.log("Nothing was written, nothing was staged and no message was marked read.");
-    for (const s of ceiling.bySender) console.log(`  ${String(s.rows).padStart(5)}  ${s.sender}`);
-    console.log("A sweep that stages this many rows is reading the wrong mail. Fix the filter; do not raise the ceiling.");
-    await notify(needsAnthonyLine("picks", "staging ceiling", ceilingDetail(ceiling.staged, ceiling.limit)), { tags: "warning" });
+  // THE CEILING, split by class (Anthony, 2026-09-15). Before the confirm,
+  // before any write, before a single message is filed.
+  //
+  // ROSTER over its limit (rows from placed senders: picks and player
+  // questions, limit the roster size) stops the whole run dead and prints
+  // who it came from. Nothing is written, nothing is staged, nothing is
+  // filed - more than one row per live entry in one run is a reader defect,
+  // and picks written out of that run would be picks read by the same
+  // defect.
+  //
+  // NOISE over its limit (identity rows: senders with no live entry) leaves
+  // THOSE rows unstaged and unfiled and prints who they came from - the same
+  // mail is still there once the filter is right - and the roster rows and
+  // the clean picks in this run STILL GO THROUGH. A newsletter flood on a
+  // Wednesday must not hold 43 people's picks. Raising either limit is never
+  // the fix.
+  const ceiling = stagingCeiling(
+    unresolved.map((u) => ({ sender: u.item.senderAddress, klass: rowClassOf(u.kind) })),
+    { noise: MAX_NOISE_ROWS_PER_RUN, roster: MAX_ROSTER_ROWS_PER_RUN },
+  );
+  if (ceiling.tripped === "roster") {
+    console.log(`\nNEEDS ANTHONY: this run would stage ${ceiling.roster.staged} roster rows, over the ceiling of ${ceiling.roster.limit}.`);
+    console.log("Nothing was written, nothing was staged and no message was filed.");
+    for (const line of ceilingSenderLines(ceiling.roster)) console.log(line);
+    console.log("More than one row per live entry in one run is a reader defect. Fix the parser; do not raise the ceiling.");
+    await notify(needsAnthonyLine("picks", "roster staging ceiling", ceilingDetail("roster", ceiling.roster.staged, ceiling.roster.limit)), { tags: "warning" });
     return;
+  }
+  if (ceiling.tripped === "noise") {
+    const held = unresolved.filter((u) => rowClassOf(u.kind) === "noise");
+    const kept = unresolved.filter((u) => rowClassOf(u.kind) !== "noise");
+    unresolved.length = 0;
+    unresolved.push(...kept);
+    console.log(`\nNEEDS ANTHONY: ${held.length} noise rows from senders with no live entry, over the ceiling of ${ceiling.noise.limit}. Left unstaged and unfiled; the roster's rows and picks below still go through.`);
+    for (const line of ceilingSenderLines(ceiling.noise)) console.log(line);
+    console.log("A sweep reading this much stranger mail has the wrong filter. Fix the filter; do not raise the ceiling.");
+    await notify(needsAnthonyLine("picks", "noise staging ceiling", ceilingDetail("noise", ceiling.noise.staged, ceiling.noise.limit)), { tags: "warning" });
   }
   if (!toWrite.length && !unresolved.length) {
     console.log(`\nNothing to write.${fileOnly.size ? ` ${fileOnly.size} message(s) already recorded in full.` : ""}`);
@@ -637,12 +773,19 @@ async function main(): Promise<void> {
       submittedAt: p.submittedAt,
     });
     console.log(`wrote week ${p.week} ${p.entry.entryName} -> ${p.team} (${p.source}${p.late ? ", late" : ""}${p.submittedAt ? `, received ${formatEt(p.submittedAt)}` : ""}) pick ${id}`);
-    if (p.messageId) touched.add(p.messageId);
+    if (p.messageId) {
+      // The message id beside the pick, so the sweep can treat this message
+      // as processed by id alone whatever its labels say (2026-09-15).
+      await recordPickMessage(client, { actor, pickId: id, messageId: p.messageId, entryId: p.entry.id, week: p.week, team: p.team });
+      touched.add(p.messageId);
+    }
   }
   for (const u of unresolved) {
     await stagePending(client, {
       kind: u.kind,
-      payload: u.pick
+      payload: u.bounce
+        ? u.bounce
+        : u.pick
         ? {
             entry_id: u.pick.entryId,
             entry_name: u.pick.entryName,
@@ -669,10 +812,12 @@ async function main(): Promise<void> {
       actor,
     });
     console.log(`staged ${u.kind}: ${u.line}`);
+    if (u.bounce) console.log(`NEEDS ANTHONY: ${u.reason} - see /admin/queue`);
     // The reason and the line can both carry a team, and a pick is not
     // public before kickoff: the push says the kind and the week, nothing
-    // else. The detail is on /admin/queue.
-    await notify(needsAnthonyLine("picks", u.kind, stagedDetail(u.item.week)), { tags: "warning" });
+    // else - and never an address, so a bounce's push says only that one
+    // was staged. The detail is on /admin/queue.
+    await notify(needsAnthonyLine("picks", u.bounce ? "bounce" : u.kind, stagedDetail(u.item.week)), { tags: "warning" });
     if (u.item.messageId) touched.add(u.item.messageId);
   }
   await fileMessages(touched);

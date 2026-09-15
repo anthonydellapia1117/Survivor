@@ -5,23 +5,29 @@
 // sitting unread because a filter in a settings screen was not updated.
 // The words come from scripts/ops/config.json (sweepSubjectTerms).
 
-import type { InboundMessage } from "../../lib/gmail";
-import { SWEEP_WINDOW_DAYS } from "../../lib/constants";
+import { notDoneClause, type InboundMessage } from "../../lib/gmail";
+import { DONE_LABEL, SWEEP_WINDOW_DAYS } from "../../lib/constants";
 
 /**
- * The Gmail search for the subject rule: unread, not a draft, inside the
- * window, not from a machine, subject carrying any of the phrases.
+ * The Gmail search for the subject rule: not a draft, inside the window, not
+ * yet filed under the DONE label, not from a machine, subject carrying any of
+ * the phrases.
  *
- * Three of those four clauses were added on 2026-09-10. Without the window
- * the sweep read five months of unread mail on its first credentialed run;
- * without the sender exclusions every GitHub notification on this repo
+ * The window and the sender exclusions were added on 2026-09-10. Without the
+ * window the sweep read five months of unread mail on its first credentialed
+ * run; without the sender exclusions every GitHub notification on this repo
  * matched, because their subjects all read "Re: [.../Survivor] ..." and the
  * pool's own name is a term. A phrase is quoted so Gmail matches it whole.
+ *
+ * `is:unread` came OFF on 2026-09-15 (Anthony): read state is not the
+ * marker, the DONE label is. A stranger's mail he opened on his phone is
+ * still a stranger's mail the sweep has to file.
  */
 export function subjectSweepQuery(
   terms: string[],
   excludeSenders: string[] = [],
   windowDays: number = SWEEP_WINDOW_DAYS,
+  doneLabel: string = DONE_LABEL,
 ): string {
   const words = terms.map((t) => t.trim()).filter(Boolean);
   if (words.length === 0) throw new Error("subject sweep: no terms");
@@ -31,7 +37,7 @@ export function subjectSweepQuery(
     .map((a) => a.trim().toLowerCase())
     .filter(Boolean)
     .map((a) => `-from:${a}`);
-  return [`is:unread`, `-in:draft`, `newer_than:${windowDays}d`, ...notFrom, `subject:(${quoted.join(" OR ")})`].join(" ");
+  return [`-in:draft`, `newer_than:${windowDays}d`, notDoneClause(doneLabel), ...notFrom, `subject:(${quoted.join(" OR ")})`].join(" ");
 }
 
 /** Whether a subject carries any of the words, as whole words, any case. */
