@@ -26,7 +26,14 @@ import {
   poolWeekFilled,
   standingCounts,
 } from "@/lib/master-list";
-import { toneOfResult, toneOfTeamResult } from "@/lib/result-colour";
+import {
+  BUCKET_FILL_CLASS,
+  BUCKET_TEXT_CLASS,
+  OUT_TEXT_CLASS,
+  TONE_TEXT_CLASS,
+  toneOfResult,
+  toneOfTeamResult,
+} from "@/lib/result-colour";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   chalkVerdict,
@@ -45,6 +52,8 @@ import { cn } from "@/lib/utils";
 import { LockClosedIcon } from "@/components/dashboard/lock-icon";
 
 // Rendered on every request: the countdown, the scores and her sheet move.
+// The same as force-dynamic here (no fetch in src/lib/data sets its own cache
+// option), and the one spelling on all six public viewer pages.
 export const revalidate = 0;
 
 const RESULT_TEXT: Record<string, string> = {
@@ -115,9 +124,9 @@ export default async function DashboardPage(
       ? { noLosses: poolStand.noLosses, lossBye: poolStand.lossBye, out: poolStand.out, total: poolStand.total }
       : { noLosses: oursCounts["No Losses"], lossBye: oursCounts["1 Loss/Bye"], out: oursCounts.Out, total: ours.entries.length };
   const segments = [
-    { label: "No Losses", n: health.noLosses, cls: "bg-win" },
-    { label: "1 Loss/Bye", n: health.lossBye, cls: "bg-tie" },
-    { label: "Out", n: health.out, cls: "bg-loss" },
+    { label: "No Losses", n: health.noLosses, cls: BUCKET_FILL_CLASS.noLosses },
+    { label: "1 Loss/Bye", n: health.lossBye, cls: BUCKET_FILL_CLASS.lossBye },
+    { label: "Out", n: health.out, cls: BUCKET_FILL_CLASS.out },
   ].filter((s) => s.n > 0);
 
   // The week's picks. In Everyone scope, the whole pool's cells from her
@@ -233,15 +242,15 @@ export default async function DashboardPage(
           <div className="grid grid-cols-3 gap-2">
             <div>
               <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">No Losses</div>
-              <div className="text-2xl tabular-nums text-win">{health.noLosses.toLocaleString()}</div>
+              <div className={cn("text-2xl tabular-nums", BUCKET_TEXT_CLASS.noLosses)}>{health.noLosses.toLocaleString()}</div>
             </div>
             <div>
               <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">1 Loss/Bye</div>
-              <div className="text-2xl tabular-nums text-tie">{health.lossBye.toLocaleString()}</div>
+              <div className={cn("text-2xl tabular-nums", BUCKET_TEXT_CLASS.lossBye)}>{health.lossBye.toLocaleString()}</div>
             </div>
             <div>
               <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Eliminated</div>
-              <div className="text-2xl tabular-nums text-loss">{health.out.toLocaleString()}</div>
+              <div className={cn("text-2xl tabular-nums", BUCKET_TEXT_CLASS.out)}>{health.out.toLocaleString()}</div>
               {/* Not "struck out": most of these are our own calculation -
                   two losses, a late loss, a repeated team. Her explicit OUT
                   is authoritative and included, but it is not the whole
@@ -382,7 +391,7 @@ export default async function DashboardPage(
             </CardTitle>
             {damage ? (
               <p className="text-sm">
-                <span className="text-2xl font-semibold tabular-nums text-tie">{damage.lost.toLocaleString("en-US")}</span>{" "}
+                <span className={cn("text-2xl font-semibold tabular-nums", TONE_TEXT_CLASS.lost)}>{damage.lost.toLocaleString("en-US")}</span>{" "}
                 lost a life
                 <span className="text-muted-foreground">
                   {" "}
@@ -390,7 +399,7 @@ export default async function DashboardPage(
                   {damage.aliveBefore.toLocaleString("en-US")})
                 </span>
                 ,{" "}
-                <span className={cn("font-semibold tabular-nums", damage.out > 0 ? "text-loss" : "text-muted-foreground")}>
+                <span className={cn("font-semibold tabular-nums", damage.out > 0 ? OUT_TEXT_CLASS : "text-muted-foreground")}>
                   {damage.out.toLocaleString("en-US")} out
                 </span>
               </p>

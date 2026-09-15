@@ -74,6 +74,11 @@ import { scopeFrom, scopeHref } from "../../src/components/scope-toggle";
 
 const render = async (el: Promise<React.ReactElement>) => renderToStaticMarkup(await el);
 
+/** None of this group's money reaches a public page, in either scope (CLAUDE.md, Public surfaces). */
+function noGroupMoney(out: string): void {
+  expect(out).not.toMatch(/collected|outstanding|amount due|owed to|recruited|margin/i);
+}
+
 describe("scopeFrom and scopeHref", () => {
   it("is the whole pool unless the URL asks for our group, and our group when no sheet is loaded", () => {
     expect(scopeFrom(undefined, true)).toBe("pool");
@@ -98,6 +103,7 @@ describe("Records: the roster", () => {
     expect(out).toMatch(/aria-current="true"[^>]*>Everyone/);
     // The CSV is our group's roster and is offered only there.
     expect(out).not.toContain("Download CSV");
+    noGroupMoney(out);
   });
 
   it("lists our group, with the CSV, only under Our group", async () => {
@@ -105,6 +111,7 @@ describe("Records: the roster", () => {
     expect(out).toContain("ROWS:1 POOL:false");
     expect(out).toContain("Download CSV");
     expect(out).toMatch(/aria-current="true"[^>]*>Our group/);
+    noGroupMoney(out);
   });
 });
 
@@ -113,12 +120,14 @@ describe("Schedule: what each game cost", () => {
     const out = await render(SchedulePage({ searchParams: Promise.resolve({}) }));
     expect(out).toContain("BOARD:3 IDS:pool-1,pool-2,e-983");
     expect(out).toMatch(/aria-current="true"[^>]*>Everyone/);
+    noGroupMoney(out);
   });
 
   it("hands it our group only under Our group, keeping the week", async () => {
     const out = await render(SchedulePage({ searchParams: Promise.resolve({ scope: "ours", week: "1" }) }));
     expect(out).toContain("BOARD:1 IDS:e-983");
     expect(out).toContain('href="/schedule?week=1"');
+    noGroupMoney(out);
   });
 });
 
@@ -129,11 +138,13 @@ describe("Records: the 2025 archive", () => {
     expect(out).not.toContain("My entries");
     expect(out).not.toContain("My 2025 entries still on the sheet");
     expect(out).not.toContain("3 of my 66");
+    noGroupMoney(out);
   });
 
   it("shows his own entries only under Our group", async () => {
     const out = await render(Archive2025Page({ searchParams: Promise.resolve({ scope: "ours" }) }));
     expect(out).toContain("My entries");
     expect(out).toContain("My 2025 entries still on the sheet");
+    noGroupMoney(out);
   });
 });

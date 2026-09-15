@@ -114,6 +114,16 @@ export const TONE_BAR_CLASS: Record<ResultTone, string> = {
 /** A bar for entries that are out: red, the one colour that means finished. */
 export const OUT_BAR_CLASS = "bg-loss/75";
 
+/** Text for entries that are out, the red of OUT_BAR_CLASS. */
+export const OUT_TEXT_CLASS = "text-loss";
+
+/**
+ * Her three buckets as solid fills and as text, for the dashboard's health
+ * row: No Losses reads as a win, 1 Loss/Bye as a loss, Out as out.
+ */
+export const BUCKET_FILL_CLASS = { noLosses: "bg-win", lossBye: "bg-tie", out: "bg-loss" } as const;
+export const BUCKET_TEXT_CLASS = { noLosses: TONE_TEXT_CLASS.won, lossBye: TONE_TEXT_CLASS.lost, out: OUT_TEXT_CLASS } as const;
+
 /**
  * A row's tone. "out" is the entry finished - two losses is the ordinary way
  * there, and it is always the way there in code: poolBucketOf returns Out at
