@@ -2314,6 +2314,27 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
   Lynne-number paste import, which re-submits each entry's existing name to
   write a number, silently emptied that list. Comparison is byte-exact:
   `tommybrads` arriving over `Tommybrads` is a real rename.
+- **`v_entry_standing` serves LIVE entries only, as of 2026-09-15.** Found
+  by Anthony that day: "It returns 130 rows against 121 live entries. It
+  does not filter voided_at. Its own counts are active 84 and at_risk 46,
+  which sum to 130 - nine voided entries are being counted as active." The
+  scored CTE had read every row of `entries` since `20260821000002`. **No
+  public figure was wrong**: `v_entry_public`, `v_entry_admin` and
+  `admin_deadline_sweep` inner-join the view from `entries` and filter
+  `voided_at is null` on their own side, and so does the local-pg admin
+  list, so the site, the admin list and the sweep were right while the view
+  itself - and any tally read straight off it - was not. Migration
+  `20260915000077_entry_standing_live_only` carries the body forward with
+  `where e.voided_at is null` in the CTE and nothing else changed, definer
+  and revoked from the client roles as before. **The view's row count IS
+  the live entry count from now on**, and two guards hold it there:
+  `tests/sql/22_entry_standing_live.sql` voids an entry through
+  `admin_void_entry` and asserts the view drops exactly that row and that
+  active + at_risk + eliminated + bye_eligible equals the live count
+  (confirmed to FAIL without the migration: `voided entry "<name>" is still
+  in v_entry_standing`, the name being whichever live entry sorts first), and `scripts/db/smoke.sql` raises on the same
+  comparison inside every attended apply. A voided entry has no status; it
+  is off the roster.
 - Tests are required for pick validation, elimination rules, and any money
   calculation.
 - Bye weeks and Thursday/Saturday/Monday games are normal — never assume all
@@ -2334,6 +2355,7 @@ npm run picks | npm run lynne | npm run chase | npm run results | npm run distri
 | Data backup (one-step restore)      | `src/lib/backup.ts`, `/api/admin/backup`     |
 | Admin mutations (all audited)       | `src/app/admin/actions.ts`                   |
 | One entry to a new owner            | `admin_move_entry_owner`, `tests/sql/20_move_entry_owner.sql` |
+| The standing view, live entries only | `v_entry_standing` (`20260915000077`), `tests/sql/22_entry_standing_live.sql`, `scripts/db/smoke.sql` |
 | Her masked cells, the one seam      | `herCell` / `herCellIsLocked` in `src/lib/master-list.ts` |
 | Our standing from the scores, display only | `scoreFromGames` in `src/lib/live-standing.ts` |
 | Her result against the scores, read-only | `compareStoredToScores` in `src/lib/score-variance.ts`, `scripts/ops/reporters/result-variance.ts` |
