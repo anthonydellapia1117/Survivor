@@ -62,10 +62,18 @@ export interface MarkComparison {
   unscored: number;
 }
 
-/** Red, or the word OUT in the week cell, is OUT; yellow is her 1 loss/bye bucket. */
-export function herMarkOf(fill: GridFill, weekCellText: string | null): HerMark {
+/** The last regular-season week; her sheet for it paints the WINNER yellow. */
+export const SEASON_END_WEEK = 18;
+
+/**
+ * Red, or the word OUT in the week cell, is OUT; yellow is her 1 loss/bye
+ * bucket - except on the season-end sheet, where yellow is the winner (the
+ * 2025 final sheet, and parse-grid's note), so there it is set aside rather
+ * than read as a loss. Copilot caught the season-end case on #101.
+ */
+export function herMarkOf(fill: GridFill, weekCellText: string | null, seasonEnd = false): HerMark {
   if (fill === "red" || (weekCellText ?? "").trim().toUpperCase() === "OUT") return "out";
-  if (fill === "yellow") return "loss";
+  if (fill === "yellow") return seasonEnd ? "unknown" : "loss";
   if (fill === "none") return "clean";
   return "unknown";
 }
@@ -128,7 +136,7 @@ export function compareMarksToScores(
   for (const p of picks) byEntry.set(p.entryId, [...(byEntry.get(p.entryId) ?? []), p]);
   const out: MarkComparison = { agree: 0, differ: [], unknown: 0, unscored: 0 };
   for (const r of [...rows].sort((a, b) => a.no - b.no)) {
-    const hers = herMarkOf(r.fill, r.weekCellText);
+    const hers = herMarkOf(r.fill, r.weekCellText, week >= SEASON_END_WEEK);
     if (hers === "unknown") {
       out.unknown += 1;
       continue;
@@ -181,7 +189,10 @@ export function markComparisonLines(c: MarkComparison, week: number): string[] {
   ].filter((x): x is string => x !== null);
   const suffix = tail.length > 0 ? ` (${tail.join(", ")})` : "";
   if (c.differ.length === 0) {
-    return [`Her marks and the scores agree on every one of our rows through Week ${week}: ${c.agree} rows${suffix}.`];
+    // "Every one of our rows" only when every row was compared; a row set
+    // aside is named, not folded into agreement (Copilot, #101).
+    const scope = tail.length === 0 ? "every one of our rows" : "every row compared";
+    return [`Her marks and the scores agree on ${scope} through Week ${week}: ${c.agree} rows${suffix}.`];
   }
   return [
     `Her marks and the scores DIFFER on ${c.differ.length} of ours through Week ${week}; ${c.agree} agree${suffix}. Neither side is corrected here:`,

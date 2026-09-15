@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import * as XLSXStyle from "xlsx-js-style";
 import { classifyFill, parseLynneGrid } from "../../src/lib/lynne/parse-grid";
 import { matchGridRows } from "../../src/lib/lynne/plan-grid";
@@ -41,6 +42,12 @@ describe("her fill as a standing", () => {
     expect(herMarkOf("none", "Jacksonville")).toBe("clean");
     expect(herMarkOf("none", null)).toBe("clean");
     expect(herMarkOf("other", "Jacksonville")).toBe("unknown");
+  });
+
+  it("on the season-end sheet yellow is the winner, not a loss, and is set aside", () => {
+    expect(herMarkOf("yellow", "Detroit", true)).toBe("unknown");
+    expect(herMarkOf("red", "Detroit", true)).toBe("out");
+    expect(herMarkOf("none", "Detroit", true)).toBe("clean");
   });
 
   it("reads the white theme fill she paints clean rows with as no mark, and any other theme as unknown", () => {
@@ -180,7 +187,7 @@ describe("her marks against the scores", () => {
     expect(markComparisonLines(c, 1)).toEqual(["Her marks and the scores agree on every one of our rows through Week 1: 2 rows."]);
   });
 
-  it("sets aside an unknown fill and an unscored game rather than calling either a difference", () => {
+  it("sets aside an unknown fill and an unscored game rather than calling either a difference, and says so", () => {
     const c = compareMarksToScores(
       [row(977, "a", "other"), row(978, "b", "none")],
       [pick("a", 1, "LAC"), pick("b", 1, "PHI"), pick("b", 2, "TEN")],
@@ -188,7 +195,31 @@ describe("her marks against the scores", () => {
       2,
     );
     expect(c).toEqual({ agree: 0, differ: [], unknown: 1, unscored: 1 });
-    expect(markComparisonLines(c, 2)[0]).toContain("(1 with a game not yet final, 1 with a fill this reader does not know)");
+    // A partial comparison never claims "every one of our rows".
+    expect(markComparisonLines(c, 2)).toEqual([
+      "Her marks and the scores agree on every row compared through Week 2: 0 rows (1 with a game not yet final, 1 with a fill this reader does not know).",
+    ]);
+  });
+
+  it("on a Week 18 import a yellow row is set aside as her winner colour rather than read as a loss", () => {
+    const w18 = [{ week: 18, homeTeam: "DET", awayTeam: "CHI", homeScore: 30, awayScore: 10, status: "final" as const }];
+    const c = compareMarksToScores([row(977, "a", "yellow")], [pick("a", 18, "DET")], w18, 18);
+    expect(c).toEqual({ agree: 0, differ: [], unknown: 1, unscored: 0 });
+    // Through Week 17 the same yellow is still her 1 loss/bye bucket.
+    const w17 = [{ week: 17, homeTeam: "DET", awayTeam: "CHI", homeScore: 30, awayScore: 10, status: "final" as const }];
+    expect(compareMarksToScores([row(977, "a", "yellow")], [pick("a", 17, "DET")], w17, 17).differ).toHaveLength(1);
+  });
+
+  it("is computed before the plan is printed, so the count the operator approves carries it", () => {
+    // The results command pushes mark conflicts into plan.variances; that has
+    // to happen before planSummaryLines and varianceTable print them.
+    const src = readFileSync("scripts/results/cli.ts", "utf8");
+    const compute = src.indexOf("markCheck = compareMarksToScores(");
+    const summary = src.indexOf("planSummaryLines(plan)");
+    const table = src.indexOf("varianceTable(plan.variances)");
+    expect(compute).toBeGreaterThan(0);
+    expect(compute).toBeLessThan(summary);
+    expect(compute).toBeLessThan(table);
   });
 
   it("her OUT written as text beats a clean fill", () => {
