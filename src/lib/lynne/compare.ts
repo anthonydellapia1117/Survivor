@@ -19,7 +19,10 @@ export interface Variance {
     | "status_conflict"
     | "missing_on_sheet"
     | "unreadable_team"
-    | "absent_but_alive";
+    | "absent_but_alive"
+    // Her fill mark (clean, 1 loss/bye, OUT) against the standing our
+    // scores derive (src/lib/lynne/mark-variance.ts).
+    | "mark_conflict";
   entryId: string;
   entryName: string;
   lynne: { team: string | null; result: string | null };

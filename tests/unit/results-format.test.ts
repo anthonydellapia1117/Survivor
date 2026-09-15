@@ -125,6 +125,7 @@ describe("matchedByText", () => {
 
 const GRID_PLAN: GridResultsPlan = {
   format: "grid",
+  marks: [],
   sha256: "abc",
   rows: [],
   rowCount: 1204,

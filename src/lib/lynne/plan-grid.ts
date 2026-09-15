@@ -55,16 +55,32 @@ export interface GridMatchResult {
   otherPoolCount: number;
 }
 
+/**
+ * Whether the name on her row is the name we hold for that number. Exact,
+ * then case-insensitive, never fuzzy (CLAUDE.md) - with EDGE whitespace set
+ * aside on both sides. The parser trims her NAMES cell while lynne_label is
+ * stored verbatim, so "Waggs 3 " on file against "Waggs 3" parsed read as a
+ * number-name disagreement on the first real grid import (2026-09-15) and
+ * would have filed a live entry as absent from her sheet. Edge whitespace
+ * is not identity here any more than it is on the roster loader's diff;
+ * internal spacing, case and the separator still are.
+ */
 function nameAgrees(row: GridEntryRow, t: GridTarget): boolean {
-  if (t.lynneLabel !== null && row.name === t.lynneLabel) return true;
-  if (row.name === t.entryName) return true;
-  return row.name.toLowerCase() === t.entryName.toLowerCase();
+  const name = row.name.trim();
+  if (t.lynneLabel !== null && name === t.lynneLabel.trim()) return true;
+  if (name === t.entryName.trim()) return true;
+  return name.toLowerCase() === t.entryName.trim().toLowerCase();
 }
 
 export function matchGridRows(
   rows: GridEntryRow[],
   targets: GridTarget[],
 ): GridMatchResult {
+  // The name maps are keyed on edge-trimmed text for the same reason
+  // nameAgrees trims: the parser trims her NAMES cell and lynne_label is
+  // stored verbatim, so an untrimmed key here is a silent miss on the
+  // no-number path (Codex, #101). Two labels that collapse to one key after
+  // the trim stay ambiguous and go to unmatched, as they always did.
   const byNumber = new Map<number, GridTarget>();
   const byLabel = new Map<string, GridTarget[]>();
   const byName = new Map<string, GridTarget[]>();
@@ -72,10 +88,12 @@ export function matchGridRows(
   for (const t of targets) {
     if (t.lynneNumber !== null) byNumber.set(t.lynneNumber, t);
     if (t.lynneLabel !== null) {
-      byLabel.set(t.lynneLabel, [...(byLabel.get(t.lynneLabel) ?? []), t]);
+      const l = t.lynneLabel.trim();
+      byLabel.set(l, [...(byLabel.get(l) ?? []), t]);
     }
-    byName.set(t.entryName, [...(byName.get(t.entryName) ?? []), t]);
-    const ci = t.entryName.toLowerCase();
+    const n = t.entryName.trim();
+    byName.set(n, [...(byName.get(n) ?? []), t]);
+    const ci = n.toLowerCase();
     byNameCi.set(ci, [...(byNameCi.get(ci) ?? []), t]);
   }
 
@@ -118,9 +136,10 @@ export function matchGridRows(
     }
 
     // Name path (row's number is not one of ours, or we have none stored).
-    const viaLabel = byLabel.get(row.name);
-    const viaName = byName.get(row.name);
-    const viaCi = byNameCi.get(row.name.toLowerCase());
+    const rowName = row.name.trim();
+    const viaLabel = byLabel.get(rowName);
+    const viaName = byName.get(rowName);
+    const viaCi = byNameCi.get(rowName.toLowerCase());
     let hit: { t: GridTarget; by: GridMatchedBy } | null = null;
     if (viaLabel && viaLabel.length === 1) {
       hit = { t: viaLabel[0], by: "lynne_label" };

@@ -19,11 +19,14 @@ import {
   applyLynneImport,
   importExists,
   loadCurrentPicks,
+  loadDoubleElimThroughWeek,
   loadLiveEntries,
+  loadPriorPicks,
   loadScoredGames,
   loadStandings,
 } from "../lib/db";
 import { compareStoredToScores, scoreComparisonLines } from "@/lib/score-variance";
+import { compareMarksToScores, markComparisonLines, markVarianceLine, type MarkComparison } from "@/lib/lynne/mark-variance";
 import { LYNNE_EMAIL } from "../lib/constants";
 import { getAttachment, getMessageMeta, gmailClient, searchMessages, type MessageMeta } from "../lib/gmail";
 import { finishedLine, needsAnthonyLine, notify } from "../lib/notify";
@@ -149,6 +152,50 @@ async function main(): Promise<void> {
     })),
   );
 
+  // ---- her MARKS against the scores, set by Anthony on 2026-09-15
+  // Computed BEFORE the plan is printed, so the variance count and table the
+  // operator approves already carry the mark conflicts (Copilot, #101).
+  // Her grid carries no per-week results, only a standing per row in the
+  // NAMES fill (clean, yellow = 1 loss/bye, red = OUT). This reads that
+  // standing for every matched row against what our current picks through
+  // this week and the finals say, prints every difference with both values,
+  // records each one with the import as a mark_conflict variance, and
+  // resolves nothing. She is the elimination authority; a silent flip is what
+  // this exists to prevent.
+  let markCheck: MarkComparison | null = null;
+  // A stripped export carries no styles at all (plan.noFillInfo); every row
+  // would read as a confirmed clean fill and every loss of ours as a false
+  // conflict, so the comparison is not run on such a sheet and the run says
+  // so instead (Codex, #101).
+  if (plan.format === "grid" && !plan.noFillInfo) {
+    const [priorPicks, doubleElimThrough] = await Promise.all([loadPriorPicks(client, week), loadDoubleElimThroughWeek(client)]);
+    const priorGames = (await Promise.all(
+      Array.from({ length: week - 1 }, (_, i) => loadScoredGames(client, i + 1)),
+    )).flat();
+    const toGame = (g: { week: number; home_team: string; away_team: string; home_score: number | null; away_score: number | null; status: "scheduled" | "in_progress" | "final" }) => ({
+      week: g.week, homeTeam: g.home_team, awayTeam: g.away_team, homeScore: g.home_score, awayScore: g.away_score, status: g.status,
+    });
+    markCheck = compareMarksToScores(
+      plan.marks,
+      [
+        ...priorPicks.map((p) => ({ entryId: p.entry_id, week: p.week, team: p.team })),
+        ...localPicks.map((p) => ({ entryId: p.entry_id, week, team: p.team })),
+      ],
+      [...priorGames, ...scoredGames].map(toGame),
+      week,
+      doubleElimThrough,
+    );
+    for (const v of markCheck.differ) {
+      plan.variances.push({
+        type: "mark_conflict",
+        entryId: v.entryId,
+        entryName: v.entryName,
+        lynne: { team: null, result: v.hers },
+        local: { team: v.picks, result: v.ours },
+      });
+    }
+  }
+
   // ---- show, before any write
   // An older sheet can carry a Week N column with nothing in it yet: her
   // headers run the whole season. Importing it as Week N would record every
@@ -186,6 +233,14 @@ async function main(): Promise<void> {
   console.log("");
   for (const line of scoreComparisonLines(scoreCheck, week)) console.log(line);
 
+  if (markCheck !== null) {
+    console.log("");
+    for (const line of markComparisonLines(markCheck, week)) console.log(line);
+  } else if (plan.format === "grid") {
+    console.log("");
+    console.log(`Her marks were not compared: this sheet carries no fill information, so a clean fill cannot be told from a stripped one.`);
+  }
+
   if (args.dryRun) {
     console.log("\nDry run. Nothing written.");
     return;
@@ -222,6 +277,26 @@ async function main(): Promise<void> {
       `week ${week}: ${plan.matchedCount} matched, ${plan.variances.length} variances, ${plan.applies.length} applied, import ${id}`,
     ),
   );
+  // A row set aside is actionable too, not a footnote: on the unattended
+  // Tuesday run every game is final, so "unscored" means the ingest missed a
+  // final and "unknown" means a fill this reader cannot name. Either can hide
+  // a real conflict behind a run that reports success (Codex, #101).
+  if (markCheck === null && plan.format === "grid") {
+    await notify(
+      needsAnthonyLine("results", "mark variance", `week ${week}: her sheet carries no fill information, so her marks were not compared against the scores`),
+      { tags: "warning" },
+    );
+  }
+  if (markCheck !== null && (markCheck.differ.length > 0 || markCheck.unknown > 0 || markCheck.unscored > 0)) {
+    const parts = [
+      markCheck.differ.length > 0
+        ? `${markCheck.differ.length} of ours where her week ${week} sheet's mark differs from the scores: ${markCheck.differ.map(markVarianceLine).join("; ")}`
+        : null,
+      markCheck.unscored > 0 ? `${markCheck.unscored} of ours not compared - a pick on a game with no final on file` : null,
+      markCheck.unknown > 0 ? `${markCheck.unknown} of ours not compared - a fill colour this reader does not know` : null,
+    ].filter((x): x is string => x !== null);
+    await notify(needsAnthonyLine("results", "mark variance", parts.join(" | ")), { tags: "warning" });
+  }
   if (scoreCheck.differ.length > 0) {
     await notify(
       needsAnthonyLine(
