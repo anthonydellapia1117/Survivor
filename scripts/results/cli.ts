@@ -163,7 +163,11 @@ async function main(): Promise<void> {
   // resolves nothing. She is the elimination authority; a silent flip is what
   // this exists to prevent.
   let markCheck: MarkComparison | null = null;
-  if (plan.format === "grid") {
+  // A stripped export carries no styles at all (plan.noFillInfo); every row
+  // would read as a confirmed clean fill and every loss of ours as a false
+  // conflict, so the comparison is not run on such a sheet and the run says
+  // so instead (Codex, #101).
+  if (plan.format === "grid" && !plan.noFillInfo) {
     const [priorPicks, doubleElimThrough] = await Promise.all([loadPriorPicks(client, week), loadDoubleElimThroughWeek(client)]);
     const priorGames = (await Promise.all(
       Array.from({ length: week - 1 }, (_, i) => loadScoredGames(client, i + 1)),
@@ -181,12 +185,10 @@ async function main(): Promise<void> {
       week,
       doubleElimThrough,
     );
-    const byNo = new Map(plan.marks.map((m) => [m.no, m]));
     for (const v of markCheck.differ) {
-      const m = byNo.get(v.no);
       plan.variances.push({
         type: "mark_conflict",
-        entryId: m?.entryId ?? "",
+        entryId: v.entryId,
         entryName: v.entryName,
         lynne: { team: null, result: v.hers },
         local: { team: v.picks, result: v.ours },
@@ -234,6 +236,9 @@ async function main(): Promise<void> {
   if (markCheck !== null) {
     console.log("");
     for (const line of markComparisonLines(markCheck, week)) console.log(line);
+  } else if (plan.format === "grid") {
+    console.log("");
+    console.log(`Her marks were not compared: this sheet carries no fill information, so a clean fill cannot be told from a stripped one.`);
   }
 
   if (args.dryRun) {
@@ -276,6 +281,12 @@ async function main(): Promise<void> {
   // Tuesday run every game is final, so "unscored" means the ingest missed a
   // final and "unknown" means a fill this reader cannot name. Either can hide
   // a real conflict behind a run that reports success (Codex, #101).
+  if (markCheck === null && plan.format === "grid") {
+    await notify(
+      needsAnthonyLine("results", "mark variance", `week ${week}: her sheet carries no fill information, so her marks were not compared against the scores`),
+      { tags: "warning" },
+    );
+  }
   if (markCheck !== null && (markCheck.differ.length > 0 || markCheck.unknown > 0 || markCheck.unscored > 0)) {
     const parts = [
       markCheck.differ.length > 0

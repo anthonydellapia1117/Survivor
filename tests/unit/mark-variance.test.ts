@@ -179,9 +179,11 @@ describe("her marks against the scores", () => {
       1,
     );
     expect(c.agree).toBe(2);
-    expect(c.differ.map((d) => [d.no, d.hers, d.ours])).toEqual([
-      [977, "clean", "loss"],
-      [1016, "loss", "clean"],
+    // The entry id rides with each difference: a stored conflict is keyed on
+    // it, never on her NO., which two of her rows can share (Codex, #101).
+    expect(c.differ.map((d) => [d.no, d.entryId, d.hers, d.ours])).toEqual([
+      [977, "a", "clean", "loss"],
+      [1016, "c", "loss", "clean"],
     ]);
     expect(markComparisonLines(c, 1)).toEqual([
       "Her marks and the scores DIFFER on 2 of ours through Week 1; 2 agree. Neither side is corrected here:",
@@ -216,6 +218,14 @@ describe("her marks against the scores", () => {
     // Through Week 17 the same yellow is still her 1 loss/bye bucket.
     const w17 = [{ week: 17, homeTeam: "DET", awayTeam: "CHI", homeScore: 30, awayScore: 10, status: "final" as const }];
     expect(compareMarksToScores([row(977, "a", "yellow")], [pick("a", 17, "DET")], w17, 17).differ).toHaveLength(1);
+  });
+
+  it("is not run on a sheet with no fill information, where every row would read as clean", () => {
+    const src = readFileSync("scripts/results/cli.ts", "utf8");
+    expect(src).toMatch(/if \(plan\.format === "grid" && !plan\.noFillInfo\) \{/);
+    // And the stored conflict is keyed on the entry id the comparison carried.
+    expect(src).toMatch(/entryId: v\.entryId,/);
+    expect(src).not.toMatch(/byNo\.get\(v\.no\)/);
   });
 
   it("posts NEEDS ANTHONY for a row set aside, not only for a difference", () => {

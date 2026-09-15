@@ -45,6 +45,8 @@ export interface MarkPick {
 }
 
 export interface MarkVariance {
+  /** The entry the row matched, carried so a stored conflict names the right row even when two of her rows share a NO. */
+  entryId: string;
   no: number;
   entryName: string;
   hers: HerMark;
@@ -160,6 +162,7 @@ export function compareMarksToScores(
       continue;
     }
     out.differ.push({
+      entryId: r.entryId,
       no: r.no,
       entryName: r.entryName,
       hers,
