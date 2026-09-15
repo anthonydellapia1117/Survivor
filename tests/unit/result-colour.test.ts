@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   cellPaints,
+  OUT_TEXT_CLASS,
   ROW_CLASS,
   ROW_NAME_CLASS,
   rowTone,
@@ -12,6 +13,7 @@ import {
   TONE_CELL_CLASS,
   TONE_FILL_CLASS,
   TONE_SWATCH_CLASS,
+  OUT_SWATCH_CLASS,
 } from "../../src/lib/result-colour";
 import { teamResults } from "../../src/lib/master-list";
 import type { EntrySummary } from "../../src/lib/data/types";
@@ -23,6 +25,26 @@ import type { EntrySummary } from "../../src/lib/data/types";
 
 const ROOT = path.join(__dirname, "../..");
 const read = (p: string): string => readFileSync(path.join(ROOT, p), "utf8");
+
+/**
+ * The dashboard's result surfaces (2026-09-15): the scoped section, its KPI
+ * strip, its survival strip, its pick distribution and its carnage list.
+ * Each colours a result - a chalk team, a bucket swatch, a bar, a finished
+ * count - and each takes every class from the module.
+ */
+const DASHBOARD_SURFACES = [
+  "src/components/dashboard/scope-section.tsx",
+  "src/components/dashboard/kpi-strip.tsx",
+  "src/components/dashboard/survival-strip.tsx",
+  "src/components/dashboard/pick-distribution.tsx",
+  "src/components/dashboard/carnage-list.tsx",
+];
+
+/** Every file that colours a RESULT: the one table, the Teams table and the dashboard. */
+const RESULT_SURFACES = ["src/components/grid/grid-view.tsx", "src/components/teams/teams-client.tsx", ...DASHBOARD_SURFACES];
+
+/** Source with comments removed, so prose ABOUT a class is not a use of it. */
+const code = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
 
 const game = (over: Partial<Parameters<typeof teamResults>[0][number]> = {}) => ({
   week: 1,
@@ -139,15 +161,11 @@ describe("the surfaces", () => {
     // Two surfaces since 2026-09-11, not three: the Grid and the Master List
     // became one table, so the third file is the one that used to hold half
     // of it.
-    // Four since 2026-09-15: the dashboard's pick distribution and carnage
-    // list colour a bar per team result through TONE_BAR_CLASS.
-    for (const file of [
-      "src/components/grid/grid-view.tsx",
-      "src/components/teams/teams-client.tsx",
-      "src/components/dashboard/pick-distribution.tsx",
-      "src/components/dashboard/carnage-list.tsx",
-    ]) {
-      const src = read(file).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+    // Seven since 2026-09-15: the five dashboard surfaces joined. The first
+    // review of that change found the section's chalk text and Out swatch
+    // outside every scan - a fallen chalk painted green shipped green.
+    for (const file of RESULT_SURFACES) {
+      const src = code(read(file));
       expect(src, `${file} must read its tones from result-colour`).toContain('from "@/lib/result-colour"');
       // bg-win/20 written by hand is how the grid and the master list drifted
       // apart before. The only fills allowed are the ones this module owns.
@@ -156,6 +174,26 @@ describe("the surfaces", () => {
         `${file} writes a result fill inline instead of taking it from the module`,
       ).toEqual([]);
     }
+  });
+
+  it("writes no result or OUT token inline on any dashboard surface - text, fill or border", () => {
+    // Stricter than the grid, which still carries a few of its own (the
+    // killing cell, the late flag): these five were built after the module
+    // existed and have no reason to spell a token. The OUT vocabulary is
+    // OUT_TEXT_CLASS or OUT_SWATCH_CLASS, never text-loss typed where a scan
+    // cannot see it.
+    for (const file of DASHBOARD_SURFACES) {
+      const src = code(read(file));
+      expect(
+        (src.match(/\b(?:bg|text|border|ring)-(?:win|tie|loss|bye)\b(?:\/\d+)?/g) ?? []),
+        `${file} writes a result or OUT class inline instead of taking it from the module`,
+      ).toEqual([]);
+    }
+  });
+
+  it("names the OUT vocabulary as text once, in the module", () => {
+    expect(OUT_TEXT_CLASS).toBe("text-loss");
+    expect(OUT_SWATCH_CLASS).toMatch(/\bbg-loss\b/);
   });
 
   it("never puts red on the Teams page or a distribution bar - a team losing is a fact about a game, not an elimination", () => {

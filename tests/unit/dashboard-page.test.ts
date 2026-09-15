@@ -27,6 +27,10 @@ const sheet = vi.hoisted(() => ({
   // Switchable to a second scored week: rows 1 and 2 take Kansas City in
   // Week 2 and the schedule carries its final, so the curve has three points.
   week2: false,
+  // Switchable to Week 2 being the PLAY week - its deadline passed, one of
+  // its games final, one pick of ours on it - while her sheet still carries
+  // only Week 1: the Friday-to-Saturday window before her sheet lands.
+  playWeek2: false,
   extraGames: [] as Record<string, unknown>[],
   extraRows: [] as Record<string, unknown>[],
   // The Week 1 game's reveal override: false holds the week back whatever
@@ -59,9 +63,13 @@ vi.mock("../../src/lib/data", () => ({
     getWeeks: async () => [
       {
         week: 1,
+        deadlineAt: "2026-09-11T16:00:00Z",
         earlyDeadlineAt: "2026-09-08T16:00:00Z",
         lateDeadlineAt: "2026-09-11T16:00:00Z",
       },
+      ...(sheet.playWeek2
+        ? [{ week: 2, deadlineAt: "2026-09-12T16:00:00Z", earlyDeadlineAt: "2026-09-09T16:00:00Z", lateDeadlineAt: "2026-09-12T16:00:00Z" }]
+        : []),
     ],
     getGridCells: async () => [
       {
@@ -74,6 +82,9 @@ vi.mock("../../src/lib/data", () => ({
         source: "text",
         resultSource: null,
       },
+      ...(sheet.playWeek2
+        ? [{ entryId: "e-983", week: 2, team: "KC", result: null, late: false, submittedAt: "2026-09-12T00:00:00Z", source: "text", resultSource: null }]
+        : []),
     ],
     getPot: async () => ({
       entryCount: 121,
@@ -98,7 +109,7 @@ vi.mock("../../src/lib/data", () => ({
         network: "FOX",
       },
       ...sheet.extraGames,
-      ...(sheet.week2
+      ...(sheet.week2 || sheet.playWeek2
         ? [{ id: "g-w2", week: 2, kickoffAt: "2026-09-13T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "LV", homeTeam: "KC", homeScore: 30, awayScore: 10, status: "final", revealOverride: null, network: "CBS" }]
         : []),
     ],
@@ -118,6 +129,9 @@ vi.mock("../../src/lib/data", () => ({
 }));
 
 import DashboardPage from "../../src/app/page";
+import { createElement } from "react";
+import { distributionRows, MISSED_TEAM } from "../../src/lib/dashboard";
+import { PickDistribution } from "../../src/components/dashboard/pick-distribution";
 
 const html = async () => renderToStaticMarkup(await DashboardPage());
 
@@ -285,6 +299,31 @@ describe("Dashboard - the scoped section opens on Everyone", () => {
     const out = await html();
     expect(out).toContain("No Losses=1, 1 Loss/Bye used=2 and Out=1. 3 left in the pool.");
     expect(out).not.toContain("We are down to");
+    // The Out segment is the OUT red from the module - not the losing
+    // yellow, which would make a finished row read as damaged-but-alive.
+    expect(out).toMatch(/class="h-full bg-loss\/70"[^>]*title="Out: 1"/);
+    expect(out).toMatch(/class="h-full bg-tie\/70"[^>]*title="Loss\/Bye: 2"/);
+  });
+
+  it("lists the chalk and the teams running out over the sheet's rows, the fallen chalk in yellow", async () => {
+    const out = await html();
+    // Pool: DAL and PHI tie at one pick each, DAL first by name, and DAL
+    // lost. Ours would be PHI at 100%, held.
+    const chalk = between(out, ">Chalk vs contrarian<", ">Teams running out<");
+    expect(chalk).toMatch(/>W1</);
+    expect(chalk).toMatch(/<span class="font-medium text-tie">DAL<\/span>/);
+    expect(chalk).toContain("1 picks, 50%");
+    expect(chalk).toContain("chalk fell");
+    expect(chalk).not.toContain(">PHI<");
+    expect(chalk).not.toContain("chalk held");
+    expect(chalk).not.toContain("text-win");
+    // Pool: 3 alive, one holding PHI and one DAL, so both read 2/3. Ours
+    // would be PHI at 0/1.
+    const scarcity = between(out, ">Teams running out<", ">Recent activity<");
+    expect(scarcity).toMatch(/>PHI<[\s\S]*?>2\/3</);
+    expect(scarcity).toMatch(/>DAL<[\s\S]*?>2\/3</);
+    expect(scarcity).not.toContain("0/1");
+    expect(scarcity).toContain("through Week 1");
   });
 
   it("starts the survival strip at her published total and states the drop as numbers, with no chart at two points", async () => {
@@ -296,6 +335,25 @@ describe("Dashboard - the scoped section opens on Everyone", () => {
     expect(card).toMatch(/Week 1<\/p><p class="[^"]*text-loss">-1<span[^>]*>25%</);
     expect(card).not.toContain("<svg");
     expect(card).toContain("removes eliminated entries as the season goes");
+  });
+
+  it("labels the drop 'so far' while a game of that week is not final", async () => {
+    // survivalCurve reaches Week 1 at its first final; with a second Week 1
+    // game still scheduled the week's cost is not settled, and "Week 1 0"
+    // would read as a week that cost nothing.
+    sheet.extraGames = [{ id: "g-2", week: 1, kickoffAt: "2026-09-13T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "MIA", homeTeam: "BUF", homeScore: null, awayScore: null, status: "scheduled", revealOverride: null, network: "CBS" }];
+    try {
+      const out = await html();
+      const card = between(out, ">Survival<", ">Week 1 picks<");
+      expect(card).toMatch(/Week 1 so far<\/p>/);
+      expect(card).not.toMatch(/>Week 1<\/p>/);
+    } finally {
+      sheet.extraGames = [];
+    }
+    // And plainly "Week 1" once every game of it is final.
+    const settled = between(await html(), ">Survival<", ">Week 1 picks<");
+    expect(settled).toMatch(/>Week 1<\/p>/);
+    expect(settled).not.toContain("so far");
   });
 
   it("earns the step chart at three points and prints every step as text beneath it", async () => {
@@ -352,6 +410,63 @@ describe("Dashboard - the scoped section opens on Everyone", () => {
     expect(card).toContain("1 entry lost this week, 0 of them out - 1 of 1 games final.");
   });
 
+  it("names no chalk on the tile while any pick of the week is still masked", async () => {
+    // Thursday night: one game final and one held back. The week's picks are
+    // not all revealed, so a share computed now would be over the revealed
+    // subset - DAL at 50% of two, with the rest of the pool masked. The tile
+    // waits, and says why, while the loss count (not a share) still reads.
+    sheet.extraGames = [{ id: "g-2", week: 1, kickoffAt: "2026-09-13T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "MIA", homeTeam: "BUF", homeScore: null, awayScore: null, status: "scheduled", revealOverride: false, network: "CBS" }];
+    sheet.extraRows = [{ no: 5, names: "Open Row", cells: { "Week 1": "Buffalo" }, entryId: null }];
+    try {
+      const out = await html();
+      expect(out).toMatch(/Chalk<\/p><p class="[^"]*">-<\/p><p class="[^"]*">picks still masked</);
+      expect(out).not.toMatch(/Chalk<\/p><p class="[^"]*">DAL<span/);
+      expect(out).not.toMatch(/>50%<\/span><\/p><p class="[^"]*">1 pick, lost/);
+      expect(out).toMatch(/Lost this week<\/p><p class="[^"]*text-tie">1<\/p>/);
+    } finally {
+      sheet.extraGames = [];
+      sheet.extraRows = [];
+    }
+  });
+
+  it("still opens on Everyone when her sheet lacks the play week, with our group standing in on the picks card only", async () => {
+    // Friday 2 PM to whenever her sheet lands: the play week has rolled, one
+    // of its games is final, and her newest sheet carries only last week.
+    // Every card that can be read off her sheet still is; the tiles that
+    // would read a zero off a column she has not published say so; and the
+    // one card with nothing of hers - the week's picks - carries ours,
+    // labelled ours.
+    sheet.playWeek2 = true;
+    try {
+      const out = await html();
+      expect(out).toMatch(/aria-checked="true"[^>]*>Everyone<span[^>]*>4</);
+      expect(out).toMatch(/Alive<\/p><p class="[^"]*">3<\/p><p class="[^"]*">of 1,318</);
+      expect(out).toContain("No Losses=1, 1 Loss/Bye used=2 and Out=1. 3 left in the pool.");
+      expect(out).not.toContain("We are down to");
+      // The week's tiles: not a zero, not "no game final yet" while KC is final.
+      expect(out).toMatch(/Lost this week<\/p><p class="[^"]*">-<\/p><p class="[^"]*">not published yet</);
+      expect(out).toMatch(/Chalk<\/p><p class="[^"]*">-<\/p><p class="[^"]*">not published yet</);
+      expect(out).not.toMatch(/Lost this week<\/p><p class="[^"]*text-tie">0</);
+      // The carnage card, same reason, and not "No entry has lost yet".
+      const carnage = between(out, ">Week 2 carnage<", ">Standings - official count<");
+      expect(carnage).toContain("The master pool&#x27;s Week 2 picks are not published yet.");
+      expect(carnage).not.toContain("No entry has lost yet");
+      expect(carnage).not.toContain("games final");
+      // The picks card: our rows, under OUR label, saying what is not published.
+      const picks = between(out, ">Week 2 picks<", ">Week 2 carnage<");
+      expect(picks).toMatch(/^>Week 2 picks<span[^>]*>Our group</);
+      expect(picks).toMatch(/>KC</);
+      expect(picks).toContain("Our group stands in until the master pool&#x27;s Week 2 picks are published.");
+      expect(picks).not.toContain("Every entry in the master pool");
+      // And the survival strip's drop is last week's, settled, not Week 2's.
+      const survival = between(out, ">Survival<", ">Week 2 picks<");
+      expect(survival).toMatch(/>Week 1<\/p>/);
+      expect(survival).toMatch(/Start<\/p><p class="[^"]*">1,318</);
+    } finally {
+      sheet.playWeek2 = false;
+    }
+  });
+
   it("keeps our group's own feed off the default view", async () => {
     const out = await html();
     expect(out).not.toContain("Recent activity");
@@ -368,6 +483,7 @@ describe("Dashboard - the scoped section opens on Everyone", () => {
       expect(out).toContain("We are down to 1 left in the pool.");
       expect(out).toContain("Recent activity");
       expect(out).toContain("Our group. The master pool&#x27;s Week 1 picks are not published yet.");
+      expect(out).toMatch(/>Week 1 picks<span[^>]*>Our group</);
     } finally {
       sheet.noSheet = false;
     }
@@ -398,6 +514,18 @@ describe("Dashboard - the lower section on a phone", () => {
       expect(read(f), `${f} summary`).toMatch(/<summary className="[^"]*\bh-11\b/);
     }
     expect(read("src/components/dashboard/scope-section.tsx")).toMatch(/role="radio"[\s\S]*?className=\{cn\(\s*"[^"]*\bh-11\b/);
+  });
+
+  it("draws a missed week as No pick, with the value MISSED on no part of the row", () => {
+    // Our group's distribution can carry the rules engine's MISSED value; it
+    // is a value like SKIP_WEEK and never reaches a screen as a word - not
+    // as the label, not as the title.
+    const rows = distributionRows([{ team: MISSED_TEAM, count: 1, pct: 100 }], new Map(), 1);
+    const out = renderToStaticMarkup(createElement(PickDistribution, { rows }));
+    expect(out).toContain(">No pick<");
+    expect(out).toContain('title="No pick recorded"');
+    expect(out).not.toContain("MISSED");
+    expect(out).not.toMatch(/bg-(?:win|tie)\/70/);
   });
 
   it("imports no chart library anywhere under src", () => {

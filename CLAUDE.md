@@ -336,10 +336,28 @@ that is public by design.
   masked pick reaches the builder already `LOCKED` with no result). The
   toggle is the same radiogroup and the same two words as `/grid` and
   `/teams` - "Everyone" and "Our group", pinned across all four surfaces by
-  `tests/unit/master-list-wiring.test.ts` - and it defaults through the
-  shared `defaultTeamsSource`: Everyone once her sheet carries the play
-  week, and until she publishes it **our group stands in and the caption
-  says so**, which is the rule two paragraphs up and is kept. The pool's
+  `tests/unit/master-list-wiring.test.ts`. **It opens on Everyone whenever a
+  sheet is loaded**, as the game board does, and NOT through the Teams
+  page's `defaultTeamsSource`, which waits for the play week's column: the
+  alive count, the survival strip, the standings bar, the chalk list and the
+  teams running out are all computable from her sheet before she publishes
+  the week, and from the Friday 2 PM lock until her sheet lands (Week 1's
+  came Friday 10:40 PM) the shared default would have shown our 121 on the
+  page the distribute link points at. **The week's picks card is the one
+  card our group stands in on** - the rule two paragraphs up, kept, on the
+  one card with nothing of hers to show: it carries our rows under the "Our
+  group" label with a caption naming what is not published. **Every other
+  tile that would read a zero off a column she has not published says "not
+  published yet"** - Lost this week, Chalk, and the carnage card - because
+  a zero there reads as nobody lost and is false; `dashboardScope` takes a
+  `weekPublished` predicate, her sheet's columns for the pool and always
+  true for our own record. **The Chalk tile waits for the whole week**, as
+  the chalk card always did: it is a share, and a share over the revealed
+  subset is a wrong number (100% for the Thursday team on a Thursday night),
+  so until `fullyRevealedWeeks` includes the week it prints "picks still
+  masked". The survival strip's third number is labelled "Week N so far"
+  while a game of that week is not final, since `survivalCurve` reaches a
+  week at its first final. The pool's
   survival strip starts at her published Total in Pool and its later points
   are rows on her newest sheet, captioned as such, because she removes
   eliminated entries as the season goes; a row she struck OUT or that
@@ -352,12 +370,20 @@ that is public by design.
   result colour** - `TONE_BAR_CLASS` in `src/lib/result-colour.ts`, green
   won, yellow lost, the plain accent where the game is not final, never red
   - with a visible W or L beside the code, and the count and share as text
-  on every row; the counts are exactly what `poolDistribution` produced.
+  on every row; the counts are exactly what `poolDistribution` produced. A
+  missed week's bar reads "No pick" with no fill - `MISSED` is a value the
+  rules engine writes into the team column, like `SKIP_WEEK`, and never
+  reaches a screen as a word. The OUT vocabulary as text is `OUT_TEXT_CLASS`
+  in the same module, and every dashboard surface that colours a result -
+  the section, the KPI strip, the survival strip, the bars - is on the
+  scan lists in `tests/unit/result-colour.test.ts` and
+  `tests/unit/colour-systems.test.ts`.
   The bottom of the dashboard is server-rendered lists and one inline SVG
   now, and nothing under `src/` imports recharts; the dependency itself is
   removed in its own change. `tests/unit/dashboard-page.test.ts` holds the
   default render to the sheet's figures on a fixture where the two scopes
-  disagree on every number.
+  disagree on every number, and `tests/unit/dashboard-scope.test.ts` holds
+  the builder's gates.
 
 ### What the colours mean
 

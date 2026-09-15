@@ -7,16 +7,25 @@
 // Both scopes arrive computed from the server (src/lib/dashboard-scope.ts)
 // as plain data; the choice here is view state and nothing more, the same
 // radiogroup and the same two words the one table at /grid and the Teams
-// page use. The default is the shared defaultTeamsSource rule: Everyone once
-// her sheet carries the play week, and until she publishes it our group
-// stands in and the caption says so (CLAUDE.md, Public surfaces).
+// page use.
+//
+// The default is Everyone whenever a sheet is loaded - the same rule as the
+// game board - and NOT the Teams page's defaultTeamsSource, which waits for
+// the play week's column. Alive, the survival strip, the standings bar, the
+// chalk list and the teams running out are all computable from her sheet
+// before she publishes the week, so from the Friday lock until her sheet
+// lands they would otherwise default to our 121. The one card with nothing
+// of hers to show is the week's picks, and that is the one card our group
+// stands in on, labelled as such (CLAUDE.md, Public surfaces); the tiles
+// that would read a zero off a column she has not published say "not
+// published yet" instead.
 
 import Link from "next/link";
 import { useState } from "react";
 import type { LockBoundary } from "@/lib/dashboard";
 import { SCOPE_LABEL, type ScopeData } from "@/lib/dashboard-scope";
 import { formatDeadline } from "@/lib/format";
-import { defaultTeamsSource, type TeamsSourceKind as Source } from "@/lib/master-list";
+import type { TeamsSourceKind as Source } from "@/lib/master-list";
 import { OUT_SWATCH_CLASS, toneOfResult, TONE_SWATCH_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
 import { RESULT_LABEL, SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
 import { TEAM_PALETTE } from "@/lib/team-colors";
@@ -32,8 +41,6 @@ interface Props {
   /** Her whole pool; null when no sheet is loaded. */
   pool: ScopeData | null;
   ours: ScopeData;
-  /** Her sheet carries the play week's column, revealed or not. */
-  poolHasWeek: boolean;
   week: number | null;
   deadline: LockBoundary | null;
   /** Her published Total in Pool, for the ALIVE tile's "of N"; null falls back to the sheet's rows. */
@@ -47,9 +54,9 @@ const BUCKET_CLASS = {
   Out: OUT_SWATCH_CLASS,
 } as const;
 
-export function ScopeSection({ pool, ours, poolHasWeek, week, deadline, herTotal }: Props) {
+export function ScopeSection({ pool, ours, week, deadline, herTotal }: Props) {
   const poolLoaded = pool !== null;
-  const [source, setSource] = useState<Source>(defaultTeamsSource(poolLoaded, poolHasWeek));
+  const [source, setSource] = useState<Source>(poolLoaded ? "pool" : "ours");
   const active = source === "pool" && pool ? pool : ours;
   const options: { key: Source; n: number; disabled?: boolean }[] = [
     { key: "pool", n: pool?.count ?? 0, disabled: !poolLoaded },
@@ -86,7 +93,7 @@ export function ScopeSection({ pool, ours, poolHasWeek, week, deadline, herTotal
         <span className="text-xs text-muted-foreground">
           {active.key === "pool"
             ? "Rows on her newest sheet, scored from the games; she removes eliminated entries as the season goes."
-            : poolHasWeek
+            : poolLoaded
               ? "Our group's own entries."
               : `Our group stands in until the master pool's Week ${week ?? "-"} picks are published.`}
         </span>
@@ -118,7 +125,7 @@ export function ScopeSection({ pool, ours, poolHasWeek, week, deadline, herTotal
           <CardHeader>
             <CardTitle className="text-base">
               Week {d.week ?? "-"} picks
-              <span className="ml-2 text-xs font-normal text-muted-foreground">{SCOPE_LABEL[active.key]}</span>
+              <span className="ml-2 text-xs font-normal text-muted-foreground">{SCOPE_LABEL[d.scope]}</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -151,11 +158,17 @@ export function ScopeSection({ pool, ours, poolHasWeek, week, deadline, herTotal
 
       <Card className="bg-surface">
         <CardHeader>
-          <CardTitle className="text-base">Week {active.carnage?.week ?? week ?? "-"} carnage</CardTitle>
+          <CardTitle className="text-base">
+            Week {active.carnage.state === "no final" ? (week ?? "-") : active.carnage.week} carnage
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {active.carnage === null ? (
+          {active.carnage.state === "no final" ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No game final yet in Week {week ?? "-"}.</p>
+          ) : active.carnage.state === "unpublished" ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              The master pool&apos;s Week {active.carnage.week} picks are not published yet.
+            </p>
           ) : active.carnage.rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               No entry has lost yet this week - {active.carnage.finalGames} of {active.carnage.totalGames} games final.

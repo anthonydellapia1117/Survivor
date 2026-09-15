@@ -300,12 +300,28 @@ export interface DashboardKpis {
   week: number;
   /** Entries in the scope that are not out. */
   alive: number;
+  /**
+   * The scope holds the week's picks at all. Always true for our own record;
+   * for the pool, only once her sheet carries the week's column. Until then
+   * the week's tiles print "not published yet" rather than a zero that reads
+   * as nobody lost.
+   */
+  published: boolean;
   /** Any final in the week yet. Null tiles print "-" until there is one. */
   anyFinal: boolean;
+  /**
+   * Every game of the week has kicked off, so no cell of the week is still
+   * LOCKED. The chalk is a SHARE, and a share over the revealed subset is a
+   * wrong number - on a Thursday night the TNF team is 100% of one revealed
+   * pick - so the tile is null until this is true, exactly as chalkByWeek
+   * gates on fullyRevealedWeeks.
+   */
+  revealed: boolean;
   /** Cells of the week with a loss, a tie or a missed pick. */
   lostThisWeek: number;
   /** Of those, entries now out. */
   outThisWeek: number;
+  /** Null until the week is published, fully revealed and has a final. */
   chalk: {
     team: string;
     count: number;
@@ -315,7 +331,17 @@ export interface DashboardKpis {
   } | null;
 }
 
-const TEAM_SENTINELS = new Set([SKIP_WEEK, "MISSED", LOCKED_TEAM]);
+/** What gates the week's tiles; every one is decided by the caller from the games and the sheet. */
+export interface KpiGate {
+  anyFinal: boolean;
+  revealed: boolean;
+  published: boolean;
+}
+
+/** The team column's value for a missed week, written by the rules engine. */
+export const MISSED_TEAM = "MISSED";
+
+const TEAM_SENTINELS = new Set([SKIP_WEEK, MISSED_TEAM, LOCKED_TEAM]);
 
 /** Whether a cell names a real team the scores could ever settle. */
 function namesTeam(c: Pick<GridCell, "team">): boolean {
@@ -327,8 +353,9 @@ export function dashboardKpis(
   cells: GridCell[],
   results: Map<string, TeamResult>,
   week: number,
-  anyFinal: boolean,
+  gate: KpiGate,
 ): DashboardKpis {
+  const { anyFinal, revealed, published } = gate;
   const status = new Map(entries.map((e) => [e.id, e.status]));
   const alive = entries.filter((e) => e.status !== "eliminated").length;
   let lostThisWeek = 0;
@@ -347,7 +374,7 @@ export function dashboardKpis(
   }
   const top = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
   let chalk: DashboardKpis["chalk"] = null;
-  if (anyFinal && top) {
+  if (published && revealed && anyFinal && top) {
     const r = results.get(`${week}:${top[0]}`);
     const tone = toneOfTeamResult(r);
     chalk = {
@@ -358,15 +385,22 @@ export function dashboardKpis(
       state: r === undefined ? "not final" : tone === "won" ? "won" : "lost",
     };
   }
-  return { week, alive, anyFinal, lostThisWeek, outThisWeek, chalk };
+  return { week, alive, published, anyFinal, revealed, lostThisWeek, outThisWeek, chalk };
 }
 
 /** Rows past this collapse into one "Others" row; the full list sits in a details element. */
 export const TOP_N = 8;
 
+/**
+ * The label a missed pick groups under, on the carnage list and on a
+ * distribution bar. MISSED is a value the rules engine writes into the team
+ * column, like SKIP_WEEK, and never reaches a screen as a word.
+ */
+export const NO_PICK_LABEL = "No pick";
+
 export interface DistributionRow {
   team: string;
-  /** What the row prints: the code, or BYE for a skipped week. */
+  /** What the row prints: the code, BYE for a skipped week, or NO_PICK_LABEL for a missed one. */
   label: string;
   count: number;
   pct: number;
@@ -401,6 +435,9 @@ export function distributionRows(
 ): DistributionRows {
   const all = rows.map((r): DistributionRow => {
     if (r.team === SKIP_WEEK) return { ...r, label: "BYE", tone: "bye", glyph: "" };
+    // A missed week is a loss for the entry, but the bar is a TEAM's result
+    // and there is no team here: no fill, no glyph, the carnage list's label.
+    if (r.team === MISSED_TEAM) return { ...r, label: NO_PICK_LABEL, tone: "none", glyph: "" };
     const tone = toneOfTeamResult(results.get(`${week}:${r.team}`));
     return { ...r, label: r.team, tone, glyph: tone === "won" ? "W" : tone === "lost" ? "L" : "" };
   });
@@ -416,9 +453,6 @@ export function distributionRows(
       : null;
   return { top, others, all, max: Math.max(0, ...all.map((r) => r.count)) };
 }
-
-/** The label a missed pick groups under in the carnage list. */
-export const NO_PICK_LABEL = "No pick";
 
 export interface CarnageRow {
   /** The team code, or NO_PICK_LABEL for a missed week. */

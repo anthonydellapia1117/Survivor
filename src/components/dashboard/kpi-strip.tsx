@@ -7,10 +7,16 @@
 // final" beside the code, and the loss tile prints "N now out" in text.
 // The losses count is the damaged-but-alive yellow; "now out" is the OUT
 // vocabulary's red, as the Eliminated card above already has it.
+//
+// A tile that has nothing true to say prints "-" and WHY, in this order:
+// the scope does not hold the week's picks yet (her sheet has no column for
+// it - a zero there would read as nobody lost), the week's picks are still
+// masked (the chalk is a share, and a share over the revealed subset is a
+// wrong number), no game of the week is final yet.
 
 import { LOCK_KIND_LABEL, type DashboardKpis, type LockBoundary } from "@/lib/dashboard";
 import { formatDeadline } from "@/lib/format";
-import { TONE_TEXT_CLASS } from "@/lib/result-colour";
+import { OUT_TEXT_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
 import { Countdown } from "@/components/dashboard/countdown";
 import { cn } from "@/lib/utils";
 
@@ -23,12 +29,29 @@ interface Props {
   total: number;
 }
 
+/** The one sentence under a "-" tile. Exported so the page test can pin the words. */
+export const KPI_EMPTY = {
+  unpublished: "not published yet",
+  masked: "picks still masked",
+  noFinal: "no game final yet",
+  noPicks: "no picks",
+} as const;
+
 function Tile({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-border bg-surface p-3">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
       {children}
     </div>
+  );
+}
+
+function Empty({ why }: { why: string }) {
+  return (
+    <>
+      <p className="text-2xl tabular-nums">-</p>
+      <p className="mt-1 text-xs text-muted-foreground">{why}</p>
+    </>
   );
 }
 
@@ -54,20 +77,25 @@ export function KpiStrip({ kpis, week, deadline, total }: Props) {
         <p className="mt-1 text-xs text-muted-foreground">of {n(total)}</p>
       </Tile>
       <Tile label="Lost this week">
-        {kpis.anyFinal ? (
-          <>
-            <p className={cn("text-2xl tabular-nums", TONE_TEXT_CLASS.lost)}>{n(kpis.lostThisWeek)}</p>
-            <p className="mt-1 text-xs text-loss">{n(kpis.outThisWeek)} now out</p>
-          </>
+        {!kpis.published ? (
+          <Empty why={KPI_EMPTY.unpublished} />
+        ) : !kpis.anyFinal ? (
+          <Empty why={KPI_EMPTY.noFinal} />
         ) : (
           <>
-            <p className="text-2xl tabular-nums">-</p>
-            <p className="mt-1 text-xs text-muted-foreground">no game final yet</p>
+            <p className={cn("text-2xl tabular-nums", TONE_TEXT_CLASS.lost)}>{n(kpis.lostThisWeek)}</p>
+            <p className={cn("mt-1 text-xs", OUT_TEXT_CLASS)}>{n(kpis.outThisWeek)} now out</p>
           </>
         )}
       </Tile>
       <Tile label="Chalk">
-        {kpis.chalk ? (
+        {!kpis.published ? (
+          <Empty why={KPI_EMPTY.unpublished} />
+        ) : !kpis.revealed ? (
+          <Empty why={KPI_EMPTY.masked} />
+        ) : !kpis.anyFinal ? (
+          <Empty why={KPI_EMPTY.noFinal} />
+        ) : kpis.chalk ? (
           <>
             <p className={cn("text-2xl tabular-nums", TONE_TEXT_CLASS[kpis.chalk.tone])}>
               {kpis.chalk.team}
@@ -78,10 +106,7 @@ export function KpiStrip({ kpis, week, deadline, total }: Props) {
             </p>
           </>
         ) : (
-          <>
-            <p className="text-2xl tabular-nums">-</p>
-            <p className="mt-1 text-xs text-muted-foreground">no game final yet</p>
-          </>
+          <Empty why={KPI_EMPTY.noPicks} />
         )}
       </Tile>
     </div>

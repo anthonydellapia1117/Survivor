@@ -111,6 +111,14 @@ export const TONE_BAR_CLASS: Record<ResultTone, string> = {
 export const OUT_SWATCH_CLASS = "bg-loss/70";
 
 /**
+ * The OUT vocabulary as text: a count of entries that are FINISHED - the
+ * dashboard's "N now out", the survival strip's drop, the carnage list's
+ * "N out". Red means out on this site and nothing else, so a surface that
+ * writes a finished count takes this rather than spelling the token.
+ */
+export const OUT_TEXT_CLASS = "text-loss";
+
+/**
  * A row's tone. "out" is the entry finished - two losses is the ordinary way
  * there, and it is always the way there in code: poolBucketOf returns Out at
  * `losses >= 2`, as does v_entry_standing. A published OUT and a repeated

@@ -70,9 +70,13 @@ export default async function DashboardPage() {
   // through scoreFromGames, both handed to dashboardScope.
   const poolLoaded = master.rows.length > 0;
   const pool = poolAsEntries(master, games);
-  // Her sheet carries the play week's column at all, revealed or not. Until
-  // she publishes it, our group stands in and the section says so.
-  const poolHasWeek = week !== null && weekColumns(master.rows).some((c) => c.week === week);
+  // Her sheet carries a week's column at all, revealed or not. The section
+  // still opens on Everyone without it - the alive count, the survival strip,
+  // the standings and the chalk list all read her sheet as it stands - and
+  // the tiles that need the week say "not published yet" until she does;
+  // only the week's picks card has our group stand in.
+  const herWeeks = new Set(weekColumns(master.rows).map((c) => c.week));
+  const poolHasWeek = week !== null && herWeeks.has(week);
   // The whole pool's picks for the week, from the published sheet. The
   // public view serves her cells only as their games kick off, so until
   // every game of the week has, the list is the revealed subset and the
@@ -80,9 +84,32 @@ export default async function DashboardPage() {
   const poolDist = week !== null && poolHasWeek ? poolDistribution(master.rows, week) : null;
   const poolDistWhole = week !== null && fullyRevealedWeeks(games, now).includes(week);
   const lockedAt = deadline && deadline.week === week ? deadline.deadlineAt : null;
+  const dist = pickDistribution(weeks, ours.cells, now);
+  const oursDistribution: ScopeInput["distribution"] =
+    dist?.revealed && dist.rows.length > 0
+      ? {
+          scope: "ours",
+          rows: dist.rows,
+          empty: "none",
+          lockedAt: null,
+          caption: poolHasWeek
+            ? `Our group's Week ${dist.week} picks, as recorded.`
+            : `Our group. The master pool's Week ${dist.week} picks are not published yet.`,
+        }
+      : dist && !dist.revealed
+        ? {
+            scope: "ours",
+            rows: null,
+            empty: "locked",
+            lockedAt,
+            caption: `Hidden until the Week ${dist.week} deadline passes.`,
+          }
+        : { scope: "ours", rows: null, empty: "none", lockedAt: null, caption: "No picks recorded for this week yet." };
+
   const poolDistribution_: ScopeInput["distribution"] =
     poolDist && poolDist.rows.length > 0
       ? {
+          scope: "pool",
           rows: poolDist.rows,
           empty: "none",
           lockedAt: null,
@@ -95,37 +122,22 @@ export default async function DashboardPage() {
         }
       : poolHasWeek
         ? {
+            scope: "pool",
             rows: null,
             empty: "locked",
             lockedAt,
             caption: `Her Week ${week} picks appear as the games kick off.`,
           }
-        : {
-            rows: null,
-            empty: "unpublished",
-            lockedAt: null,
-            caption: `The master pool's Week ${week ?? "-"} picks are not published yet.`,
+        : // Until she publishes the week, OUR GROUP STANDS IN on this one
+          // card and says so: our rows, our empty states, under the "Our
+          // group" label, with the caption naming what is not published.
+          {
+            ...oursDistribution,
+            caption:
+              oursDistribution.rows !== null
+                ? `Our group stands in until the master pool's Week ${week ?? "-"} picks are published.`
+                : oursDistribution.caption,
           };
-
-  const dist = pickDistribution(weeks, ours.cells, now);
-  const oursDistribution: ScopeInput["distribution"] =
-    dist?.revealed && dist.rows.length > 0
-      ? {
-          rows: dist.rows,
-          empty: "none",
-          lockedAt: null,
-          caption: poolHasWeek
-            ? `Our group's Week ${dist.week} picks, as recorded.`
-            : `Our group. The master pool's Week ${dist.week} picks are not published yet.`,
-        }
-      : dist && !dist.revealed
-        ? {
-            rows: null,
-            empty: "locked",
-            lockedAt,
-            caption: `Hidden until the Week ${dist.week} deadline passes.`,
-          }
-        : { rows: null, empty: "none", lockedAt: null, caption: "No picks recorded for this week yet." };
 
   const scopes = {
     pool: poolLoaded
@@ -137,6 +149,9 @@ export default async function DashboardPage() {
           now,
           week,
           start: pot.poolEntryCount,
+          // A week she has not published is "not published yet" on the pool's
+          // tiles, never a zero read off cells that do not exist.
+          weekPublished: (w) => herWeeks.has(w),
           distribution: poolDistribution_,
           outWeeks: herOutWeeks(master),
         })
@@ -149,6 +164,8 @@ export default async function DashboardPage() {
       now,
       week,
       start: null,
+      // Our own record holds every week's picks as they are made.
+      weekPublished: () => true,
       distribution: oursDistribution,
     }),
   };
@@ -275,7 +292,6 @@ export default async function DashboardPage() {
       <ScopeSection
         pool={scopes.pool}
         ours={scopes.ours}
-        poolHasWeek={poolHasWeek}
         week={week}
         deadline={deadline}
         herTotal={pot.poolEntryCount}

@@ -81,6 +81,16 @@ describe("the dashboard's viewer KPIs", () => {
     expect(roster).toMatch(/Our group - \{entries\.length\} entries/);
   });
 
+  it("feeds the schedule's game board the pool's eliminations from the pool's rows", () => {
+    // tests/unit/game-board-scope.test.ts renders the board with hand-built
+    // props and never reads this page, so a page wiring our entries under
+    // the pool key passed every test. This reads the page.
+    const sched = codeWithoutComments(readFileSync("src/app/schedule/page.tsx", "utf8")).replace(/\s+/g, " ");
+    expect(sched).toContain("poolAsEntries(master, games)");
+    expect(sched).toMatch(/pool: master\.rows\.length > 0 \? \{ eliminated: eliminationsByWeek\(pool\.entries, pool\.cells\), count: pool\.entries\.length \}/);
+    expect(sched).toMatch(/ours: \{ eliminated: eliminationsByWeek\(ours\.entries, ours\.cells\), count: ours\.entries\.length \}/);
+  });
+
   it("reads no our-group count or standing inline", () => {
     const lengths = DASH_CODE.match(/entries\.length/g) ?? [];
     expect(lengths, "only the empty-state guard may count our entries").toHaveLength(1);

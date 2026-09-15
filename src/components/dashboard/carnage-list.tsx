@@ -9,11 +9,9 @@
 // pending one, so nothing masked can reach a row here.
 
 import { NO_PICK_LABEL, TOP_N, type WeekCarnage } from "@/lib/dashboard";
-import { TONE_BAR_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
+import { OUT_TEXT_CLASS, TONE_BAR_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
 import { TEAM_NAME } from "@/lib/standing";
 import { BarRow } from "@/components/dashboard/bar-row";
-
-const OUT_TEXT = "text-loss";
 
 export function CarnageList({ carnage }: { carnage: WeekCarnage }) {
   const max = Math.max(0, ...carnage.rows.map((r) => r.lost));
@@ -27,7 +25,7 @@ export function CarnageList({ carnage }: { carnage: WeekCarnage }) {
       width={width(r.lost)}
       count={r.lost}
       pct={r.share}
-      trailing={r.out > 0 ? { text: `${r.out} out`, className: OUT_TEXT } : null}
+      trailing={r.out > 0 ? { text: `${r.out} out`, className: OUT_TEXT_CLASS } : null}
       title={r.team === NO_PICK_LABEL ? "No pick recorded" : (TEAM_NAME[r.team] ?? r.team)}
     />
   );

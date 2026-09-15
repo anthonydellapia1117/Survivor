@@ -10,7 +10,7 @@
 // it. Rows past TOP_N fold into one "Others" row, with the whole list in a
 // native details element - no state, no script.
 
-import { TOP_N, type DistributionRows } from "@/lib/dashboard";
+import { MISSED_TEAM, TOP_N, type DistributionRows } from "@/lib/dashboard";
 import { TONE_BAR_CLASS, TONE_TEXT_CLASS } from "@/lib/result-colour";
 import { SKIP_WEEK, TEAM_NAME } from "@/lib/standing";
 import { BarRow, ROW_GRID } from "@/components/dashboard/bar-row";
@@ -30,7 +30,7 @@ export function PickDistribution({ rows }: { rows: DistributionRows }) {
         width={width(r.count)}
         count={r.count}
         pct={r.pct}
-        title={r.team === SKIP_WEEK ? "Bye" : (TEAM_NAME[r.team] ?? r.team)}
+        title={r.team === SKIP_WEEK ? "Bye" : r.team === MISSED_TEAM ? "No pick recorded" : (TEAM_NAME[r.team] ?? r.team)}
       />
     ));
 

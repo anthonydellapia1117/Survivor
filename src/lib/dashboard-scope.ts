@@ -54,8 +54,12 @@ export interface SurvivalStrip {
   start: number;
   /** Entries in the scope that are not out. */
   remaining: number;
-  /** The latest scored week's drop; null before any week is scored. */
-  drop: { week: number; n: number; pct: number } | null;
+  /**
+   * The latest scored week's drop; null before any week is scored. `partial`
+   * is that week still in play - a game of it not final - so the strip says
+   * "so far" rather than presenting a Thursday-night zero as the week's cost.
+   */
+  drop: { week: number; n: number; pct: number; partial: boolean } | null;
   points: { week: number; remaining: number }[];
   /** Whether the points earn a chart (MIN_CURVE_POINTS). */
   chart: boolean;
@@ -63,6 +67,12 @@ export interface SurvivalStrip {
 
 export interface DistributionView {
   week: number | null;
+  /**
+   * Whose picks the card shows. Normally the scope's own; for the pool it is
+   * "Our group" while our group STANDS IN - her sheet has no column for the
+   * week yet, and this is the one card with nothing of hers to show.
+   */
+  scope: TeamsSourceKind;
   /** The rows to draw, or null for one of the empty states. */
   rows: DistributionRows | null;
   /** Which empty state, when rows is null. */
@@ -80,6 +90,16 @@ export interface StandingsBar {
   sentence: string;
 }
 
+/**
+ * The carnage card: the highest final week's damage, or why there is none -
+ * no game final anywhere yet, or (the pool only) a week her sheet does not
+ * carry, where a zero would read as "nobody lost" and be false.
+ */
+export type CarnageView =
+  | ({ state: "ready" } & WeekCarnage & { finalGames: number; totalGames: number })
+  | { state: "no final" }
+  | { state: "unpublished"; week: number };
+
 export interface ScopeData {
   key: TeamsSourceKind;
   label: string;
@@ -88,8 +108,7 @@ export interface ScopeData {
   kpis: DashboardKpis;
   survival: SurvivalStrip;
   distribution: DistributionView;
-  /** The highest final week's damage; null before any game is final. */
-  carnage: (WeekCarnage & { finalGames: number; totalGames: number }) | null;
+  carnage: CarnageView;
   standings: StandingsBar;
   chalk: ChalkRow[];
   scarcity: { rows: ScarcityRow[]; alive: number; throughWeek: number | null };
@@ -107,8 +126,17 @@ export interface ScopeInput {
   week: number | null;
   /** Her published Total in Pool for the pool; null falls back to the scope's count. */
   start: number | null;
+  /**
+   * Whether the scope holds a week's picks at all. Our own record always
+   * does; her sheet only once it carries the week's column. A week that is
+   * not published prints "not published yet" on every tile that would
+   * otherwise read a zero off cells that do not exist.
+   */
+  weekPublished: (week: number) => boolean;
   /** The week's counts as the scope's own distribution produced them, or null with why. */
   distribution: {
+    /** Whose rows these are; "ours" under the pool key is our group standing in. */
+    scope: TeamsSourceKind;
     rows: { team: string; count: number; pct: number }[] | null;
     empty: DistributionView["empty"];
     caption: string;
@@ -142,8 +170,15 @@ export function dashboardScope(input: ScopeInput): ScopeData {
   const { key, entries, cells, games, now, week } = input;
   const results = teamResults(games);
   const revealedWeeks = fullyRevealedWeeks(games, now);
-  const anyFinal = week !== null && games.some((g) => g.week === week && g.status === "final");
-  const kpis = dashboardKpis(entries, cells, results, week ?? 0, anyFinal);
+  const finals = (w: number) => games.filter((g) => g.week === w && g.status === "final").length;
+  const scheduled = (w: number) => games.filter((g) => g.week === w).length;
+  const kpis = dashboardKpis(entries, cells, results, week ?? 0, {
+    anyFinal: week !== null && finals(week) > 0,
+    // The chalk is a share, and a share over the revealed subset is wrong:
+    // the tile waits for the whole week, exactly as the chalk card does.
+    revealed: week !== null && revealedWeeks.includes(week),
+    published: week !== null && input.weekPublished(week),
+  });
 
   const points = survivalCurve(entries, cells, 7, input.outWeeks);
   const last = points[points.length - 1];
@@ -157,6 +192,9 @@ export function dashboardScope(input: ScopeInput): ScopeData {
             week: last.week,
             n: before.remaining - last.remaining,
             pct: before.remaining > 0 ? Math.round(((before.remaining - last.remaining) / before.remaining) * 100) : 0,
+            // survivalCurve reaches a week at its FIRST final, so the drop is
+            // the week so far until every game of it is final.
+            partial: finals(last.week) < scheduled(last.week),
           }
         : null,
     points,
@@ -166,6 +204,7 @@ export function dashboardScope(input: ScopeInput): ScopeData {
   const d = input.distribution;
   const distribution: DistributionView = {
     week,
+    scope: d.scope,
     rows: d.rows !== null && week !== null && d.rows.length > 0 ? distributionRows(d.rows, results, week) : null,
     empty: d.empty,
     caption: d.caption,
@@ -173,14 +212,17 @@ export function dashboardScope(input: ScopeInput): ScopeData {
   };
 
   const cw = carnageWeek(games);
-  const carnage =
+  const carnage: CarnageView =
     cw === null
-      ? null
-      : {
-          ...weekCarnage(entries, cells, cw),
-          finalGames: games.filter((g) => g.week === cw && g.status === "final").length,
-          totalGames: games.filter((g) => g.week === cw).length,
-        };
+      ? { state: "no final" }
+      : !input.weekPublished(cw)
+        ? { state: "unpublished", week: cw }
+        : {
+            state: "ready",
+            ...weekCarnage(entries, cells, cw),
+            finalGames: finals(cw),
+            totalGames: scheduled(cw),
+          };
 
   const b = { "No Losses": 0, "Loss/Bye": 0, Out: 0 };
   for (const e of entries) b[lynneBucket(e)] += 1;

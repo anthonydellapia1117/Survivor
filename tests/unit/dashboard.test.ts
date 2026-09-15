@@ -7,6 +7,7 @@ import {
   dashboardKpis,
   distributionRows,
   eliminationsByWeek,
+  MISSED_TEAM,
   eliminationWeek,
   eliminationWeekOfEntry,
   MIN_CURVE_POINTS,
@@ -381,8 +382,10 @@ describe("dashboardKpis", () => {
   ];
   const results = teamResults([game(2, "PHI", "DAL", 24, 17), game(2, "KC", "LV", 10, 3, "in_progress")]);
 
+  const open = { anyFinal: true, revealed: true, published: true };
+
   it("counts the week's losses, who is now out, and the chalk with its result", () => {
-    const k = dashboardKpis(entries, cells, results, 2, true);
+    const k = dashboardKpis(entries, cells, results, 2, open);
     expect(k.alive).toBe(3);
     expect(k.lostThisWeek).toBe(2);
     expect(k.outThisWeek).toBe(1);
@@ -390,15 +393,34 @@ describe("dashboardKpis", () => {
   });
 
   it("prints nothing for the week before any game is final", () => {
-    const k = dashboardKpis(entries, cells, results, 2, false);
+    const k = dashboardKpis(entries, cells, results, 2, { ...open, anyFinal: false });
     expect(k.anyFinal).toBe(false);
     expect(k.chalk).toBeNull();
   });
 
   it("calls the chalk not final when its own game is still on, and never a loss", () => {
-    const k = dashboardKpis(entries, [cell("a", 2, "pending", "KC"), cell("b", 2, "pending", "KC")], results, 2, true);
+    const k = dashboardKpis(entries, [cell("a", 2, "pending", "KC"), cell("b", 2, "pending", "KC")], results, 2, open);
     expect(k.chalk).toEqual({ team: "KC", count: 2, pct: 100, tone: "none", state: "not final" });
     expect(k.lostThisWeek).toBe(0);
+  });
+
+  it("names no chalk while any pick of the week is still masked - a share over the revealed subset is a wrong number", () => {
+    // Thursday night: one revealed pick on the final game, four LOCKED. A
+    // tile computed here would call DAL the chalk at 100%.
+    const masked = [cell("a", 2, "loss", "DAL"), ...["b", "c", "d"].map((id) => cell(id, 2, null, "LOCKED"))];
+    const k = dashboardKpis(entries, masked, results, 2, { ...open, revealed: false });
+    expect(k.revealed).toBe(false);
+    expect(k.chalk).toBeNull();
+    // The loss count is not a share and still reads the one final.
+    expect(k.lostThisWeek).toBe(1);
+    // With the whole week revealed the same cells produce the tile.
+    expect(dashboardKpis(entries, masked, results, 2, open).chalk).toMatchObject({ team: "DAL", pct: 100 });
+  });
+
+  it("names no chalk for a week the scope does not hold at all", () => {
+    const k = dashboardKpis(entries, cells, results, 2, { ...open, published: false });
+    expect(k.published).toBe(false);
+    expect(k.chalk).toBeNull();
   });
 });
 
@@ -436,6 +458,12 @@ describe("distributionRows", () => {
   it("prints a skipped week as BYE in the bye tone", () => {
     const out = distributionRows([{ team: "SKIP_WEEK", count: 2, pct: 100 }], results, 1);
     expect(out.top[0]).toMatchObject({ label: "BYE", tone: "bye", glyph: "" });
+  });
+
+  it("prints a missed week as No pick with no fill - MISSED is a value, never a word on a screen", () => {
+    const out = distributionRows([{ team: MISSED_TEAM, count: 1, pct: 10 }, ...rows], results, 1);
+    expect(out.top[0]).toMatchObject({ team: "MISSED", label: NO_PICK_LABEL, tone: "none", glyph: "" });
+    expect(out.all.map((r) => r.label)).not.toContain("MISSED");
   });
 });
 

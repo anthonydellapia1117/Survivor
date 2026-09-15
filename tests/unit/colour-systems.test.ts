@@ -95,11 +95,15 @@ describe("the window vocabulary and the result vocabulary", () => {
     // Two surfaces since 2026-09-11, not three: the Grid and the Master List
     // became one table, so the third file is the one that used to hold half
     // of it.
-    // Four since 2026-09-15: the dashboard's pick distribution and its
-    // carnage list draw a bar per team in the team's result colour.
+    // Seven since 2026-09-15: the dashboard's scoped section, KPI strip,
+    // survival strip, pick distribution and carnage list each colour a
+    // result, so each is held off the window vocabulary here.
     for (const file of [
       "src/components/grid/grid-view.tsx",
       "src/components/teams/teams-client.tsx",
+      "src/components/dashboard/scope-section.tsx",
+      "src/components/dashboard/kpi-strip.tsx",
+      "src/components/dashboard/survival-strip.tsx",
       "src/components/dashboard/pick-distribution.tsx",
       "src/components/dashboard/carnage-list.tsx",
     ]) {

@@ -6,10 +6,15 @@
 // step's count is printed under the chart as text so nothing lives only in
 // the picture.
 //
-// The drop is printed in the OUT vocabulary (text-loss): it counts entries
-// that are finished, which is what red means on this site.
+// The drop is printed in the OUT vocabulary (OUT_TEXT_CLASS): it counts
+// entries that are finished, which is what red means on this site. A week
+// still in play is labelled "so far": survivalCurve reaches a week at its
+// first final, and "Week 2 0" on a Thursday night would read as a week that
+// cost nothing when the week has barely started.
 
 import { type SurvivalStrip as Strip } from "@/lib/dashboard-scope";
+import { OUT_TEXT_CLASS } from "@/lib/result-colour";
+import { cn } from "@/lib/utils";
 
 const W = 320;
 const H = 72;
@@ -27,6 +32,12 @@ export function stepPath(points: Strip["points"], start: number): string {
   return d;
 }
 
+/** The third tile's label: the week, and "so far" while a game of it is not final. */
+export function dropLabel(drop: Strip["drop"]): string {
+  if (!drop) return "This week";
+  return drop.partial ? `Week ${drop.week} so far` : `Week ${drop.week}`;
+}
+
 export function SurvivalStrip({ strip }: { strip: Strip }) {
   const n = (v: number) => v.toLocaleString("en-US");
   const last = strip.points[strip.points.length - 1];
@@ -42,11 +53,9 @@ export function SurvivalStrip({ strip }: { strip: Strip }) {
           <p className="text-2xl tabular-nums">{n(strip.remaining)}</p>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            {strip.drop ? `Week ${strip.drop.week}` : "This week"}
-          </p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">{dropLabel(strip.drop)}</p>
           {strip.drop && strip.drop.n > 0 ? (
-            <p className="text-2xl tabular-nums text-loss">
+            <p className={cn("text-2xl tabular-nums", OUT_TEXT_CLASS)}>
               -{n(strip.drop.n)}
               <span className="ml-1 text-xs text-muted-foreground">{strip.drop.pct}%</span>
             </p>
