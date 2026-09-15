@@ -21,6 +21,7 @@ const sheet = vi.hoisted(() => ({
   // Switchable to an empty roster: her sheet must still open the page.
   noEntries: false,
   extraGames: [] as Record<string, unknown>[],
+  extraRows: [] as { no: number; names: string; cells: Record<string, string>; entryId: string | null }[],
   // The Week 1 game's reveal override: false holds the week back whatever
   // the clock says, true lets it out. Pinned so no test depends on today.
   reveal: null as boolean | null,
@@ -60,7 +61,9 @@ vi.mock("../../src/lib/data", () => ({
         entryId: "e-983",
         week: 1,
         team: "PHI",
-        result: null,
+        // As production stores a pick her results file has not reached yet;
+        // the page scores it from the final (src/lib/live-standing.ts).
+        result: "pending",
         late: false,
         submittedAt: "2026-09-08T00:00:00Z",
         source: "text",
@@ -98,14 +101,25 @@ vi.mock("../../src/lib/data", () => ({
         { no: 2, names: "Loser Row", cells: { "Week 1": "Dallas" }, entryId: null },
         { no: 3, names: "Struck Row", cells: { "Week 1": "OUT" }, entryId: null },
         { no: 4, names: "Bye Row", cells: { "Week 1": "BYE" }, entryId: null },
+        ...sheet.extraRows,
       ],
     }),
   }),
 }));
 
 import DashboardPage from "../../src/app/page";
+import { TEAM_NAME } from "../../src/lib/standing";
 
 const html = async () => renderToStaticMarkup(await DashboardPage());
+const htmlIn = async (scope: string) =>
+  renderToStaticMarkup(await DashboardPage({ searchParams: Promise.resolve({ scope }) }));
+
+/** The one bar row (an <li>) whose title names this team. */
+function barOf(out: string, abbr: string): string {
+  const li = out.split("<li").find((chunk) => chunk.includes(`title="${TEAM_NAME[abbr]}:`));
+  expect(li, `no bar for ${abbr}`).toBeDefined();
+  return li!;
+}
 
 describe("Dashboard, signed out", () => {
   it("opens on her four figures, as published", async () => {
@@ -226,5 +240,78 @@ describe("Dashboard, signed out", () => {
     const out = await html();
     expect(out).not.toMatch(/collected|outstanding|amount due|owed to/i);
     expect(out).not.toMatch(/recruited/i);
+  });
+});
+
+// Set by Anthony on 2026-09-15: every viewer KPI shows the whole pool, and this
+// group's own figures appear only when the toggle is set to Our group. Four of
+// her rows (one clean, two in the middle bucket, one struck OUT) against one
+// entry of ours (PHI, a win), so a chart that reads the wrong scope reads a
+// different number.
+describe("Dashboard scope", () => {
+  it("reads the whole pool in every chart by default, never our group", async () => {
+    const out = await html();
+    expect(out).toMatch(/aria-current="true"[^>]*>Everyone/);
+    expect(out).toContain("After Week 1: 3 of 4 alive (75%), 1 without a loss (25%), 1 out.");
+    expect(out).not.toContain("1 of 1 alive");
+    expect(out).not.toContain("Recent activity");
+    expect(out).not.toContain("We are down to");
+    expect(out).toMatch(/Carnage, Week 1/);
+  });
+
+  it("shows our group's figures only when the toggle is set to Our group", async () => {
+    const out = await htmlIn("ours");
+    expect(out).toMatch(/aria-current="true"[^>]*>Our group/);
+    expect(out).toContain("After Week 1: 1 of 1 alive (100%), 1 without a loss (100%), 0 out.");
+    expect(out).not.toContain("3 of 4 alive");
+    expect(out).toContain("out in our group");
+    expect(out).toContain("We are down to 1 left in the pool");
+    expect(out).toContain("Recent activity");
+    // Her four figures are hers in either scope.
+    expect(out).toContain("Total in Pool");
+  });
+
+  it("ignores a scope it does not know and stays on the whole pool", async () => {
+    const out = await htmlIn("everyone-else");
+    expect(out).toContain("3 of 4 alive");
+  });
+});
+
+describe("Week pick distribution colours", () => {
+  it("gives every bar its team's result colour: won subtle green, lost yellow", async () => {
+    const out = await html();
+    // PHI beat DAL. Both rows are her sheet's, one pick each, counts as they are.
+    expect(barOf(out, "PHI")).toContain("bg-win/45");
+    expect(barOf(out, "PHI")).not.toContain("bg-tie/80");
+    expect(barOf(out, "DAL")).toContain("bg-tie/80");
+    expect(barOf(out, "DAL")).not.toContain("bg-win/45");
+    expect(out).toContain("chalk fell");
+  });
+
+  it("leaves a team whose game has no final neutral, never a colour that will move", async () => {
+    sheet.extraGames = [{ id: "g-3", week: 1, kickoffAt: "2026-09-06T17:00:00Z", dayOfWeek: "Sunday", awayTeam: "MIA", homeTeam: "BUF", homeScore: null, awayScore: null, status: "in_progress", revealOverride: null, network: "CBS" }];
+    sheet.extraRows = [{ no: 5, names: "Pending Row", cells: { "Week 1": "Buffalo" }, entryId: null }];
+    try {
+      const bar = barOf(await html(), "BUF");
+      expect(bar).toContain("bg-muted-foreground/30");
+      expect(bar).not.toMatch(/bg-win\/45|bg-tie\/80/);
+    } finally {
+      sheet.extraGames = [];
+      sheet.extraRows = [];
+    }
+  });
+});
+
+describe("Her NO PICK on the dashboard", () => {
+  it("counts it as a loss in the pool figures and names it in the caption", async () => {
+    sheet.extraRows = [{ no: 5, names: "Missed Row", cells: { "Week 1": "NO PICK" }, entryId: null }];
+    try {
+      const out = await html();
+      expect(out).toMatch(/Across all 5 rows of her sheet/);
+      expect(out).toMatch(/text-tie">\s*3\s*</);
+      expect(out).toContain("1 NO PICK, each a loss");
+    } finally {
+      sheet.extraRows = [];
+    }
   });
 });

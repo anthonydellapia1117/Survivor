@@ -334,7 +334,18 @@ scheme, on the one table at /grid and on the Teams table alike:**
 So **red means OUT and yellow means damaged-but-alive.** That is a shift from
 the older scheme, where a single loss was already red and nothing was left to
 say an entry was finished. A **tie and a missed week are losses** and take the
-yellow, the same way `v_entry_public` counts them in `losses`.
+yellow, the same way `v_entry_public` counts them in `losses`. **Her NO PICK
+is a missed week** (set 2026-09-15, see [her NO PICK](#her-no-pick-is-a-missed-week)):
+the Grid shows her words in the yellow.
+
+**The dashboard's charts speak the same vocabulary** (set 2026-09-15). Every
+bar in the week's pick distribution takes its team's result - subtle green
+won, yellow lost, neutral while the game has no final - and the counts are
+the sheet's as they stand. The survival columns stack No Losses green, 1
+Loss/Bye yellow and Out red; the carnage bars are yellow with a red share
+for the entries a loss finished. The bar classes are `TONE_BAR_CLASS` and
+`OUT_BAR_CLASS` in `src/lib/result-colour.ts`, stronger than a cell's fill
+because a bar carries no text of its own.
 
 **A colour comes off the STORED result and nothing else.** A game that is not
 final contributes nothing - `teamResults` leaves both its teams absent - so a
@@ -463,6 +474,21 @@ her sheet.**
   distribution and the Teams table read her sheet's week cells for every
   entry when she has published them, with "Our group" as the other setting;
   until she publishes a week, our group stands in and says so.
+- **EVERY viewer figure is the whole pool** (Anthony, 2026-09-15): the
+  Dashboard, Grid, Schedule, Teams and Records count her newest sheet's rows
+  (1,318 on her Week 1 Final Sheet), and **this group's own figures appear only
+  when the toggle is set to Our group**. The survival chart used to read "121
+  remaining" to every viewer; that was our-group data on a viewer surface. On
+  the server-rendered pages (Dashboard, Schedule, Records) the toggle is
+  `ScopeToggle` in `src/components/scope-toggle.tsx` and the choice rides in
+  the URL as `?scope=ours`, so a link keeps its scope; the Grid and Teams keep
+  their client toggles with the same two words. Each page picks the scope once
+  and hands every figure the same entries and cells - the whole pool from
+  `poolAsEntries`, ours from `scoreFromGames` - so no chart can mix them. Her
+  four figures are hers in either scope. What stays our-group whatever the
+  toggle: the roster CSV, and nothing else on a viewer route.
+  `tests/unit/dashboard-page.test.ts` and `tests/unit/viewer-scope.test.ts`
+  render each page both ways.
 - **The whole pool is called "Everyone", on every surface.** One scope, one
   word: the toggle on `/grid`, the toggle on `/teams` and the dashboard's
   distribution caption all use it. **The removed page's name is in no live
@@ -587,6 +613,27 @@ does one job nothing else can: when a new sheet arrives, an email-written cell
 for a week **the new sheet leaves blank** is carried across with its message
 id, and a week the sheet **does** state is hers as published and wins. Without
 that, Saturday's sheet would silently drop Wednesday's email.
+
+### Her NO PICK is a missed week
+
+Set 2026-09-15, the morning her Week 1 Final Sheet said **459 with one loss**
+and the public site said 445. Fourteen of her rows read `NO PICK` in the Week
+1 column, and in her pool a missed week is a **loss, not an elimination** - the
+rule this group's own `MISSED` pick follows and the one its emails state. The
+pool reader treated those cells as "not a team" and left the rows in No
+Losses. Read as the loss it is, our count of her sheet is **859 / 459 / 0**,
+exactly the stats block she prints on it (445 losing picks plus 14 NO PICK),
+where it had said 873 / 445 / 0.
+
+`herNoPick` in `src/lib/master-list.ts` reads her two words, any case,
+spacing free, and nothing looser - "No pick - late" is still her note and
+still left alone. `poolBucketOf` counts it as a loss (a second one, or one
+after the double-elimination boundary, is out), `poolAsEntries` carries it as
+a `MISSED` cell with no team used, and `poolDistribution` counts it apart as
+`noPick`, taking no team's share. **The cell she wrote is still what the Grid
+shows**, in the yellow. This is the reader learning her word for a state the
+app already has, not a variance resolved: where she writes NO PICK beside a
+pick this group holds, that is still reported and never changed.
 
 ## Names
 

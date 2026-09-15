@@ -29,6 +29,7 @@ import {
   bucketOfEntry,
   matchesStanding,
   matchTeams,
+  MISSED_TEAM,
   standingCounts,
   STANDING_FILTERS,
   cellTimeLabel,
@@ -646,7 +647,12 @@ export function GridView({
                     // Where we also hold a pick it sits beside her words - and
                     // it must NOT read as "she has published nothing", which
                     // is what the ours-only chip below says.
-                    if (!cell && herWords !== undefined) {
+                    // Her NO PICK is the one text of hers with a result: a
+                    // missed week, a loss (herNoPick). poolAsEntries carries
+                    // it as a MISSED cell so the counts see it; the cell still
+                    // shows her words, in the lost tone a missed week takes.
+                    const herMissed = cell?.team === MISSED_TEAM && cell.result === "missed";
+                    if ((!cell || herMissed) && herWords !== undefined) {
                       return (
                         <td key={w.week} className="h-11 w-px border-b border-border/60 p-0.5 px-1.5 text-center">
                           <span
@@ -657,7 +663,12 @@ export function GridView({
                             // words. Overflow is clipped rather than
                             // reflowed, so a long note cannot stretch the
                             // column.
-                            className="flex h-full min-h-10 w-full max-w-[7rem] flex-col items-center justify-center overflow-hidden whitespace-pre rounded-sm border border-border/60 bg-surface-2/60 px-1 text-[10px] font-semibold tracking-wide text-muted-foreground"
+                            className={cn(
+                              "flex h-full min-h-10 w-full max-w-[7rem] flex-col items-center justify-center overflow-hidden whitespace-pre rounded-sm border px-1 text-[10px] font-semibold tracking-wide",
+                              herMissed && cellPaints(row)
+                                ? cn(TONE_CELL_CLASS.lost, MISSED_EXTRA)
+                                : "border-border/60 bg-surface-2/60 text-muted-foreground",
+                            )}
                             title={
                               ourTeam !== undefined
                                 ? `Published: ${herWords}. Our record: ${teamLabel(ourTeam)}. Reported, not changed.`

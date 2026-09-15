@@ -35,7 +35,12 @@ interface Row extends EntrySummary {
 
 const col = createColumnHelper<Row>();
 
-export function EntriesTable({ rows }: { rows: Row[] }) {
+/**
+ * `pool`: the rows are her sheet's (poolAsEntries). They have no owner, so the
+ * column comes off, and a row that is not one of ours has no page of its own
+ * (a synthetic pool- id), so it is not a link to a 404.
+ */
+export function EntriesTable({ rows, pool = false }: { rows: Row[]; pool?: boolean }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | EntryStatus>("all");
@@ -46,15 +51,21 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
     () => [
       col.accessor("entryName", {
         header: "Entry",
-        cell: (info) => (
-          <Link
-            href={`/entry/${info.row.original.id}`}
-            className="flex items-center gap-2 font-medium hover:text-primary"
-          >
-            <StatusDot status={info.row.original.status} />
-            <span className="truncate">{info.getValue()}</span>
-          </Link>
-        ),
+        cell: (info) =>
+          info.row.original.id.startsWith("pool-") ? (
+            <span className="flex items-center gap-2 font-medium">
+              <StatusDot status={info.row.original.status} />
+              <span className="truncate">{info.getValue()}</span>
+            </span>
+          ) : (
+            <Link
+              href={`/entry/${info.row.original.id}`}
+              className="flex items-center gap-2 font-medium hover:text-primary"
+            >
+              <StatusDot status={info.row.original.status} />
+              <span className="truncate">{info.getValue()}</span>
+            </Link>
+          ),
       }),
       col.accessor("ownerName", {
         header: "Owner",
@@ -113,7 +124,7 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
   const table = useReactTable({
     data: filtered,
     columns,
-    state: { sorting, globalFilter: search },
+    state: { sorting, globalFilter: search, columnVisibility: { ownerName: !pool } },
     onSortingChange: setSorting,
     onGlobalFilterChange: setSearch,
     globalFilterFn: (row, _id, value) => {
@@ -135,7 +146,7 @@ export function EntriesTable({ rows }: { rows: Row[] }) {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search entries or owners…"
+          placeholder={pool ? "Search entries" : "Search entries or owners"}
           className="h-8 w-full sm:w-64"
         />
         <Select
