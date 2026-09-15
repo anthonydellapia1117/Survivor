@@ -49,7 +49,7 @@ import {
   submitPick,
   type CurrentPickRow,
 } from "../lib/db";
-import { ensureLabel, getMessageFull, gmailClient, listSweepFrom, listSweepMatching, markProcessed, type InboundMessage, type SweepSkip } from "../lib/gmail";
+import { ensureLabel, gmailClient, listSweepFrom, listSweepMatching, markProcessed, readNamedMessages, type InboundMessage, type SweepSkip } from "../lib/gmail";
 import { takeValue, weekArg } from "../lib/args";
 import { ADMIN_MAILBOX, DONE_LABEL, LYNNE_EMAIL, MAX_NOISE_ROWS_PER_RUN, MAX_ROSTER_ROWS_PER_RUN } from "../lib/constants";
 import { loadOpsConfig } from "../ops/lib/config";
@@ -84,10 +84,12 @@ import {
   stripQuotedReply,
   stripWeekHeading,
   type RosterEntry,
+  unpairedLines,
   unparsedLinesToAsk,
   weekNamedIn,
   weekOfMessage,
 } from "./lib/resolve";
+import { weekOfMail } from "../ops/lib/weeks";
 
 interface Args {
   week: number | null;
@@ -207,14 +209,17 @@ async function main(): Promise<void> {
   ]);
   const standingByEntry = new Map(standings.map((s) => [s.entry_id, s]));
   const now = new Date();
-  // The week a message names wins; --week, then the open week, is only the
-  // fallback for a message that names none. A Week 1 reply read on Saturday
-  // is a late Week 1 pick, never a Week 2 one.
+  // The week a message names wins; --week, then the week that was OPEN WHEN
+  // THE MAIL ARRIVED, then the open week now, is the fallback for a message
+  // that names none (weekOfMail). A Week 1 reply read on Saturday is a late
+  // Week 1 pick, never a Week 2 one - and since 2026-09-15 that holds for a
+  // reply that names no week at all, because the first run after read state
+  // stopped being the marker reads a fortnight of mail handled by hand.
   const fallbackWeek = args.week ?? currentWeek(weeks, now);
-  const weekFor = (named: number | null): number => {
-    if (named !== null) return named;
-    if (fallbackWeek === null) throw new Error("No open week and the message names none; pass --week N.");
-    return fallbackWeek;
+  const weekFor = (named: number | null, receivedAt: string | null = null): number => {
+    const week = weekOfMail(weeks, named, args.week, receivedAt, now);
+    if (week === null) throw new Error("No open week and the message names none; pass --week N.");
+    return week;
   };
   const contexts = new Map<number, WeekContext>();
   const contextFor = async (week: number): Promise<WeekContext> => {
@@ -338,14 +343,13 @@ async function main(): Promise<void> {
     let bounces: BounceRow[] = [];
     if (args.messageIds.length) {
       // Named messages are read whatever their labels or read state, and
-      // the on-file check is skipped for the id itself. Every pick-level
-      // check below still applies: this is how a message staged once is
-      // re-read after the parser has learned its shape.
-      for (const id of args.messageIds) {
-        const m = await getMessageFull(gmail, id);
-        if (m.fromAddress === ADMIN_MAILBOX) {
-          throw new Error(`${id} is from the admin mailbox; this sweep never reads it. Dictated picks go through npm run picks:self.`);
-        }
+      // the on-file check is skipped for the id itself: readNamedMessages
+      // takes no SweepSkip and fetches nothing but the message in full, and
+      // tests/unit/sweep-read-state.test.ts drives it to prove that. Every
+      // pick-level check below still applies: this is how a message staged
+      // once is re-read after the parser has learned its shape. The admin
+      // mailbox is refused inside the reader - dictated picks are picks:self.
+      for (const m of await readNamedMessages(gmail, args.messageIds, ADMIN_MAILBOX)) {
         if (isBounceSender(m.fromAddress)) bounces.push(...classifyBounces([m], addresses, entriesFor));
         else if (addressSet.has(m.fromAddress)) known.push(m);
         else strangers.push(m);
@@ -375,7 +379,7 @@ async function main(): Promise<void> {
         senderAddress: m.fromAddress,
         fromOwnerId: null,
         messageId: m.id,
-        week: weekFor(weekOfMessage(m.subject, m.body)),
+        week: weekFor(weekOfMessage(m.subject, m.body), m.receivedAt),
         receivedAt: m.receivedAt,
         stranger: strangerIds.has(m.id),
       });
@@ -389,7 +393,7 @@ async function main(): Promise<void> {
         senderAddress: b.from,
         fromOwnerId: null,
         messageId: b.messageId,
-        week: weekFor(weekNamedIn(b.subject)),
+        week: weekFor(weekNamedIn(b.subject), b.receivedAt),
         receivedAt: b.receivedAt,
         stranger: false,
       };
@@ -486,9 +490,29 @@ async function main(): Promise<void> {
         fail(`names ${m.teams.length} teams (${m.teams.join(", ")}) and the sender has ${scopeEntries.length} entr${scopeEntries.length === 1 ? "y" : "ies"} (${names})`, m.line, scopeEntries);
       }
     }
-    for (const p of picks) {
+    // A LINE IS ONE STATEMENT. Every pick's entry is resolved first, and a
+    // line on which any pick resolves to nothing inside the sender's scope
+    // has EVERY pick on it failed, naming the teams - "Mass1 - Ravens Mass9
+    // Niners" writes neither half. The parser already refuses a line whose
+    // remainder names a team it cannot pair; this is the second guard for
+    // the pair it CAN parse and the roster cannot place (review, 2026-09-15).
+    const resolvedEntry = picks.map((p) => (unplaced || p.all || p.entryRaw === null ? null : resolveEntry(p.entryRaw, roster, { preferredIds })));
+    const pickResolves = (i: number): boolean => {
+      const p = picks[i];
+      if (p.all) return scopeEntries.length > 0;
+      if (p.entryRaw === null) return scopeEntries.length === 1;
+      const r = resolvedEntry[i];
+      return r !== null && r.ok && scopeCheck(r.entry.id, preferredIds) === "ok";
+    };
+    const unpaired = unplaced ? new Map<string, string[]>() : unpairedLines(picks, pickResolves);
+    for (const [i, p] of picks.entries()) {
       if (unplaced) {
         askOnce("sender matches no live entry on the roster");
+        continue;
+      }
+      const lineTeams = unpaired.get(p.line);
+      if (lineTeams && pickResolves(i)) {
+        fail(`nothing on this line is written: it names ${lineTeams.join(", ")} and one of its entries did not resolve to the sender's`, p.line, scopeEntries);
         continue;
       }
       let targets: { entry: RosterEntry; how: string }[] = [];
@@ -509,7 +533,7 @@ async function main(): Promise<void> {
           continue;
         }
       } else {
-        const r = resolveEntry(p.entryRaw, roster, { preferredIds });
+        const r = resolvedEntry[i]!;
         if (!r.ok) {
           fail(`entry "${p.entryRaw}": ${r.reason.replace(/_/g, " ")}`, p.line, r.candidates);
           continue;

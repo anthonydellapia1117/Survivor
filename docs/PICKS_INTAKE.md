@@ -97,7 +97,28 @@ The on-file check is skipped for the named id; every pick-level check still
 runs (the same team already current is a no-op, a different team after a
 current pick goes through the override rules, a repeated team stages). A
 message from your own mailbox is refused here; that is `picks:self`.
+
+THE FIRST RUN AFTER THIS DEPLOYS IS BY HAND, AS A DRY RUN, BEFORE THE NEXT
+OPS TICK. Read state was the marker until 2026-09-15, and the label was only
+ever put on messages the sweep itself processed, so every roster message of
+the last fortnight that you handled by hand (Week 1 replies of 1 to 11
+September, anything read on the phone since) is unlabelled, not on file,
+and will be read by the first run that no longer asks for unread:
+
 ```
+npm run picks -- --dry-run
+```
+
+Read the table. A message naming the team an entry already holds is a
+no-op and is filed; a message naming a different team for a scored week is
+staged as a question (the "already scored" reason) and is not written; a
+message naming no week is recorded in the week that was OPEN WHEN IT
+ARRIVED, never the week open now, so a 10 September reply cannot become a
+Week 2 pick. If the table reads right, run it for real (`npm run picks`,
+then y); if a row surprises you, stop and read that message by id before
+anything is written. The Ops Tick runs the same command hourly and will do
+this on its own if you do not; the point of the hand run is that a person
+reads the backlog once.
 
 2b. From a text or a phone call. Paste the lines, one pick per line, in any
 of the shapes players use ("Maria & Mary #3 - Eagles", "Mary/Maria 3:
@@ -174,8 +195,29 @@ entry name); `1042 -> 49ers*` (her NO., exact, an arrow, a trailing
 asterisk); `I'll do the niners` from a sender with ONE live entry (that
 entry). `Chargers & 49ers` from a sender with two entries is one question
 naming both lists - never assigned by order. A line with a hedge word ("I
-don't think I'm taking buffalo or Detroit") is never a pick. Sign-offs and
-the sender's own name as a line are noise, not questions.
+don't think I'm taking buffalo or Detroit", and since the same day's review
+"I think", "I guess", "wait", "actually", "I mean", "changing", "leaning")
+is never a pick. Sign-offs and the sender's own name as a line are noise,
+not questions.
+
+Three rules from the review of that change, the same day, each because the
+first version WROTE a pick it should have staged:
+
+- A line naming a second team the parser cannot pair with an entry is
+  staged WHOLE. `Waggs3 - Tampa, actually make it Eagles`, `Mass1 - Ravens,
+  Niners`, `Waggs1 - Eagles. Actually Cowboys` each wrote the first team and
+  staged only the remainder - a retracted pick reached the database while
+  the correction sat on the queue. Now the first pick stands only when the
+  remainder has no team in it at all (`Mass1 - Ravens please`), and the
+  staged reason names the teams it saw ("names 2 teams (TB, PHI) on one
+  line and no single pick can be read from it").
+- A line is one statement in the CLI too: `Mass1 - Ravens Mass9 Niners`
+  parses as two picks and the roster places one; nothing on that line is
+  written, both are staged, and the reason names both teams.
+- "Go Eagles" from a sender with one live entry was written as that entry's
+  pick, because "go" is a filler word. The words in front of a team count as
+  "no entry named" only when one of them is first-person ("I'll go with the
+  Eagles"); a cheer is staged as the question it always was.
 
 2d. Name shorthand that cannot be derived from an entry name lives in
 `scripts/picks/aliases.ts`. Add a line there when a new one turns up. Stored

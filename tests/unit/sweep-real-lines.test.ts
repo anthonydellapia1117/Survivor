@@ -22,6 +22,8 @@ import {
   resolveEntry,
   scopeCheck,
   stripQuotedReply,
+  teamsNamedIn,
+  unpairedLines,
   unparsedLinesToAsk,
   type RosterEntry,
 } from "../../scripts/picks/lib/resolve";
@@ -104,13 +106,27 @@ function sweep(body: string, sender: string): Outcome[] {
       kind: "player_question",
     });
   }
-  for (const p of picks) {
+  // The CLI's line guard: every entry resolved first, and a line one of whose
+  // picks did not resolve in scope has every pick on it failed.
+  const resolved = picks.map((p) => (p.entryRaw === null ? null : resolveEntry(p.entryRaw, ROSTER, { preferredIds })));
+  const pickResolves = (i: number): boolean => {
+    const r = resolved[i];
+    if (r === null) return scope.length === 1;
+    return r.ok && scopeCheck(r.entry.id, preferredIds) === "ok";
+  };
+  const unpaired = unpairedLines(picks, pickResolves);
+  for (const [i, p] of picks.entries()) {
+    const lineTeams = unpaired.get(p.line);
+    if (lineTeams && pickResolves(i)) {
+      out.push({ staged: `nothing on this line is written: it names ${lineTeams.join(", ")} and one of its entries did not resolve to the sender's`, kind: "player_question" });
+      continue;
+    }
     if (p.entryRaw === null) {
       if (scope.length === 1) out.push({ pick: [scope[0].entryName, p.team] });
       else out.push({ staged: `no entry named and the sender has ${scope.length} entries`, kind: "player_question" });
       continue;
     }
-    const r = resolveEntry(p.entryRaw, ROSTER, { preferredIds });
+    const r = resolved[i]!;
     if (!r.ok) {
       out.push({ staged: `entry "${p.entryRaw}": ${r.reason.replace(/_/g, " ")}`, kind: "player_question" });
       continue;
@@ -206,7 +222,9 @@ describe("the lines that are noise and must stay unparsed", () => {
     const line = "Got it.  I don't think I'm taking buffalo or Detroit this week.  I'll have my picks to you by Fri morning.";
     const out = sweep(line, ANT);
     expect(out.some((o) => "pick" in o)).toBe(false);
-    expect(out).toEqual([{ staged: "no team recognised on this line", kind: "player_question" }]);
+    // The reason names the teams it saw: "no team recognised" was false here
+    // and read as a parser gap rather than the hedge it is.
+    expect(out).toEqual([{ staged: "names 2 teams (BUF, DET) on one line and no single pick can be read from it", kind: "player_question" }]);
     // And split across lines, the same.
     const split = sweep("Got it.\nI don't think I'm taking buffalo or Detroit this week.\nI'll have my picks to you by Fri morning.", ANT);
     expect(split.some((o) => "pick" in o)).toBe(false);
@@ -214,6 +232,131 @@ describe("the lines that are noise and must stay unparsed", () => {
 
   it("a hedged pick stays a question even with the entry named", () => {
     expect(sweep("Waggs3 - Tampa or Eagles", ASHLEY).some((o) => "pick" in o)).toBe(false);
+  });
+
+  it("a cheer is not a pick: 'Go Eagles' from a sender with ONE live entry is staged, never written", () => {
+    // Found on review, 2026-09-15: "go" is a filler word, so "Go Eagles"
+    // parsed as a bare team and was WRITTEN as the sender's only entry's
+    // pick - over whatever was already on file. The words in front of a team
+    // count as "no entry named" only when one of them is first-person.
+    expect(sweep("Go Eagles", ANT)).toEqual([{ staged: 'entry "Go": unmatched', kind: "player_question" }]);
+    expect(sweep("Go Eagles", ROB).some((o) => "pick" in o)).toBe(false);
+    // The first-person shapes still resolve.
+    expect(sweep("I'll go with the Eagles", ANT)).toEqual([{ pick: ["Rob & Alanna #2", "PHI"] }]);
+    expect(sweep("I\u2019m taking the Eagles", ANT)).toEqual([{ pick: ["Rob & Alanna #2", "PHI"] }]);
+  });
+
+  it("a line that doubts itself is never a pick, whatever entry it names", () => {
+    // Found on review, 2026-09-15: each of these wrote the first team and
+    // staged the doubt beside it.
+    for (const line of [
+      "Waggs1 - Eagles I think",
+      "Waggs1 - Eagles I guess",
+      "Waggs1 - Eagles ... wait, Cowboys",
+      "Waggs1 - Eagles, actually Cowboys",
+      "Waggs1 - Eagles I mean Cowboys",
+      "Waggs1 - Eagles sorry I meant Cowboys",
+      "Waggs1 - changing to Cowboys",
+      "I am leaning Eagles",
+    ]) {
+      expect(sweep(line, ASHLEY).some((o) => "pick" in o), line).toBe(false);
+    }
+  });
+});
+
+describe("a line naming a second team it cannot pair is staged WHOLE, never half written", () => {
+  // Found on review, 2026-09-15, in the first version of the two-picks-on-one-
+  // line rule: the remainder after the first team was parsed again, and when
+  // it did not yield an entry AND a team the first pick STOOD and only the
+  // remainder was staged. So "Waggs3 - Tampa, actually make it Eagles" wrote
+  // Waggs #3 -> TB and staged "actually make it", and a retracted pick reached
+  // admin_submit_pick while the correction sat on the queue. The parser on
+  // main staged every one of these whole; so does this one.
+  const corrections: [string, string][] = [
+    ["Waggs3 - Tampa, actually make it Eagles", ASHLEY],
+    ["Waggs3 - Tampa. Scratch that, Eagles", ASHLEY],
+    ["Waggs3 - Tampa sorry I meant Eagles", ASHLEY],
+    ["Waggs3 - Tampa (changed my mind, Eagles)", ASHLEY],
+    ["Mass1 - Ravens, Niners", MARC],
+    ["Mass1 - Ravens I'll take the Niners", MARC],
+    ["Waggs1 - Eagles Cowboys", ASHLEY],
+    ["Waggs1 - Eagles. Actually Cowboys", ASHLEY],
+    ["Waggs1 - Eagles ... wait Cowboys", ASHLEY],
+    ["Waggs1 - Eagles Cowboys please", ASHLEY],
+  ];
+  for (const [line, from] of corrections) {
+    it(`${JSON.stringify(line)}: nothing written, one question naming both teams`, () => {
+      const out = sweep(line, from);
+      expect(out.some((o) => "pick" in o)).toBe(false);
+      expect(out).toHaveLength(1);
+      expect("staged" in out[0] && out[0].staged).toMatch(/^names 2 teams \([A-Z]{2,3}, [A-Z]{2,3}\) on one line and no single pick can be read from it$/);
+    });
+  }
+
+  it("the parser returns the WHOLE line as unparsed, not the first pick plus the remainder", () => {
+    const p = parsePickLines("Waggs3 - Tampa, actually make it Eagles");
+    expect(p.picks).toEqual([]);
+    expect(p.multi).toEqual([]);
+    expect(p.unparsed).toEqual(["Waggs3 - Tampa, actually make it Eagles"]);
+  });
+
+  it("a remainder with no team in it still leaves the first pick standing", () => {
+    // "please" is not a team, so this is the one pick it always was, with the
+    // remainder left to the unparsed reason (noise, here).
+    expect(sweep("Mass1 - Ravens please", MARC)).toEqual([
+      { staged: "no team recognised on this line", kind: "player_question" },
+      { pick: ["Marc Mass #1", "BAL"] },
+    ]);
+  });
+
+  it("names every team the line carries, and only a code written as a code", () => {
+    expect(teamsNamedIn("Tampa, actually make it Eagles")).toEqual(["TB", "PHI"]);
+    expect(teamsNamedIn("I'll take the Niners")).toEqual(["SF"]);
+    expect(teamsNamedIn("SF 49ers and the Baltimore Ravens")).toEqual(["SF", "BAL"]);
+    // "no" is New Orleans's code and an English word: it counts only in capitals.
+    expect(teamsNamedIn("I have no idea")).toEqual([]);
+    expect(teamsNamedIn("NO")).toEqual(["NO"]);
+    expect(teamsNamedIn("please")).toEqual([]);
+    expect(teamsNamedIn("Waggs2")).toEqual([]);
+  });
+});
+
+describe("the CLI fails every pick on a line one of whose picks did not resolve", () => {
+  // The second guard, behind the parser's: "Mass1 - Ravens Mass9 Niners"
+  // parses cleanly as two picks, and the roster places only one of them.
+  // Writing that one would record a pick from a line whose meaning is not
+  // settled, so the CLI fails both, naming the teams.
+  const picks = parsePickLines("Mass1 - Ravens Mass9 Niners\nMass2 - Eagles").picks;
+  it("parses as three picks on two lines", () => {
+    expect(picks.map((p) => [p.entryRaw, p.team])).toEqual([["Mass1", "BAL"], ["Mass9", "SF"], ["Mass2", "PHI"]]);
+  });
+  it("through the sweep: the clean line is Marc Mass #2's pick and the mixed line writes NOTHING", () => {
+    expect(sweep("Mass1 - Ravens Mass9 Niners\nMass2 - Eagles", MARC)).toEqual([
+      { staged: "nothing on this line is written: it names BAL, SF and one of its entries did not resolve to the sender's", kind: "player_question" },
+      { staged: 'entry "Mass9": unmatched', kind: "player_question" },
+      { pick: ["Marc Mass #2", "PHI"] },
+    ]);
+  });
+  it("marks the line whose second entry is unmatched, with both its teams, and leaves the clean line alone", () => {
+    const marc = new Set(entriesFor(MARC).map((e) => e.id));
+    const resolves = (i: number) => resolveEntry(picks[i].entryRaw!, ROSTER, { preferredIds: marc }).ok;
+    const bad = unpairedLines(picks, resolves);
+    expect([...bad.entries()]).toEqual([["Mass1 - Ravens Mass9 Niners", ["BAL", "SF"]]]);
+    expect(unpairedLines(picks, () => true).size).toBe(0);
+  });
+  it("is what the CLI consults before any target is chosen, for every pick on the line", () => {
+    const code = readFileSync(path.join(__dirname, "../..", "scripts/picks/cli.ts"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+    const at = code.indexOf("const unpaired = unplaced ? new Map<string, string[]>() : unpairedLines(picks, pickResolves);");
+    expect(at).toBeGreaterThan(-1);
+    const loop = code.indexOf("for (const [i, p] of picks.entries()) {");
+    expect(loop).toBeGreaterThan(at);
+    const body = code.slice(loop, code.indexOf("let targets:", loop));
+    expect(body).toMatch(/const lineTeams = unpaired\.get\(p\.line\);\s*if \(lineTeams && pickResolves\(i\)\) \{\s*fail\(`nothing on this line is written: it names \$\{lineTeams\.join\(", "\)\}/);
+    // Every entry token is resolved once, up front, and the loop reads that.
+    expect(code).toMatch(/const resolvedEntry = picks\.map\(\(p\) => \(unplaced \|\| p\.all \|\| p\.entryRaw === null \? null : resolveEntry\(p\.entryRaw, roster, \{ preferredIds \}\)\)\);/);
+    expect(code).toMatch(/const r = resolvedEntry\[i\]!;/);
   });
 });
 
@@ -270,11 +413,14 @@ describe("the rules the real lines needed, each at its edge", () => {
     const one = parsePickLines("Mass1 - Ravens please");
     expect(one.picks.map((p) => [p.entryRaw, p.team])).toEqual([["Mass1", "BAL"]]);
     expect(one.unparsed).toEqual(["please"]);
-    // A remainder that is a team with no entry token is NOT taken: with two
-    // entries in scope it would be assigned by order, which is never done.
+    // A remainder that is a team with no entry token is NOT taken - with two
+    // entries in scope it would be assigned by order, which is never done -
+    // AND it does not leave the first pick standing either: a line carrying
+    // a second team the parser cannot pair is staged whole (the describe
+    // below holds the shapes that found this).
     const bare = parsePickLines("Mass1 - Ravens I'll take the Niners");
-    expect(bare.picks.map((p) => [p.entryRaw, p.team])).toEqual([["Mass1", "BAL"]]);
-    expect(bare.unparsed).toEqual(["I'll take the Niners"]);
+    expect(bare.picks).toEqual([]);
+    expect(bare.unparsed).toEqual(["Mass1 - Ravens I'll take the Niners"]);
   });
 
   it("one live entry and no entry token is that entry's pick; two or more is a question, never assigned by order", () => {

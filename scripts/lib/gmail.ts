@@ -261,6 +261,29 @@ export async function getMessageFull(gmail: gmail_v1.Gmail, id: string): Promise
 }
 
 /**
+ * The messages named on the command line (--message-id, repeatable), each in
+ * full, in the order given, whatever their labels or read state. This reader
+ * takes NO SweepSkip on purpose: a named id is read even when it carries the
+ * DONE label or is already on file, because naming it IS the instruction to
+ * read it again - the five messages staged on 2026-09-15 before the parser
+ * understood them are re-read exactly this way. It fetches nothing but the
+ * message (no metadata get, no label list). A message from `refuse` - the
+ * admin mailbox - stops the run: this sweep never reads it, on any path, and
+ * dictated picks go through `npm run picks:self`.
+ */
+export async function readNamedMessages(gmail: gmail_v1.Gmail, ids: string[], refuse: string): Promise<InboundMessage[]> {
+  const out: InboundMessage[] = [];
+  for (const id of ids) {
+    const m = await getMessageFull(gmail, id);
+    if (m.fromAddress === refuse) {
+      throw new Error(`${id} is from the admin mailbox; this sweep never reads it. Dictated picks go through npm run picks:self.`);
+    }
+    out.push(m);
+  }
+  return out;
+}
+
+/**
  * Every message of a thread, in full, oldest first.
  *
  * CLAUDE.md: fetch threads in full, never rely on search previews, which

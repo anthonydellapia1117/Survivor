@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { cellWeek, diffWeekCells } from "../../scripts/lynne/lib/roster-sheet";
-import { weekForMessage } from "../../scripts/ops/lib/weeks";
+import { weekForMessage, weekOfMail } from "../../scripts/ops/lib/weeks";
 
 describe("cellWeek", () => {
   it("reads the header shapes she uses", () => {
@@ -162,4 +162,43 @@ describe("weekForMessage", () => {
   // boundary (0, NaN, Infinity) loses to the initial best just as a skip does,
   // so no input distinguishes them. A test that passes whatever the line says
   // is not coverage, and this project would rather say so than keep one.
+});
+
+describe("weekOfMail: the week a player's message is recorded in", () => {
+  // Added 2026-09-15 with the read-state change (review finding): the first
+  // run after it reads a fortnight of mail Anthony handled by hand, and a
+  // Week 1 reply of 10 September naming no week took the open week at RUN
+  // time - Week 2 - and would have been written as an on-time Week 2 pick.
+  const bounds = (week: number, late: string) =>
+    ({ week, window_label: "thu_fri", early_deadline_at: late, late_deadline_at: late }) as never;
+  const weeks = [bounds(1, "2026-09-11T18:00:00Z"), bounds(2, "2026-09-18T18:00:00Z"), bounds(3, "2026-09-25T18:00:00Z")];
+  const runNow = new Date("2026-09-15T18:00:00Z"); // Tuesday of Week 2, when the run happens
+
+  it("a message naming no week is recorded in the week that was open when it ARRIVED, not when the sweep ran", () => {
+    expect(weekOfMail(weeks, null, null, "2026-09-10T15:00:00Z", runNow)).toBe(1);
+    // The ordinary straggler: 1 PM Friday, swept at 3:43 PM, is still Week 1.
+    expect(weekOfMail(weeks, null, null, "2026-09-11T17:00:00Z", runNow)).toBe(1);
+    expect(weekOfMail(weeks, null, null, "2026-09-11T18:00:01Z", runNow)).toBe(2);
+    expect(weekOfMail(weeks, null, null, "2026-09-14T12:00:00Z", runNow)).toBe(2);
+  });
+
+  it("the week the message names wins, then --week, then the receipt, then now", () => {
+    expect(weekOfMail(weeks, 3, 1, "2026-09-10T15:00:00Z", runNow)).toBe(3);
+    expect(weekOfMail(weeks, null, 3, "2026-09-10T15:00:00Z", runNow)).toBe(3);
+    expect(weekOfMail(weeks, null, null, null, runNow)).toBe(2);
+    expect(weekOfMail(weeks, null, null, "not a date", runNow)).toBe(2);
+  });
+
+  it("is null, never a guess, when every week has locked and nothing names one", () => {
+    const late = new Date("2027-02-01T00:00:00Z");
+    expect(weekOfMail(weeks, null, null, "2027-01-30T00:00:00Z", late)).toBeNull();
+    expect(weekOfMail(weeks, null, 4, "2027-01-30T00:00:00Z", late)).toBe(4);
+  });
+
+  it("is what the picks CLI records every Gmail message and bounce under, with the mail's own receipt time", () => {
+    const c = readFileSync(`${__dirname}/../../scripts/picks/cli.ts`, "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+    expect(c).toMatch(/const week = weekOfMail\(weeks, named, args\.week, receivedAt, now\);/);
+    expect(c).toMatch(/week: weekFor\(weekOfMessage\(m\.subject, m\.body\), m\.receivedAt\),/);
+    expect(c).toMatch(/week: weekFor\(weekNamedIn\(b\.subject\), b\.receivedAt\),/);
+  });
 });

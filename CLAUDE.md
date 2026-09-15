@@ -1795,7 +1795,31 @@ in any of them.**
     `tests/unit/sweep-read-state.test.ts` drives the readers with a fake
     Gmail: a read, unlabelled message is swept; an unread one under the
     label is skipped; an unlabelled one whose id is on file is skipped; a
-    missing label that cannot be created stops the run with nothing read.
+    missing label that cannot be created stops the run with nothing read;
+    and, since the same day's review, **the WRITE half is driven too** -
+    `markProcessed` adds the label id and removes `UNREAD` in one `modify`,
+    and with no such label adds nothing and says so. A version that never
+    added the label passed every test until then, and with it never written
+    a message filed only by label (an "already current" reply, a not-ours
+    bounce) would be re-read and re-reported every hourly tick.
+
+    **THE FIRST RUN AFTER THIS DEPLOYS IS BY HAND, AS `npm run picks --
+    --dry-run`, BEFORE THE NEXT OPS TICK.** The label was only ever put on
+    messages the sweep itself processed, so every roster message of the
+    last fortnight Anthony handled by hand while the sweep keyed on unread
+    - Week 1 replies of 1 to 11 September, anything read on the phone since
+    - is unlabelled, not on file, and read by the first run. Each is parsed
+    again: the same team is a no-op and is filed; a differing team on a
+    scored week stages an "already scored" question; and **a message
+    naming no week is recorded in the week that was OPEN WHEN IT ARRIVED**
+    (`weekOfMail` in `scripts/ops/lib/weeks.ts`: named week, then `--week`,
+    then the week open at receipt, then the week open now). That third
+    step is the review's fix for a real write: a 10 September reply naming
+    no week used to take the open week at RUN time - Week 2 - and would
+    have been written as an on-time Week 2 pick. It also settles the
+    ordinary straggler, a 1 PM Friday reply swept at 3:43 PM, as the Week 1
+    pick it is. The hand run is so a person reads the backlog once; the
+    tick would otherwise do it unread. `docs/PICKS_INTAKE.md` 2a.
   - **The five Week 1 picks lost to a search preview cutting at five
     messages were lost by hand**, through the claude.ai Gmail connector's
     `search_threads` preview (the Gmail section below); **the code never
@@ -1810,7 +1834,13 @@ in any of them.**
     `overrideDecision`, a repeated team stages. Same table, same `--dry-run`
     and `--yes`. It is how a message staged once is re-read after the parser
     has learned its shape. A message from the admin mailbox is refused there
-    too - dictated picks are `npm run picks:self`.
+    too - dictated picks are `npm run picks:self`. The read is
+    `readNamedMessages` in `scripts/lib/gmail.ts`, which takes no skip set
+    by construction and fetches nothing but each message in full; the
+    read-state test DRIVES it (a DONE-labelled, on-file id comes back with
+    its body and no metadata get is made) because the first guard held the
+    branch to "no label check" only by the absence of the word `skip`, and
+    a check under another name walked through it.
   - **Bounces are the third read.** Set by Anthony on 2026-09-15: "Watch for
     bounces. Lynne reports Comcast bouncing on her end and three of ours are
     Comcast." A delivery failure comes from a mailer, not the player, so
@@ -1945,23 +1975,47 @@ in any of them.**
     so.
   - **Two picks on one line.** `Mass1 - Ravens Mass2 Niners` is two picks:
     the team is the leading words after the separator and the remainder is
-    parsed again, taken only when it yields an entry AND a team; a remainder
-    that is a bare team or prose is left to the unparsed reason.
+    parsed again, taken only when it yields an entry AND a team with no
+    comma left in it. **A remainder that names a team the parser cannot
+    pair makes the WHOLE line unparsed - the first pick does not stand.**
+    Found on review the same day, in the first version: `Waggs3 - Tampa,
+    actually make it Eagles`, `Mass1 - Ravens, Niners`, `Waggs1 - Eagles.
+    Actually Cowboys` and `Mass1 - Ravens I'll take the Niners` each WROTE
+    the first team and staged only the remainder, so a retracted pick
+    reached `admin_submit_pick` while the correction sat on the queue - a
+    regression, because the parser on main staged every one of them whole.
+    Only a remainder with no team in it at all (`Mass1 - Ravens please`)
+    leaves the first pick standing, and the staged reason names the teams
+    it saw ("names 2 teams (TB, PHI) on one line and no single pick can be
+    read from it") rather than claiming none was recognised.
+    **A line is one statement in the CLI as well** (`unpairedLines`):
+    `Mass1 - Ravens Mass9 Niners` parses as two picks and the roster places
+    one, and nothing on that line is written - both are staged, the reason
+    naming both teams. `tests/unit/sweep-real-lines.test.ts` holds every
+    one of these lines to no write.
   - **No entry token.** Ant Giletto's `I'll do the niners` (the curly
     apostrophe of a phone) from a sender with exactly ONE live entry is that
     entry's pick: the words in front of the team are on a closed filler
-    list. With two or more entries in scope it is the question it always
+    list **and one of them is first-person** (`I`, `I'll`, `I'm`, `me`,
+    `my`, `we`, ...). That second condition is from the same review: "Go
+    Eagles" from a sender with one live entry was WRITTEN as its pick,
+    because `go` is a filler word - a cheer became a pick that would have
+    overridden one already on file. It is a staged question now, as it was
+    before. With two or more entries in scope it is the question it always
     was. Kris Tomasco's `Chargers & 49ers` - two teams for his two, the two
     gifted to Chas Flaster being Chas's - is **never assigned by order**:
     one `player_question` naming the entries and the teams, asking which is
     which.
   - **Prose that names teams picks nothing.** "I don't think I'm taking
     buffalo or Detroit this week" stays unparsed: a line carrying a hedge
-    word (`or`, `not`, `don't`, `maybe`, `if`, ...) is never a pick, whatever
-    else is on it. Sign-offs (`Sincerely`, `Sent via the iPhone`) and a line
-    that is the sender's own name (`Kris Tomasco`, `Maria DiCicco*`) are
-    noise, not questions; "Am I eliminated" and the cash-to-Pung line are
-    questions and stay so.
+    word (`or`, `not`, `don't`, `maybe`, `if`, ... and since the review
+    the correction words `think`, `guess`, `wait`, `actually`, `mean`,
+    `meant`, `change`, `changed`, `changing`, `leaning`) is never a pick,
+    whatever else is on it - "Waggs1 - Eagles I think" wrote PHI and staged
+    the doubt beside it until those went in. Sign-offs (`Sincerely`, `Sent
+    via the iPhone`) and a line that is the sender's own name (`Kris
+    Tomasco`, `Maria DiCicco*`) are noise, not questions; "Am I eliminated"
+    and the cash-to-Pung line are questions and stay so.
 
 - **Game results come from ESPN, and only ever land on `nfl_games`.** Set by
   Anthony on 2026-09-11. `npm run scores` reads the free public scoreboard - no

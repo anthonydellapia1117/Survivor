@@ -371,6 +371,14 @@ const MAX_TEAM_WORDS = 4;
  * it is that entry's pick and with more it is a question. A closed list,
  * matched on letters alone (the curly apostrophe in "I'll" is dropped);
  * nothing here is fuzzy.
+ *
+ * The run has to carry a FIRST-PERSON word (FIRST_PERSON below) before it
+ * counts as "no entry named". Found on review the same day: "Go Eagles" from
+ * a sender with one live entry was WRITTEN as that entry's pick, because
+ * "go" is on this list and nothing else was in front of the team - a cheer
+ * became a pick that would have overridden one already on file. "I'll go
+ * with the Eagles" says who is choosing; "Go Eagles" does not, and is staged
+ * as the question it always was.
  */
 const FILLER_WORDS = new Set([
   "i", "ill", "im", "id", "will", "take", "taking", "took", "go", "going", "gonna", "with", "do", "the",
@@ -385,20 +393,28 @@ const FILLER_WORDS = new Set([
  * Detroit this week" (2026-09-15) names two teams and picks neither; so does
  * "Eagles or Cowboys". Such a line is left unparsed - it becomes a question
  * for Anthony, never a write - whatever else is on it.
+ *
+ * The correction words joined the list the same day, on review: "Waggs1 -
+ * Eagles I think", "I guess", "wait", "actually", "I mean", "changing to",
+ * "leaning" each read as a firm pick of the first team with the doubt staged
+ * beside it. A line that doubts itself is Anthony's to read, whole.
  */
-const HEDGE = /\b(or|not|no|don'?t|dont|maybe|either|if|unless|vs|versus|instead|rather|might|probably|thinking|considering)\b/i;
+const HEDGE = /\b(or|not|no|don'?t|dont|maybe|either|if|unless|vs|versus|instead|rather|might|probably|thinking|considering|think|guess|wait|actually|meant?|changed?|changing|leaning)\b/i;
 
 /** Trailing "*", "." and ")" off a part, and the whitespace round it. */
 function stripPart(s: string): string {
   return s.trim().replace(/[*.)]+$/, "").trim();
 }
 
+/** The words on the filler list that say the sender is the one choosing. */
+const FIRST_PERSON = new Set(["i", "ill", "im", "id", "me", "my", "we", "lets", "gimme"]);
+
 function fillerOnly(entryRaw: string): boolean {
   const words = entryRaw
     .split(/\s+/)
     .map((w) => w.toLowerCase().replace(/[^a-z]/g, ""))
     .filter(Boolean);
-  return words.length > 0 && words.every((w) => FILLER_WORDS.has(w));
+  return words.length > 0 && words.every((w) => FILLER_WORDS.has(w)) && words.some((w) => FIRST_PERSON.has(w));
 }
 
 /** The longest leading run of words that is a team, and what follows it. */
@@ -410,6 +426,37 @@ function leadingTeam(text: string): { team: string; teamRaw: string; rest: strin
     if (team) return { team, teamRaw, rest: words.slice(take).join(" ") };
   }
   return null;
+}
+
+/**
+ * Every team a piece of text names, in order, each once: every run of one to
+ * MAX_TEAM_WORDS words that strictTeam reads as a team. A one-word run that
+ * is only a code ("no", "tb") counts when it is WRITTEN as a code, in
+ * capitals; "I have no idea" names nobody. Used to decide whether a line
+ * carries a second team the parser could not pair with an entry, and to say
+ * so in the reason Anthony reads; never to write anything.
+ */
+export function teamsNamedIn(text: string): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  let i = 0;
+  while (i < words.length) {
+    let took = 0;
+    for (let take = Math.min(MAX_TEAM_WORDS, words.length - i); take >= 1; take--) {
+      const raw = words.slice(i, i + take).join(" ");
+      const team = strictTeam(raw);
+      if (!team || team === SKIP_WEEK) continue;
+      const cleaned = cleanTeam(raw);
+      const isWord = FULL.has(cleaned) || NICK.has(cleaned) || cleaned in TEAM_ALIASES || CITY.has(cleaned);
+      const letters = raw.replace(/[^A-Za-z]/g, "");
+      if (take === 1 && !isWord && letters !== letters.toUpperCase()) continue;
+      if (!out.includes(team)) out.push(team);
+      took = take;
+      break;
+    }
+    i += took || 1;
+  }
+  return out;
 }
 
 interface ParsedLine {
@@ -451,16 +498,30 @@ function parseLine(line: string): ParsedLine {
     // Two picks on one line: "Mass1 - Ravens Mass2 Niners" (2026-09-15). The
     // team is the leading words of the right-hand part and the remainder is
     // parsed again; it counts only when it yields an entry AND a team.
-    // Otherwise the first pick stands and the remainder is left to the
-    // unparsed reason.
+    //
+    // A REMAINDER THAT NAMES A TEAM IT CANNOT PAIR MAKES THE WHOLE LINE
+    // UNPARSED - the first pick does not stand. Found on review the same day:
+    // "Waggs3 - Tampa, actually make it Eagles", "Mass1 - Ravens, Niners" and
+    // "Waggs1 - Eagles. Actually Cowboys" each WROTE the first team and staged
+    // only the second, so a retracted pick reached admin_submit_pick while
+    // the correction sat on the queue. The main-branch parser staged every
+    // one of these whole; this keeps that. Only a remainder with no team in
+    // it at all ("Mass1 - Ravens please") leaves the first pick standing,
+    // with the remainder left to the unparsed reason.
     const lead = leadingTeam(right);
     if (lead && lead.rest) {
       const first: RawPick = { entryRaw: left, teamRaw: lead.teamRaw, team: lead.team, line, all: false };
       const restLine = lead.rest.replace(/^(?:and|&|,|;)\s*/i, "");
       const more = parseLine(restLine);
-      if (more.picks.length > 0 && more.multi === null && more.unparsed.length === 0 && more.picks.every((p) => p.entryRaw !== null && !p.all)) {
+      // A comma still inside the remainder is where a correction starts
+      // ("Tampa. Scratch that, Eagles" would otherwise read "Scratch that" as
+      // an entry with a comma for its separator), so the second pair is only
+      // taken from a remainder with none left in it.
+      const clean = !restLine.includes(",");
+      if (clean && more.picks.length > 0 && more.multi === null && more.unparsed.length === 0 && more.picks.every((p) => p.entryRaw !== null && !p.all)) {
         return { picks: [first, ...more.picks.map((p) => ({ ...p, line }))], multi: null, unparsed: [] };
       }
+      if (more.picks.length > 0 || more.multi !== null || teamsNamedIn(restLine).length > 0) return none;
       return { picks: [first], multi: null, unparsed: [restLine] };
     }
     const leftTeam = strictTeam(left);
@@ -740,6 +801,29 @@ export function conflictedKeys(proposals: { key: string; team: string }[], stage
 }
 
 /**
+ * The lines of one message on which ANY pick failed to resolve to an entry
+ * inside the sender's scope, each with the teams the line named. A line is
+ * one statement: "Mass1 - Ravens Mass9 Niners" names two teams and one of
+ * them for nobody the roster knows, and writing the half that resolved would
+ * record a pick from a line whose meaning is not settled. The CLI fails every
+ * pick on such a line, naming the teams, so nothing on it is written (added
+ * on review, 2026-09-15, as the second guard behind the parser's own).
+ */
+export function unpairedLines(picks: { line: string; team: string }[], resolved: (index: number) => boolean): Map<string, string[]> {
+  const bad = new Set<string>();
+  picks.forEach((p, i) => {
+    if (!resolved(i)) bad.add(p.line);
+  });
+  const out = new Map<string, string[]>();
+  for (const line of bad) {
+    const teams: string[] = [];
+    for (const p of picks) if (p.line === line && !teams.includes(p.team)) teams.push(p.team);
+    out.set(line, teams);
+  }
+  return out;
+}
+
+/**
  * What identifies one message for the per-message checks (one entry, one
  * team; conflicts; duplicates): the Gmail message id, never the display
  * label. Two replies from one sender with the same subject and Date header
@@ -793,6 +877,11 @@ export function unparsedReason(line: string): string | null {
   // A sign-off is noise, not a question (2026-09-15: "Sincerely", "Sent via
   // the iPhone" were each staged as a question for Anthony).
   if (/^(sincerely|regards|best regards|best|cheers|thanks again|sent (from|via) )/i.test(t)) return null;
+  // A line naming two or more teams that parsed as no pick - a correction on
+  // one line, a hedge, prose - says so, with the teams, rather than claiming
+  // no team was recognised on it (which was false and read as a parser gap).
+  const named = teamsNamedIn(t);
+  if (named.length >= 2) return `names ${named.length} teams (${named.join(", ")}) on one line and no single pick can be read from it`;
   return "no team recognised on this line";
 }
 

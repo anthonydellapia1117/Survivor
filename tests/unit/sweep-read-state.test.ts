@@ -13,8 +13,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { gmail_v1 } from "googleapis";
-import { ensureLabel, getMessageFull, listSweepFrom, notDoneClause, sweepFromQueries } from "../../scripts/lib/gmail";
-import { DONE_LABEL } from "../../scripts/lib/constants";
+import { ensureLabel, listSweepFrom, markProcessed, notDoneClause, readNamedMessages, sweepFromQueries } from "../../scripts/lib/gmail";
+import { ADMIN_MAILBOX, DONE_LABEL } from "../../scripts/lib/constants";
 import { bounceSweepQuery } from "../../scripts/picks/lib/bounce";
 
 const DONE_ID = "Label_77";
@@ -29,7 +29,7 @@ interface FakeMessage {
 
 /** A mailbox whose search returns every message it holds (the prefilter is not what is under test). */
 function fakeGmail(messages: FakeMessage[], opts: { labels?: { name: string; id: string }[]; createFails?: boolean } = {}) {
-  const calls: { op: string; id?: string; format?: string; q?: string }[] = [];
+  const calls: { op: string; id?: string; format?: string; q?: string; add?: string[]; remove?: string[] }[] = [];
   const labels = opts.labels ?? [{ name: DONE_LABEL, id: DONE_ID }];
   const encode = (s: string) => Buffer.from(s, "utf8").toString("base64url");
   const gmail = {
@@ -50,6 +50,10 @@ function fakeGmail(messages: FakeMessage[], opts: { labels?: { name: string; id:
           calls.push({ op: "messages.list", q: p.q });
           // A search result carries a snippet: the preview that must never be a body.
           return { data: { messages: messages.map((m) => ({ id: m.id, threadId: "t", snippet: m.body.slice(0, 5) })) } };
+        },
+        modify: async (p: { id: string; requestBody: { addLabelIds?: string[]; removeLabelIds?: string[] } }) => {
+          calls.push({ op: "messages.modify", id: p.id, add: p.requestBody.addLabelIds ?? [], remove: p.requestBody.removeLabelIds ?? [] });
+          return { data: { id: p.id } };
         },
         get: async (p: { id: string; format: string }) => {
           calls.push({ op: "messages.get", id: p.id, format: p.format });
@@ -160,7 +164,7 @@ describe("the DONE label exists before any read", () => {
     const c = readFileSync(path.join(__dirname, "../..", "scripts/picks/cli.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
     const label = c.indexOf("await ensureLabel(gmail, DONE_LABEL)");
     expect(label).toBeGreaterThan(-1);
-    for (const reader of ["await loadFiledMessageIds(client)", "await listSweepFrom(", "await listSweepMatching(", "await getMessageFull("]) {
+    for (const reader of ["await loadFiledMessageIds(client)", "await listSweepFrom(", "await listSweepMatching(", "await readNamedMessages("]) {
       const at = c.indexOf(reader);
       expect(at, reader).toBeGreaterThan(label);
     }
@@ -182,27 +186,75 @@ describe("the queries", () => {
 });
 
 describe("--message-id", () => {
-  it("reads a DONE-labelled message by id where the sweep would skip it", async () => {
-    const { gmail } = fakeGmail([{ id: "m9", from: "maria@example.com", subject: "Re: Week 2", body: "1042 \u2192 49ers*", labelIds: ["INBOX", DONE_ID] }]);
-    expect(await listSweepFrom(gmail, ["maria@example.com"], skipWith())).toEqual([]);
-    const named = await getMessageFull(gmail, "m9");
-    expect(named.id).toBe("m9");
-    expect(named.body).toBe("1042 \u2192 49ers*");
+  it("reads a DONE-labelled message by id where the sweep would skip it, in full, with no metadata get and no label list", async () => {
+    // The named reader is DRIVEN here (review, 2026-09-15): the source
+    // assertion below held the branch to "no on-file or label check" only by
+    // the absence of the word "skip", so a label check under another name
+    // slipped through it. This fake records every call; a metadata get or a
+    // labels.list on the named path is the check the reader must not make.
+    const { gmail, calls } = fakeGmail([
+      { id: "m9", from: "maria@example.com", subject: "Re: Week 2", body: "1042 \u2192 49ers*", labelIds: ["INBOX", DONE_ID] },
+      { id: "m10", from: "ashley@example.com", subject: "Re: Week 2", body: "Waggs3-Tampa", labelIds: ["INBOX"] },
+    ]);
+    // The sweep skips m9 (labelled DONE, and on file besides) and takes m10.
+    expect((await listSweepFrom(gmail, ["maria@example.com", "ashley@example.com"], skipWith(["m9"]))).map((m) => m.id)).toEqual(["m10"]);
+    calls.length = 0;
+    const named = await readNamedMessages(gmail, ["m9", "m10"], ADMIN_MAILBOX);
+    expect(named.map((m) => [m.id, m.body])).toEqual([
+      ["m9", "1042 \u2192 49ers*"],
+      ["m10", "Waggs3-Tampa"],
+    ]);
+    expect(calls).toEqual([
+      { op: "messages.get", id: "m9", format: "full" },
+      { op: "messages.get", id: "m10", format: "full" },
+    ]);
   });
 
-  it("in the CLI takes exactly the named ids, through getMessageFull, without the on-file or label check, and never the admin mailbox", () => {
+  it("refuses a named message from the admin mailbox before returning anything", async () => {
+    const { gmail } = fakeGmail([{ id: "self", from: ADMIN_MAILBOX, subject: "Survivor picks", body: "1042 SF", labelIds: ["INBOX"] }]);
+    await expect(readNamedMessages(gmail, ["self"], ADMIN_MAILBOX)).rejects.toThrow(/admin mailbox.*picks:self/);
+  });
+
+  it("in the CLI takes exactly the named ids, through readNamedMessages, with no skip set, label id or label check of its own", () => {
     const c = readFileSync(path.join(__dirname, "../..", "scripts/picks/cli.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
     const branch = c.match(/if \(args\.messageIds\.length\) \{([\s\S]*?)\n    \} else \{/);
     expect(branch, "the --message-id branch").not.toBeNull();
-    expect(branch![1]).toMatch(/for \(const id of args\.messageIds\) \{[\s\S]*?await getMessageFull\(gmail, id\)/);
-    expect(branch![1]).not.toMatch(/\bskip\b/);
-    expect(branch![1]).toMatch(/m\.fromAddress === ADMIN_MAILBOX[\s\S]{0,80}throw new Error/);
+    expect(branch![1]).toMatch(/for \(const m of await readNamedMessages\(gmail, args\.messageIds, ADMIN_MAILBOX\)\) \{/);
+    for (const forbidden of [/\bskip\b/, /labelIds/, /doneLabelId/, /\bcontinue\b/, /messages\.get/, /getMessageFull/, /hasLabel/]) {
+      expect(branch![1], String(forbidden)).not.toMatch(forbidden);
+    }
+    // The refusal lives in the reader, once, and nowhere in the branch.
+    const gm = readFileSync(path.join(__dirname, "../..", "scripts/lib/gmail.ts"), "utf8");
+    expect(gm).toMatch(/export async function readNamedMessages\(gmail: gmail_v1\.Gmail, ids: string\[\], refuse: string\)/);
+    expect(gm).toMatch(/if \(m\.fromAddress === refuse\) \{\s*throw new Error/);
     // Repeatable: every occurrence is collected, not the last one kept.
     expect(c).toMatch(/x === "--message-id"\) a\.messageIds\.push\(takeValue\(argv, \+\+i, x\)\)/);
     // The old flag spelling is accepted once and prints the new name.
     expect(c).toMatch(/x === "--keep-unfiled"\) a\.keepUnfiled = true/);
     expect(c).toMatch(/x === "--keep-unread"\) \{[\s\S]{0,400}?--keep-unfiled[\s\S]{0,200}?a\.keepUnfiled = true/);
     expect(c).not.toMatch(/keepUnread\b/);
+  });
+});
+
+describe("filing a message: the WRITE half of the marker", () => {
+  // markProcessed is the only place the DONE label is ever added, and until
+  // this was driven (review, 2026-09-15) a version that never added it passed
+  // every test: the read side was proved on labelIds the fake already held.
+  // With the label never written, a message filed ONLY by label - an
+  // "already current" reply, a not-ours bounce - would be re-read and
+  // re-reported every hourly tick, the loop ensureLabel exists to prevent.
+  it("adds the DONE label id and removes UNREAD in one modify, and says it filed", async () => {
+    const { gmail, calls } = fakeGmail([{ id: "m1", from: "p@x.com", subject: "x", body: "y", labelIds: ["INBOX", "UNREAD"] }]);
+    expect(await markProcessed(gmail, "m1", DONE_LABEL)).toBe(true);
+    expect(calls.filter((c) => c.op === "messages.modify")).toEqual([{ op: "messages.modify", id: "m1", add: [DONE_ID], remove: ["UNREAD"] }]);
+  });
+
+  it("with no such label adds nothing, still marks read, and says it did NOT file", async () => {
+    // A name the cache has never seen: the label list is filled once per
+    // module and every earlier fake in this file carried the real name.
+    const { gmail, calls } = fakeGmail([{ id: "m2", from: "p@x.com", subject: "x", body: "y", labelIds: ["INBOX", "UNREAD"] }]);
+    expect(await markProcessed(gmail, "m2", "Pool-Survivor-Nowhere")).toBe(false);
+    expect(calls.filter((c) => c.op === "messages.modify")).toEqual([{ op: "messages.modify", id: "m2", add: [], remove: ["UNREAD"] }]);
   });
 });
 

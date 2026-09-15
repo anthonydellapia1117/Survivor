@@ -88,7 +88,10 @@ describe("the sweep reads bodies from messages.get format full", () => {
     const cli = PICKS.find((f) => f.file === "scripts/picks/cli.ts")!.src;
     const self = PICKS.find((f) => f.file === "scripts/picks/self.ts")!.src;
     expect(cli).toMatch(/listSweepFrom\(gmail, addresses, skip\)/);
-    expect(cli).toMatch(/getMessageFull\(gmail, id\)/);
+    expect(cli).toMatch(/readNamedMessages\(gmail, args\.messageIds, ADMIN_MAILBOX\)/);
+    // And the named reader is the full reader, once per id, nothing else.
+    expect(functionBody(GMAIL, "readNamedMessages")).toMatch(/for \(const id of ids\) \{\s*const m = await getMessageFull\(gmail, id\);/);
+    expect(functionBody(GMAIL, "readNamedMessages")).not.toMatch(/metadata|labels\.list|labelIds/);
     expect(self).toMatch(/listSweepMatching\(gmail, selfQuery\(\)/);
     for (const f of PICKS) expect(f.src, f.file).not.toMatch(/gmail\.users\.messages\.(list|get)\(/);
   });
